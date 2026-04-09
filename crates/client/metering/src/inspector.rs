@@ -17,17 +17,15 @@ use revm_inspectors::opcode::OpcodeGasInspector;
 /// bypasses the interpreter (no `step`/`step_end` callbacks), so their
 /// gas cost is invisible to the opcode inspector alone.
 #[derive(Debug)]
-pub struct MeteringInspector {
+pub(crate) struct MeteringInspector {
     inner: OpcodeGasInspector,
-    /// Per-precompile gas tracking: address -> (call_count, total_gas_used).
     precompile_gas: HashMap<Address, (u64, u64)>,
-    /// Precompile addresses to track.
     metered_precompiles: HashSet<Address>,
 }
 
 impl MeteringInspector {
     /// Creates a new inspector that tracks the given precompile addresses.
-    pub fn new(metered_precompiles: HashSet<Address>) -> Self {
+    pub(crate) fn new(metered_precompiles: HashSet<Address>) -> Self {
         Self {
             inner: OpcodeGasInspector::new(),
             precompile_gas: HashMap::default(),
@@ -36,12 +34,12 @@ impl MeteringInspector {
     }
 
     /// Returns the inner opcode gas inspector.
-    pub fn inner(&self) -> &OpcodeGasInspector {
+    pub(crate) const fn inner(&self) -> &OpcodeGasInspector {
         &self.inner
     }
 
-    /// Returns per-precompile gas data: address -> (call_count, total_gas_used).
-    pub fn precompile_gas(&self) -> &HashMap<Address, (u64, u64)> {
+    /// Returns per-precompile gas data.
+    pub(crate) const fn precompile_gas(&self) -> &HashMap<Address, (u64, u64)> {
         &self.precompile_gas
     }
 }

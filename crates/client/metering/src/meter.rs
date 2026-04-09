@@ -220,9 +220,8 @@ const PRECOMPILES: &[(&str, u8)] = &[
 /// (e.g., `ECREC`, `BLAKE2F`). Matching is case-insensitive.
 /// Returns an error for any unrecognized name.
 pub fn parse_metered_names(names: &[String]) -> Result<MeteredOpcodes, String> {
-    let opcode_lookup: HashMap<&str, OpCode> = (0..=255u8)
-        .filter_map(|byte| OpCode::new(byte).map(|op| (op.as_str(), op)))
-        .collect();
+    let opcode_lookup: HashMap<&str, OpCode> =
+        (0..=255u8).filter_map(|byte| OpCode::new(byte).map(|op| (op.as_str(), op))).collect();
 
     let precompile_lookup: HashMap<&str, (Address, &str)> = PRECOMPILES
         .iter()
@@ -253,6 +252,7 @@ pub fn parse_metered_names(names: &[String]) -> Result<MeteredOpcodes, String> {
 /// in the output.
 ///
 /// Returns [`MeterBundleOutput`] containing transaction results and aggregated metrics.
+#[allow(clippy::too_many_arguments)]
 pub fn meter_bundle<SP>(
     state_provider: SP,
     chain_spec: Arc<BaseChainSpec>,
@@ -465,14 +465,10 @@ where
 
         // Append precompile gas data.
         for (&addr, &(count, gas_used)) in inspector.precompile_gas() {
-            if let Some(name) = metered_opcodes.precompiles.get(&addr) {
-                if count > 0 {
-                    opcode_gas.push(OpcodeGas {
-                        opcode: name.to_string(),
-                        count,
-                        gas_used,
-                    });
-                }
+            if let Some(name) = metered_opcodes.precompiles.get(&addr)
+                && count > 0
+            {
+                opcode_gas.push(OpcodeGas { opcode: name.clone(), count, gas_used });
             }
         }
 
@@ -791,8 +787,7 @@ mod tests {
 
         let parsed_bundle = create_parsed_bundle(vec![tx])?;
 
-        let metered =
-            parse_metered_names(&["SSTORE".to_string(), "SLOAD".to_string()]).unwrap();
+        let metered = parse_metered_names(&["SSTORE".to_string(), "SLOAD".to_string()]).unwrap();
 
         let output = meter_bundle(
             state_provider,
@@ -913,11 +908,7 @@ mod tests {
         )?;
 
         for entry in &output.opcode_gas {
-            assert_eq!(
-                entry.opcode, "SSTORE",
-                "only SSTORE should appear, found {}",
-                entry.opcode
-            );
+            assert_eq!(entry.opcode, "SSTORE", "only SSTORE should appear, found {}", entry.opcode);
         }
         assert!(!output.opcode_gas.is_empty(), "SSTORE should appear in results");
 
@@ -940,9 +931,11 @@ mod tests {
 
     #[test]
     fn parse_metered_names_recognizes_precompiles() {
-        let result = parse_metered_names(
-            &["SSTORE".to_string(), "BLAKE2F".to_string(), "ECREC".to_string()],
-        );
+        let result = parse_metered_names(&[
+            "SSTORE".to_string(),
+            "BLAKE2F".to_string(),
+            "ECREC".to_string(),
+        ]);
         assert!(result.is_ok());
         let metered = result.unwrap();
         assert_eq!(metered.opcodes.len(), 1);

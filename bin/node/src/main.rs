@@ -9,7 +9,9 @@ use base_bundle_extension::BundleExtension;
 use base_execution_cli::Cli;
 use base_flashblocks::FlashblocksConfig;
 use base_flashblocks_node::FlashblocksExtension;
-use base_metering::{MeteringConfig, MeteringExtension, MeteringResourceLimits, parse_metered_names};
+use base_metering::{
+    MeteringConfig, MeteringExtension, MeteringResourceLimits, parse_metered_names,
+};
 use base_node_runner::BaseNodeRunner;
 use base_proofs_extension::ProofsHistoryExtension;
 use base_tx_forwarding::TxForwardingExtension;

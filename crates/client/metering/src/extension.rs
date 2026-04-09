@@ -9,11 +9,9 @@ use base_node_runner::{BaseNodeExtension, FromExtensionConfig, NodeHooks};
 use parking_lot::RwLock;
 use tracing::{debug, info, warn};
 
-use crate::MeteredOpcodes;
-
 use crate::{
-    DEFAULT_PENDING_STATE_ROOT_TIMES_CAPACITY, MeteringApiImpl, MeteringApiServer, MeteringCache,
-    MeteringCollector, PendingStateRootTimes, PriorityFeeEstimator, ResourceLimits,
+    DEFAULT_PENDING_STATE_ROOT_TIMES_CAPACITY, MeteredOpcodes, MeteringApiImpl, MeteringApiServer,
+    MeteringCache, MeteringCollector, PendingStateRootTimes, PriorityFeeEstimator, ResourceLimits,
     estimator::assert_valid_percentile,
 };
 
@@ -271,11 +269,7 @@ impl BaseNodeExtension for MeteringExtension {
                 )
             } else {
                 info!(message = "Starting Metering RPC (priority fee estimation disabled)");
-                MeteringApiImpl::new(
-                    ctx.provider().clone(),
-                    fb_state,
-                    Arc::clone(&metered_opcodes),
-                )
+                MeteringApiImpl::new(ctx.provider().clone(), fb_state, Arc::clone(&metered_opcodes))
             };
 
             ctx.modules.merge_configured(metering_api.into_rpc())?;
