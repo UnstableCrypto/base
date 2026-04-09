@@ -296,6 +296,7 @@ mod tests {
                 state_root_account_branch_count: 0,
                 state_root_storage_leaf_count: 0,
                 state_root_storage_branch_count: 0,
+                opcode_gas: vec![],
             },
         );
 

@@ -1,8 +1,11 @@
 //! Implementation of the metering RPC API.
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    collections::HashSet,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use alloy_consensus::{BlockHeader, Header, Sealed};
@@ -21,6 +24,7 @@ use reth_primitives_traits::SealedHeader;
 use reth_provider::{
     BlockReader, BlockReaderIdExt, ChainSpecProvider, HeaderProvider, StateProviderFactory,
 };
+use revm_bytecode::opcode::OpCode;
 use tracing::{debug, error, info, warn};
 
 use crate::{
@@ -42,6 +46,9 @@ pub struct MeteringApiImpl<Provider, FB> {
     state_root_cache: Option<Arc<RwLock<PendingStateRootTimes>>>,
     /// Whether metering data collection is enabled.
     metering_enabled: Arc<AtomicBool>,
+    /// Opcodes to track for gas metering. When non-empty, an
+    /// `OpcodeGasInspector` is attached during bundle execution.
+    metered_opcodes: Arc<HashSet<OpCode>>,
 }
 
 impl<Provider, FB> std::fmt::Debug for MeteringApiImpl<Provider, FB> {
@@ -63,7 +70,11 @@ where
     FB: FlashblocksAPI,
 {
     /// Creates a new instance of `MeteringApi` without priority fee estimation.
-    pub fn new(provider: Provider, flashblocks_api: Arc<FB>) -> Self {
+    pub fn new(
+        provider: Provider,
+        flashblocks_api: Arc<FB>,
+        metered_opcodes: Arc<HashSet<OpCode>>,
+    ) -> Self {
         Self {
             provider,
             flashblocks_api,
@@ -71,6 +82,7 @@ where
             priority_fee_estimator: None,
             state_root_cache: None,
             metering_enabled: Arc::new(AtomicBool::new(true)),
+            metered_opcodes,
         }
     }
 
@@ -80,6 +92,7 @@ where
         flashblocks_api: Arc<FB>,
         estimator: Arc<PriorityFeeEstimator>,
         state_root_cache: Arc<RwLock<PendingStateRootTimes>>,
+        metered_opcodes: Arc<HashSet<OpCode>>,
     ) -> Self {
         Self {
             provider,
@@ -88,6 +101,7 @@ where
             priority_fee_estimator: Some(estimator),
             state_root_cache: Some(state_root_cache),
             metering_enabled: Arc::new(AtomicBool::new(true)),
+            metered_opcodes,
         }
     }
 }
@@ -229,6 +243,7 @@ where
             parent_beacon_block_root,
             pending_state,
             l1_block_info,
+            &self.metered_opcodes,
         )
         .map_err(|e| {
             // Sample error msg:
@@ -283,6 +298,7 @@ where
             state_root_account_branch_count: output.state_root_account_branch_count,
             state_root_storage_leaf_count: output.state_root_storage_leaf_count,
             state_root_storage_branch_count: output.state_root_storage_branch_count,
+            opcode_gas: output.opcode_gas,
         })
     }
 

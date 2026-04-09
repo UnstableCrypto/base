@@ -34,7 +34,7 @@ mod extension;
 pub use extension::{MeteringConfig, MeteringExtension, MeteringResourceLimits};
 
 mod meter;
-pub use meter::{MeterBundleOutput, PendingState, PendingTrieInput, meter_bundle};
+pub use meter::{MeterBundleOutput, PendingState, PendingTrieInput, meter_bundle, parse_opcode_names};
 
 mod metrics;
 

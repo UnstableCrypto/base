@@ -1,12 +1,13 @@
 //! Contains the [`MeteringExtension`] which wires up the metering RPC surface
 //! on the Base node builder.
 
-use std::{num::NonZeroUsize, sync::Arc};
+use std::{collections::HashSet, num::NonZeroUsize, sync::Arc};
 
 use alloy_primitives::U256;
 use base_flashblocks::{FlashblocksAPI, FlashblocksConfig, FlashblocksState};
 use base_node_runner::{BaseNodeExtension, FromExtensionConfig, NodeHooks};
 use parking_lot::RwLock;
+use revm_bytecode::opcode::OpCode;
 use tracing::{debug, info, warn};
 
 use crate::{
@@ -81,6 +82,8 @@ pub struct MeteringExtension {
     /// Must be greater than zero when set. Required when gas, state root time,
     /// or DA priority fee estimation is enabled.
     pub target_flashblocks_per_block: Option<usize>,
+    /// Opcodes to track for gas metering.
+    pub metered_opcodes: HashSet<OpCode>,
 }
 
 impl Default for MeteringExtension {
@@ -93,13 +96,14 @@ impl Default for MeteringExtension {
             uncongested_priority_fee: 1_000_000,
             cache_size: 12,
             target_flashblocks_per_block: None,
+            metered_opcodes: HashSet::new(),
         }
     }
 }
 
 impl MeteringExtension {
     /// Creates a new metering extension.
-    pub const fn new(enabled: bool, flashblocks_config: Option<FlashblocksConfig>) -> Self {
+    pub fn new(enabled: bool, flashblocks_config: Option<FlashblocksConfig>) -> Self {
         Self {
             enabled,
             flashblocks_config,
@@ -113,6 +117,7 @@ impl MeteringExtension {
             uncongested_priority_fee: 1_000_000,
             cache_size: 12,
             target_flashblocks_per_block: None,
+            metered_opcodes: HashSet::new(),
         }
     }
 
@@ -144,6 +149,12 @@ impl MeteringExtension {
     /// Sets the target number of tx-pool flashblocks the builder budgets per block.
     pub const fn with_target_flashblocks_per_block(mut self, count: usize) -> Self {
         self.target_flashblocks_per_block = Some(count);
+        self
+    }
+
+    /// Sets the opcodes to track for gas metering.
+    pub fn with_metered_opcodes(mut self, opcodes: HashSet<OpCode>) -> Self {
+        self.metered_opcodes = opcodes;
         self
     }
 
@@ -193,6 +204,7 @@ impl BaseNodeExtension for MeteringExtension {
         let target_flashblocks_per_block = has_estimator
             .then(|| self.resolved_target_flashblocks_per_block(requires_target_flashblocks));
         let flashblocks_config = self.flashblocks_config;
+        let metered_opcodes = Arc::new(self.metered_opcodes);
 
         hooks.add_rpc_module(move |ctx| {
             let fb_state: Arc<FlashblocksState> =
@@ -254,10 +266,15 @@ impl BaseNodeExtension for MeteringExtension {
                     fb_state,
                     estimator,
                     state_root_cache,
+                    Arc::clone(&metered_opcodes),
                 )
             } else {
                 info!(message = "Starting Metering RPC (priority fee estimation disabled)");
-                MeteringApiImpl::new(ctx.provider().clone(), fb_state)
+                MeteringApiImpl::new(
+                    ctx.provider().clone(),
+                    fb_state,
+                    Arc::clone(&metered_opcodes),
+                )
             };
 
             ctx.modules.merge_configured(metering_api.into_rpc())?;
@@ -289,6 +306,8 @@ pub struct MeteringConfig {
     /// Must be greater than zero when set. Required when gas, state root time,
     /// or DA priority fee estimation is enabled.
     pub target_flashblocks_per_block: Option<usize>,
+    /// Opcodes to track for gas metering.
+    pub metered_opcodes: HashSet<OpCode>,
 }
 
 impl MeteringConfig {
@@ -298,7 +317,7 @@ impl MeteringConfig {
     }
 
     /// Creates a configuration with metering enabled and no flashblocks integration.
-    pub const fn enabled() -> Self {
+    pub fn enabled() -> Self {
         Self {
             enabled: true,
             flashblocks_config: None,
@@ -312,11 +331,12 @@ impl MeteringConfig {
             uncongested_priority_fee: 1_000_000,
             cache_size: 12,
             target_flashblocks_per_block: None,
+            metered_opcodes: HashSet::new(),
         }
     }
 
     /// Creates a configuration with metering enabled and flashblocks integration.
-    pub const fn with_flashblocks(flashblocks_config: FlashblocksConfig) -> Self {
+    pub fn with_flashblocks(flashblocks_config: FlashblocksConfig) -> Self {
         Self {
             enabled: true,
             flashblocks_config: Some(flashblocks_config),
@@ -330,6 +350,7 @@ impl MeteringConfig {
             uncongested_priority_fee: 1_000_000,
             cache_size: 12,
             target_flashblocks_per_block: None,
+            metered_opcodes: HashSet::new(),
         }
     }
 
@@ -363,6 +384,12 @@ impl MeteringConfig {
         self.target_flashblocks_per_block = Some(count);
         self
     }
+
+    /// Sets the opcodes to track for gas metering.
+    pub fn with_metered_opcodes(mut self, opcodes: HashSet<OpCode>) -> Self {
+        self.metered_opcodes = opcodes;
+        self
+    }
 }
 
 impl FromExtensionConfig for MeteringExtension {
@@ -378,6 +405,7 @@ impl FromExtensionConfig for MeteringExtension {
             uncongested_priority_fee: config.uncongested_priority_fee,
             cache_size: config.cache_size,
             target_flashblocks_per_block: config.target_flashblocks_per_block,
+            metered_opcodes: config.metered_opcodes,
         }
     }
 }

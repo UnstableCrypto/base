@@ -9,7 +9,7 @@ use base_bundle_extension::BundleExtension;
 use base_execution_cli::Cli;
 use base_flashblocks::FlashblocksConfig;
 use base_flashblocks_node::FlashblocksExtension;
-use base_metering::{MeteringConfig, MeteringExtension, MeteringResourceLimits};
+use base_metering::{MeteringConfig, MeteringExtension, MeteringResourceLimits, parse_opcode_names};
 use base_node_runner::BaseNodeRunner;
 use base_proofs_extension::ProofsHistoryExtension;
 use base_tx_forwarding::TxForwardingExtension;
@@ -48,11 +48,19 @@ fn main() {
             state_root_time_us: args.metering_state_root_time_us,
             da_bytes: args.metering_da_bytes,
         };
+        let metered_opcodes = if args.metering_metered_opcodes.is_empty() {
+            Default::default()
+        } else {
+            parse_opcode_names(&args.metering_metered_opcodes)
+                .expect("invalid opcode name in --metering.metered-opcodes")
+        };
+
         let metering_config = if args.enable_metering {
             let mut config = flashblocks_config
                 .clone()
                 .map_or_else(MeteringConfig::enabled, MeteringConfig::with_flashblocks)
-                .with_resource_limits(resource_limits);
+                .with_resource_limits(resource_limits)
+                .with_metered_opcodes(metered_opcodes);
             if let Some(target_flashblocks_per_block) = args.metering_target_flashblocks_per_block {
                 config = config.with_target_flashblocks_per_block(target_flashblocks_per_block);
             }
