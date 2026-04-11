@@ -1,13 +1,9 @@
 //! Bundle metering logic.
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-    time::Instant,
-};
+use std::{collections::HashSet, sync::Arc, time::Instant};
 
 use alloy_consensus::{BlockHeader, Transaction as _};
-use alloy_primitives::{Address, B256, U256};
+use alloy_primitives::{Address, B256, U256, map::HashMap};
 use base_bundles::{BundleExtensions, BundleTxs, OpcodeGas, ParsedBundle, TransactionResult};
 use base_common_evm::L1BlockInfo;
 use base_execution_chainspec::BaseChainSpec;
@@ -198,35 +194,39 @@ impl MeteredOpcodes {
     }
 }
 
+/// Constructs a precompile address from a `u16` value.
+const fn precompile_addr(n: u16) -> Address {
+    let be = n.to_be_bytes();
+    Address::new([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, be[0], be[1]])
+}
+
 /// Standard EVM precompile names and their addresses.
 ///
-/// Names follow EIP-7910 conventions where practical.
-const PRECOMPILES: &[(&str, u8)] = &[
-    ("ECREC", 0x01),
-    ("SHA256", 0x02),
-    ("RIPEMD160", 0x03),
-    ("IDENTITY", 0x04),
-    ("MODEXP", 0x05),
-    ("BN254_ADD", 0x06),
-    ("BN254_MUL", 0x07),
-    ("BN254_PAIRING", 0x08),
-    ("BLAKE2F", 0x09),
-    ("KZG_POINT_EVALUATION", 0x0a),
+/// Names follow EIP-7910 conventions.
+const PRECOMPILES: &[(&str, Address)] = &[
+    ("ECREC", precompile_addr(0x01)),
+    ("SHA256", precompile_addr(0x02)),
+    ("RIPEMD160", precompile_addr(0x03)),
+    ("ID", precompile_addr(0x04)),
+    ("MODEXP", precompile_addr(0x05)),
+    ("BN254_ADD", precompile_addr(0x06)),
+    ("BN254_MUL", precompile_addr(0x07)),
+    ("BN254_PAIRING", precompile_addr(0x08)),
+    ("BLAKE2F", precompile_addr(0x09)),
+    ("KZG_POINT_EVALUATION", precompile_addr(0x0a)),
+    ("P256VERIFY", precompile_addr(0x100)),
 ];
 
 /// Parses opcode and precompile name strings into a [`MeteredOpcodes`] filter.
 ///
 /// Recognizes EVM opcode names (e.g., `SSTORE`, `CALL`) and precompile names
 /// (e.g., `ECREC`, `BLAKE2F`). Matching is case-insensitive.
-/// Returns an error for any unrecognized name.
-pub fn parse_metered_names(names: &[String]) -> Result<MeteredOpcodes, String> {
+pub fn parse_metered_names(names: &[String]) -> EyreResult<MeteredOpcodes> {
     let opcode_lookup: HashMap<&str, OpCode> =
         (0..=255u8).filter_map(|byte| OpCode::new(byte).map(|op| (op.as_str(), op))).collect();
 
-    let precompile_lookup: HashMap<&str, (Address, &str)> = PRECOMPILES
-        .iter()
-        .map(|&(name, byte)| (name, (Address::with_last_byte(byte), name)))
-        .collect();
+    let precompile_lookup: HashMap<&str, (Address, &str)> =
+        PRECOMPILES.iter().map(|&(name, addr)| (name, (addr, name))).collect();
 
     let mut result = MeteredOpcodes::default();
     for name in names {
@@ -236,7 +236,7 @@ pub fn parse_metered_names(names: &[String]) -> Result<MeteredOpcodes, String> {
         } else if let Some(&(addr, display_name)) = precompile_lookup.get(upper.as_str()) {
             result.precompiles.insert(addr, display_name.to_string());
         } else {
-            return Err(format!("Unknown opcode or precompile: {name}"));
+            return Err(eyre!("unknown opcode or precompile: {name}"));
         }
     }
     Ok(result)
@@ -316,12 +316,12 @@ where
     // Override sender nonces to match their first transaction's nonce and collect
     // account info for pre-flight validation. `load_cache_account` reads from the
     // cached pending prestate when available, so balances reflect pending state.
-    let mut first_nonces: HashMap<Address, u64> = HashMap::new();
+    let mut first_nonces: HashMap<Address, u64> = HashMap::default();
     for tx in bundle.transactions() {
         first_nonces.entry(tx.signer()).or_insert_with(|| tx.nonce());
     }
 
-    let mut account_infos: HashMap<Address, Option<Account>> = HashMap::new();
+    let mut account_infos: HashMap<Address, Option<Account>> = HashMap::default();
     for (&addr, &nonce) in &first_nonces {
         let cache_account = db.load_cache_account(addr)?;
         if let Some(ref mut account) = cache_account.account {
@@ -366,10 +366,10 @@ where
         extra_data: header.extra_data().clone(),
     };
 
-    // Execute transactions. When metered opcodes are configured, attach an
-    // OpcodeGasInspector to collect per-opcode gas data during execution.
+    // Execute transactions. When metered opcodes are configured, attach a
+    // MeteringInspector to collect per-opcode and precompile gas data.
     //
-    // The two branches duplicate the transaction loop to avoid the inspector overhead
+    // The two branches duplicate the transaction loop to avoid inspector overhead
     // (HashMap updates on every opcode step/step_end) when opcode tracking is off.
     let mut results = Vec::new();
     let mut total_gas_used = 0u64;
@@ -430,8 +430,48 @@ where
     let opcode_gas = if metered_opcodes.is_empty() {
         let evm_config = BaseEvmConfig::base(chain_spec);
         let mut builder = evm_config.builder_for_next_block(&mut db, header, attributes)?;
-        execute_transactions!(builder);
-        vec![]
+
+        let block = &mut builder.evm_mut().block;
+        block.basefee = block.basefee.min(MIN_BASEFEE);
+        builder.apply_pre_execution_changes()?;
+
+        for tx in bundle.transactions() {
+            let tx_start = Instant::now();
+            let tx_hash = tx.tx_hash();
+            let from = tx.signer();
+            let to = tx.to();
+            let value = tx.value();
+            let gas_price = tx.max_fee_per_gas();
+            let account = account_infos
+                .get(&from)
+                .ok_or_else(|| eyre!("Account not found for address: {from}"))?
+                .ok_or_else(|| eyre!("Account is none for tx: {tx_hash}"))?;
+
+            validate_tx(account, tx, &mut l1_block_info)
+                .map_err(|e| eyre!("Transaction {tx_hash} validation failed: {e}"))?;
+
+            let gas_used = builder
+                .execute_transaction(tx.clone())
+                .map_err(|e| eyre!("Transaction {tx_hash} execution failed: {e}"))?;
+
+            let gas_fees = U256::from(gas_used) * U256::from(gas_price);
+            total_gas_used = total_gas_used.saturating_add(gas_used);
+            total_gas_fees = total_gas_fees.saturating_add(gas_fees);
+
+            results.push(TransactionResult {
+                coinbase_diff: gas_fees,
+                eth_sent_to_coinbase: U256::ZERO,
+                from_address: from,
+                gas_fees,
+                gas_price: U256::from(gas_price),
+                gas_used,
+                to_address: to,
+                tx_hash,
+                value,
+                execution_time_us: tx_start.elapsed().as_micros(),
+                opcode_gas: vec![],
+            });
+        }
     } else {
         let evm_config = BaseEvmConfig::base(chain_spec);
         let evm_env = evm_config.next_evm_env(header, &attributes)?;
@@ -440,40 +480,80 @@ where
         let evm = evm_config.evm_with_env_and_inspector(&mut db, evm_env, inspector);
         let ctx = evm_config.context_for_next_block(header, attributes)?;
         let mut builder = evm_config.create_block_builder(evm, header, ctx);
-        execute_transactions!(builder);
 
-        // Extract per-opcode gas data from the inspector, filtered to the configured set.
-        let inspector = builder.evm().inspector();
-        let counts = inspector.inner().opcode_counts();
-        let gas = inspector.inner().opcode_gas();
-        let mut opcode_gas: Vec<OpcodeGas> = metered_opcodes
-            .opcodes
-            .iter()
-            .filter_map(|&opcode| {
-                let count = counts.get(&opcode).copied().unwrap_or(0);
-                if count > 0 {
-                    Some(OpcodeGas {
-                        opcode: opcode.as_str().to_string(),
-                        count,
-                        gas_used: gas.get(&opcode).copied().unwrap_or(0),
-                    })
-                } else {
-                    None
+        let block = &mut builder.evm_mut().block;
+        block.basefee = block.basefee.min(MIN_BASEFEE);
+        builder.apply_pre_execution_changes()?;
+
+        for tx in bundle.transactions() {
+            let tx_start = Instant::now();
+            let tx_hash = tx.tx_hash();
+            let from = tx.signer();
+            let to = tx.to();
+            let value = tx.value();
+            let gas_price = tx.max_fee_per_gas();
+            let account = account_infos
+                .get(&from)
+                .ok_or_else(|| eyre!("Account not found for address: {from}"))?
+                .ok_or_else(|| eyre!("Account is none for tx: {tx_hash}"))?;
+
+            validate_tx(account, tx, &mut l1_block_info)
+                .map_err(|e| eyre!("Transaction {tx_hash} validation failed: {e}"))?;
+
+            let gas_used = builder
+                .execute_transaction(tx.clone())
+                .map_err(|e| eyre!("Transaction {tx_hash} execution failed: {e}"))?;
+
+            let gas_fees = U256::from(gas_used) * U256::from(gas_price);
+            total_gas_used = total_gas_used.saturating_add(gas_used);
+            total_gas_fees = total_gas_fees.saturating_add(gas_fees);
+
+            // Extract per-transaction opcode and precompile gas, then reset for next tx.
+            let inspector = builder.evm_mut().inspector_mut();
+            let opcode_data = inspector.take_opcode_inspector();
+            let precompile_data = inspector.take_precompile_gas();
+
+            let mut opcode_gas: Vec<OpcodeGas> = metered_opcodes
+                .opcodes
+                .iter()
+                .filter_map(|&opcode| {
+                    let count = opcode_data.opcode_counts().get(&opcode).copied().unwrap_or(0);
+                    if count > 0 {
+                        let gas_used = opcode_data.opcode_gas().get(&opcode).copied().unwrap_or(0);
+                        Some(OpcodeGas { opcode: opcode.as_str().to_string(), count, gas_used })
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            for (addr, (count, precompile_gas_used)) in &precompile_data {
+                if let Some(name) = metered_opcodes.precompiles.get(addr)
+                    && *count > 0
+                {
+                    opcode_gas.push(OpcodeGas {
+                        opcode: name.clone(),
+                        count: *count,
+                        gas_used: *precompile_gas_used,
+                    });
                 }
-            })
-            .collect();
-
-        // Append precompile gas data.
-        for (&addr, &(count, gas_used)) in inspector.precompile_gas() {
-            if let Some(name) = metered_opcodes.precompiles.get(&addr)
-                && count > 0
-            {
-                opcode_gas.push(OpcodeGas { opcode: name.clone(), count, gas_used });
             }
-        }
 
-        opcode_gas
-    };
+            results.push(TransactionResult {
+                coinbase_diff: gas_fees,
+                eth_sent_to_coinbase: U256::ZERO,
+                from_address: from,
+                gas_fees,
+                gas_price: U256::from(gas_price),
+                gas_used,
+                to_address: to,
+                tx_hash,
+                value,
+                execution_time_us: tx_start.elapsed().as_micros(),
+                opcode_gas,
+            });
+        }
+    }
 
     // Calculate state root and measure its calculation time. If pending flashblocks were present,
     // `bundle_update` now contains only this bundle's delta; the cached pending trie is prepended
@@ -801,9 +881,10 @@ mod tests {
         )?;
 
         assert_eq!(output.results.len(), 1);
-        assert!(!output.opcode_gas.is_empty(), "storage write should produce opcode gas data");
+        let tx_opcodes = &output.results[0].opcode_gas;
+        assert!(!tx_opcodes.is_empty(), "storage write should produce opcode gas data");
 
-        let sstore = output.opcode_gas.iter().find(|o| o.opcode == "SSTORE");
+        let sstore = tx_opcodes.iter().find(|o| o.opcode == "SSTORE");
         assert!(sstore.is_some(), "SSTORE should appear in opcode gas results");
         let sstore = sstore.unwrap();
         assert!(sstore.count > 0, "SSTORE count should be non-zero");
@@ -853,7 +934,7 @@ mod tests {
         )?;
 
         assert!(
-            output.opcode_gas.is_empty(),
+            output.results[0].opcode_gas.is_empty(),
             "opcode gas should be empty when no metered opcodes are configured"
         );
 
@@ -907,10 +988,11 @@ mod tests {
             &metered,
         )?;
 
-        for entry in &output.opcode_gas {
+        let tx_opcodes = &output.results[0].opcode_gas;
+        for entry in tx_opcodes {
             assert_eq!(entry.opcode, "SSTORE", "only SSTORE should appear, found {}", entry.opcode);
         }
-        assert!(!output.opcode_gas.is_empty(), "SSTORE should appear in results");
+        assert!(!tx_opcodes.is_empty(), "SSTORE should appear in results");
 
         Ok(())
     }
@@ -919,7 +1001,7 @@ mod tests {
     fn parse_metered_names_rejects_unknown() {
         let result = parse_metered_names(&["NOTAREALOPCODE".to_string()]);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("NOTAREALOPCODE"));
+        assert!(result.unwrap_err().to_string().contains("NOTAREALOPCODE"));
     }
 
     #[test]

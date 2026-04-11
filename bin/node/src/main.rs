@@ -53,8 +53,7 @@ fn main() {
         let metered_opcodes = if args.metering_metered_opcodes.is_empty() {
             Default::default()
         } else {
-            parse_metered_names(&args.metering_metered_opcodes)
-                .expect("invalid opcode or precompile name in --metering.metered-opcodes")
+            parse_metered_names(&args.metering_metered_opcodes)?
         };
 
         let metering_config = if args.enable_metering {

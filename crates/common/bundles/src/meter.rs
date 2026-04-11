@@ -3,15 +3,15 @@
 use alloy_primitives::{Address, B256, TxHash, U256};
 use serde::{Deserialize, Serialize};
 
-/// Per-opcode gas usage for a single opcode type.
+/// Per-opcode or precompile gas usage for a single item.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct OpcodeGas {
-    /// Opcode name (e.g., "SSTORE", "SLOAD").
+    /// Opcode or precompile name (e.g., "SSTORE", "BLAKE2F").
     pub opcode: String,
-    /// Number of times this opcode was executed across the bundle.
+    /// Number of times this opcode/precompile was executed in the transaction.
     pub count: u64,
-    /// Total gas consumed by all executions of this opcode.
+    /// Total gas consumed by all executions of this opcode/precompile.
     pub gas_used: u64,
 }
 
@@ -39,6 +39,10 @@ pub struct TransactionResult {
     pub value: U256,
     /// Time spent executing this transaction in microseconds.
     pub execution_time_us: u128,
+    /// Per-opcode and precompile gas usage for this transaction.
+    /// Only populated when opcode metering is enabled.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub opcode_gas: Vec<OpcodeGas>,
 }
 
 /// Response from simulating a bundle.
@@ -114,6 +118,7 @@ mod tests {
             tx_hash: B256::default(),
             value: U256::from(1_000_000_000_000_000_000u64),
             execution_time_us: 500,
+            opcode_gas: vec![],
         };
 
         let json = serde_json::to_string(&result).unwrap();
@@ -138,6 +143,7 @@ mod tests {
             tx_hash: B256::default(),
             value: U256::ZERO,
             execution_time_us: 1000,
+            opcode_gas: vec![],
         };
 
         let json = serde_json::to_string(&result).unwrap();

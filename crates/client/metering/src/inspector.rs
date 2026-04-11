@@ -33,14 +33,18 @@ impl MeteringInspector {
         }
     }
 
-    /// Returns the inner opcode gas inspector.
-    pub(crate) const fn inner(&self) -> &OpcodeGasInspector {
-        &self.inner
+    /// Extracts the accumulated opcode gas data and resets the inner inspector.
+    ///
+    /// Call this after each transaction to get per-transaction opcode data.
+    pub(crate) fn take_opcode_inspector(&mut self) -> OpcodeGasInspector {
+        std::mem::take(&mut self.inner)
     }
 
-    /// Returns per-precompile gas data.
-    pub(crate) const fn precompile_gas(&self) -> &HashMap<Address, (u64, u64)> {
-        &self.precompile_gas
+    /// Extracts the accumulated precompile gas data and resets the map.
+    ///
+    /// Call this after each transaction to get per-transaction precompile data.
+    pub(crate) fn take_precompile_gas(&mut self) -> HashMap<Address, (u64, u64)> {
+        std::mem::take(&mut self.precompile_gas)
     }
 }
 
@@ -61,6 +65,9 @@ where
     }
 
     fn call_end(&mut self, _context: &mut CTX, inputs: &CallInputs, outcome: &mut CallOutcome) {
+        if self.metered_precompiles.is_empty() {
+            return;
+        }
         let target = inputs.bytecode_address;
         if self.metered_precompiles.contains(&target) {
             let gas_used = outcome.result.gas.spent();
