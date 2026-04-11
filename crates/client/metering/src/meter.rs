@@ -214,6 +214,13 @@ const PRECOMPILES: &[(&str, Address)] = &[
     ("BN254_PAIRING", precompile_addr(0x08)),
     ("BLAKE2F", precompile_addr(0x09)),
     ("KZG_POINT_EVALUATION", precompile_addr(0x0a)),
+    ("BLS12_G1ADD", precompile_addr(0x0b)),
+    ("BLS12_G1MSM", precompile_addr(0x0c)),
+    ("BLS12_G2ADD", precompile_addr(0x0d)),
+    ("BLS12_G2MSM", precompile_addr(0x0e)),
+    ("BLS12_PAIRING_CHECK", precompile_addr(0x0f)),
+    ("BLS12_MAP_FP_TO_G1", precompile_addr(0x10)),
+    ("BLS12_MAP_FP2_TO_G2", precompile_addr(0x11)),
     ("P256VERIFY", precompile_addr(0x100)),
 ];
 
