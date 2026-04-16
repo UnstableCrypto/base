@@ -73,7 +73,8 @@ where
         self.inner.call(context, inputs)
     }
 
-    fn call_end(&mut self, _context: &mut CTX, inputs: &CallInputs, outcome: &mut CallOutcome) {
+    fn call_end(&mut self, context: &mut CTX, inputs: &CallInputs, outcome: &mut CallOutcome) {
+        self.inner.call_end(context, inputs, outcome);
         if self.metered_precompiles.is_empty() {
             return;
         }

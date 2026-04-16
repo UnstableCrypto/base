@@ -187,13 +187,6 @@ pub struct MeteredOpcodes {
     pub precompiles: HashMap<Address, String>,
 }
 
-impl MeteredOpcodes {
-    /// Returns true if no opcodes or precompiles are configured.
-    pub fn is_empty(&self) -> bool {
-        self.opcodes.is_empty() && self.precompiles.is_empty()
-    }
-}
-
 /// Constructs a precompile address from a `u16` value.
 const fn precompile_addr(n: u16) -> Address {
     let be = n.to_be_bytes();
@@ -224,29 +217,36 @@ const PRECOMPILES: &[(&str, Address)] = &[
     ("P256VERIFY", precompile_addr(0x100)),
 ];
 
-/// Parses opcode and precompile name strings into a [`MeteredOpcodes`] filter.
-///
-/// Recognizes EVM opcode names (e.g., `SSTORE`, `CALL`) and precompile names
-/// (e.g., `ECREC`, `BLAKE2F`). Matching is case-insensitive.
-pub fn parse_metered_names(names: &[String]) -> EyreResult<MeteredOpcodes> {
-    let opcode_lookup: HashMap<&str, OpCode> =
-        (0..=255u8).filter_map(|byte| OpCode::new(byte).map(|op| (op.as_str(), op))).collect();
-
-    let precompile_lookup: HashMap<&str, (Address, &str)> =
-        PRECOMPILES.iter().map(|&(name, addr)| (name, (addr, name))).collect();
-
-    let mut result = MeteredOpcodes::default();
-    for name in names {
-        let upper = name.to_uppercase();
-        if let Some(&opcode) = opcode_lookup.get(upper.as_str()) {
-            result.opcodes.insert(opcode);
-        } else if let Some(&(addr, display_name)) = precompile_lookup.get(upper.as_str()) {
-            result.precompiles.insert(addr, display_name.to_string());
-        } else {
-            return Err(eyre!("unknown opcode or precompile: {name}"));
-        }
+impl MeteredOpcodes {
+    /// Returns true if no opcodes or precompiles are configured.
+    pub fn is_empty(&self) -> bool {
+        self.opcodes.is_empty() && self.precompiles.is_empty()
     }
-    Ok(result)
+
+    /// Parses opcode and precompile name strings into a [`MeteredOpcodes`] filter.
+    ///
+    /// Recognizes EVM opcode names (e.g., `SSTORE`, `CALL`) and precompile names
+    /// (e.g., `ECREC`, `BLAKE2F`). Matching is case-insensitive.
+    pub fn parse(names: &[String]) -> EyreResult<Self> {
+        let opcode_lookup: HashMap<&str, OpCode> =
+            (0..=255u8).filter_map(|byte| OpCode::new(byte).map(|op| (op.as_str(), op))).collect();
+
+        let precompile_lookup: HashMap<&str, (Address, &str)> =
+            PRECOMPILES.iter().map(|&(name, addr)| (name, (addr, name))).collect();
+
+        let mut result = Self::default();
+        for name in names {
+            let upper = name.to_uppercase();
+            if let Some(&opcode) = opcode_lookup.get(upper.as_str()) {
+                result.opcodes.insert(opcode);
+            } else if let Some(&(addr, display_name)) = precompile_lookup.get(upper.as_str()) {
+                result.precompiles.insert(addr, display_name.to_string());
+            } else {
+                return Err(eyre!("unknown opcode or precompile: {name}"));
+            }
+        }
+        Ok(result)
+    }
 }
 
 /// Simulates and meters a bundle of transactions.
@@ -874,7 +874,7 @@ mod tests {
 
         let parsed_bundle = create_parsed_bundle(vec![tx])?;
 
-        let metered = parse_metered_names(&["SSTORE".to_string(), "SLOAD".to_string()]).unwrap();
+        let metered = MeteredOpcodes::parse(&["SSTORE".to_string(), "SLOAD".to_string()]).unwrap();
 
         let output = meter_bundle(
             state_provider,
@@ -982,7 +982,7 @@ mod tests {
         let parsed_bundle = create_parsed_bundle(vec![tx])?;
 
         // Only request SSTORE — other opcodes like PUSH, ADD, etc. should be filtered out.
-        let metered = parse_metered_names(&["SSTORE".to_string()]).unwrap();
+        let metered = MeteredOpcodes::parse(&["SSTORE".to_string()]).unwrap();
 
         let output = meter_bundle(
             state_provider,
@@ -1005,22 +1005,22 @@ mod tests {
     }
 
     #[test]
-    fn parse_metered_names_rejects_unknown() {
-        let result = parse_metered_names(&["NOTAREALOPCODE".to_string()]);
+    fn metered_opcodes_parse_rejects_unknown() {
+        let result = MeteredOpcodes::parse(&["NOTAREALOPCODE".to_string()]);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("NOTAREALOPCODE"));
     }
 
     #[test]
-    fn parse_metered_names_case_insensitive() {
-        let result = parse_metered_names(&["sstore".to_string(), "Sload".to_string()]);
+    fn metered_opcodes_parse_case_insensitive() {
+        let result = MeteredOpcodes::parse(&["sstore".to_string(), "Sload".to_string()]);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().opcodes.len(), 2);
     }
 
     #[test]
-    fn parse_metered_names_recognizes_precompiles() {
-        let result = parse_metered_names(&[
+    fn metered_opcodes_parse_recognizes_precompiles() {
+        let result = MeteredOpcodes::parse(&[
             "SSTORE".to_string(),
             "BLAKE2F".to_string(),
             "ECREC".to_string(),
