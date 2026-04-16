@@ -294,7 +294,6 @@ where
             state_root_account_branch_count: output.state_root_account_branch_count,
             state_root_storage_leaf_count: output.state_root_storage_leaf_count,
             state_root_storage_branch_count: output.state_root_storage_branch_count,
-            opcode_gas: output.opcode_gas,
         })
     }
 

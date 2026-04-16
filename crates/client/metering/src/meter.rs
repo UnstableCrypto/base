@@ -121,9 +121,6 @@ pub struct MeterBundleOutput {
     /// calculation, restricted to tries the bundle actually modified. Like account branches,
     /// these scale with trie depth.
     pub state_root_storage_branch_count: u64,
-    /// Per-opcode gas data for metered opcodes, filtered from `OpcodeGasInspector` results.
-    /// Empty when no metered opcodes are configured.
-    pub opcode_gas: Vec<OpcodeGas>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -221,6 +218,14 @@ impl MeteredOpcodes {
     /// Returns true if no opcodes or precompiles are configured.
     pub fn is_empty(&self) -> bool {
         self.opcodes.is_empty() && self.precompiles.is_empty()
+    }
+
+    /// Adds all known precompiles to the metered set.
+    pub fn with_all_precompiles(mut self) -> Self {
+        for &(name, addr) in PRECOMPILES {
+            self.precompiles.insert(addr, name.to_string());
+        }
+        self
     }
 
     /// Parses opcode and precompile name strings into a [`MeteredOpcodes`] filter.
@@ -373,113 +378,15 @@ where
         extra_data: header.extra_data().clone(),
     };
 
-    // Execute transactions. When metered opcodes are configured, attach a
-    // MeteringInspector to collect per-opcode and precompile gas data.
-    //
-    // The two branches duplicate the transaction loop to avoid inspector overhead
-    // (HashMap updates on every opcode step/step_end) when opcode tracking is off.
+    // Execute transactions with a MeteringInspector to collect per-opcode and
+    // precompile gas data. Precompile gas is always tracked; opcode gas is only
+    // tracked for opcodes in the metered set.
     let mut results = Vec::new();
     let mut total_gas_used = 0u64;
     let mut total_gas_fees = U256::ZERO;
 
     let total_start = Instant::now();
-
-    // Macro to avoid duplicating the transaction execution loop across the two
-    // builder-type branches (NoOpInspector vs OpcodeGasInspector).
-    macro_rules! execute_transactions {
-        ($builder:expr) => {{
-            let block = &mut $builder.evm_mut().block;
-            block.basefee = block.basefee.min(MIN_BASEFEE);
-
-            $builder.apply_pre_execution_changes()?;
-
-            for tx in bundle.transactions() {
-                let tx_start = Instant::now();
-                let tx_hash = tx.tx_hash();
-                let from = tx.signer();
-                let to = tx.to();
-                let value = tx.value();
-                let gas_price = tx.max_fee_per_gas();
-                let account = account_infos
-                    .get(&from)
-                    .ok_or_else(|| eyre!("Account not found in HashMap for address: {}", from))?
-                    .ok_or_else(|| eyre!("Account is none for tx: {}", tx_hash))?;
-
-                validate_tx(account, tx, &mut l1_block_info)
-                    .map_err(|e| eyre!("Transaction {} validation failed: {}", tx_hash, e))?;
-
-                let gas_used = $builder
-                    .execute_transaction(tx.clone())
-                    .map_err(|e| eyre!("Transaction {} execution failed: {}", tx_hash, e))?;
-
-                let gas_fees = U256::from(gas_used) * U256::from(gas_price);
-                total_gas_used = total_gas_used.saturating_add(gas_used);
-                total_gas_fees = total_gas_fees.saturating_add(gas_fees);
-
-                let execution_time = tx_start.elapsed().as_micros();
-
-                results.push(TransactionResult {
-                    coinbase_diff: gas_fees,
-                    eth_sent_to_coinbase: U256::ZERO,
-                    from_address: from,
-                    gas_fees,
-                    gas_price: U256::from(gas_price),
-                    gas_used,
-                    to_address: to,
-                    tx_hash,
-                    value,
-                    execution_time_us: execution_time,
-                });
-            }
-        }};
-    }
-
-    let opcode_gas = if metered_opcodes.is_empty() {
-        let evm_config = BaseEvmConfig::base(chain_spec);
-        let mut builder = evm_config.builder_for_next_block(&mut db, header, attributes)?;
-
-        let block = &mut builder.evm_mut().block;
-        block.basefee = block.basefee.min(MIN_BASEFEE);
-        builder.apply_pre_execution_changes()?;
-
-        for tx in bundle.transactions() {
-            let tx_start = Instant::now();
-            let tx_hash = tx.tx_hash();
-            let from = tx.signer();
-            let to = tx.to();
-            let value = tx.value();
-            let gas_price = tx.max_fee_per_gas();
-            let account = account_infos
-                .get(&from)
-                .ok_or_else(|| eyre!("Account not found for address: {from}"))?
-                .ok_or_else(|| eyre!("Account is none for tx: {tx_hash}"))?;
-
-            validate_tx(account, tx, &mut l1_block_info)
-                .map_err(|e| eyre!("Transaction {tx_hash} validation failed: {e}"))?;
-
-            let gas_used = builder
-                .execute_transaction(tx.clone())
-                .map_err(|e| eyre!("Transaction {tx_hash} execution failed: {e}"))?;
-
-            let gas_fees = U256::from(gas_used) * U256::from(gas_price);
-            total_gas_used = total_gas_used.saturating_add(gas_used);
-            total_gas_fees = total_gas_fees.saturating_add(gas_fees);
-
-            results.push(TransactionResult {
-                coinbase_diff: gas_fees,
-                eth_sent_to_coinbase: U256::ZERO,
-                from_address: from,
-                gas_fees,
-                gas_price: U256::from(gas_price),
-                gas_used,
-                to_address: to,
-                tx_hash,
-                value,
-                execution_time_us: tx_start.elapsed().as_micros(),
-                opcode_gas: vec![],
-            });
-        }
-    } else {
+    {
         let evm_config = BaseEvmConfig::base(chain_spec);
         let evm_env = evm_config.next_evm_env(header, &attributes)?;
         let precompile_addrs = metered_opcodes.precompiles.keys().copied().collect();
@@ -638,7 +545,6 @@ where
         state_root_account_branch_count: trie_node_counts.account_branches,
         state_root_storage_leaf_count: trie_node_counts.storage_leaves,
         state_root_storage_branch_count: trie_node_counts.storage_branches,
-        opcode_gas,
     })
 }
 

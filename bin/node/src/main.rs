@@ -52,7 +52,8 @@ fn main() {
             MeteredOpcodes::default()
         } else {
             MeteredOpcodes::parse(&args.metering_metered_opcodes)?
-        };
+        }
+        .with_all_precompiles();
 
         let metering_config = if args.enable_metering {
             let mut config = flashblocks_config

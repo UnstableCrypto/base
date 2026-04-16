@@ -93,10 +93,6 @@ pub struct MeterBundleResponse {
     /// to tries the bundle actually modified. Like account branches, these scale with trie depth.
     #[serde(default)]
     pub state_root_storage_branch_count: u64,
-    /// Per-opcode gas usage for metered opcodes, aggregated across all transactions.
-    /// Only populated when opcode metering is enabled.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub opcode_gas: Vec<OpcodeGas>,
 }
 
 #[cfg(test)]
@@ -182,7 +178,6 @@ mod tests {
             state_root_account_branch_count: 7,
             state_root_storage_leaf_count: 20,
             state_root_storage_branch_count: 14,
-            opcode_gas: vec![],
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -221,7 +216,6 @@ mod tests {
             state_root_account_branch_count: 0,
             state_root_storage_leaf_count: 0,
             state_root_storage_branch_count: 0,
-            opcode_gas: vec![],
         };
 
         let json = serde_json::to_string(&response).unwrap();
