@@ -26,7 +26,9 @@ use tracing::{debug, error, info, warn};
 use crate::{
     MeterBlockResponse, MeteredPriorityFeeResponse, PendingState, PendingStateRootTimes,
     PendingTrieCache, PriorityFeeEstimator, ResourceDemand, ResourceFeeEstimateResponse,
-    block::meter_block, meter::meter_bundle, traits::MeteringApiServer,
+    block::meter_block,
+    meter::{MeterBundleInput, meter_bundle},
+    traits::MeteringApiServer,
 };
 
 /// Implementation of the metering RPC API.
@@ -231,16 +233,16 @@ where
         let l1_block_info = self.get_l1_block_info(canonical_block_number)?;
 
         // Meter bundle using utility function
-        let output = meter_bundle(
+        let output = meter_bundle(MeterBundleInput {
             state_provider,
-            self.provider.chain_spec(),
-            parsed_bundle,
-            &header,
+            chain_spec: self.provider.chain_spec(),
+            bundle: parsed_bundle,
+            header: header.clone(),
             parent_beacon_block_root,
             pending_state,
             l1_block_info,
-            &self.metered_opcodes,
-        )
+            metered_opcodes: Arc::clone(&self.metered_opcodes),
+        })
         .map_err(|e| {
             // Sample error msg:
             // Transaction $TX_HASH execution failed: EVM reported invalid transaction ($TX_HASH): nonce $EXPECTED_NONCE too high, expected $EXPECTED_NONCE"

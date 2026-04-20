@@ -1,8 +1,9 @@
 //! Custom EVM inspector for metering per-opcode and precompile gas usage.
 
-use std::collections::HashSet;
-
-use alloy_primitives::{Address, map::HashMap};
+use alloy_primitives::{
+    Address,
+    map::{HashMap, HashSet},
+};
 use revm::{
     Inspector,
     context::ContextTr,
