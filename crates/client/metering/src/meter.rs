@@ -1027,6 +1027,16 @@ mod tests {
         assert!(metered.precompiles.values().any(|n| n == "ECREC"));
     }
 
+    #[test]
+    fn metered_opcodes_parse_recognizes_azul_additions() {
+        // CLZ opcode (EIP-7939) and P256VERIFY precompile gas-cost change (EIP-7951)
+        // are the new metering surfaces introduced by Azul.
+        let result =
+            MeteredOpcodes::parse(&["CLZ".to_string(), "P256VERIFY".to_string()]).unwrap();
+        assert_eq!(result.opcodes.len(), 1, "CLZ should be recognized as an opcode");
+        assert!(result.precompiles.values().any(|n| n == "P256VERIFY"));
+    }
+
     #[tokio::test]
     async fn meter_bundle_requires_parent_beacon_block_root() -> eyre::Result<()> {
         let harness = TestHarness::new().await?;
