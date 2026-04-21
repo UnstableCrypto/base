@@ -441,7 +441,7 @@ mod tests {
 
         let gas = call_last_frame_return(ctx, InstructionResult::Revert, Gas::new(90));
         assert_eq!(gas.remaining(), 90);
-        assert_eq!(gas.spent(), 10);
+        assert_eq!(gas.total_gas_spent(), 10);
         assert_eq!(gas.refunded(), 0);
     }
 
@@ -453,7 +453,7 @@ mod tests {
 
         let gas = call_last_frame_return(ctx, InstructionResult::Stop, Gas::new(90));
         assert_eq!(gas.remaining(), 90);
-        assert_eq!(gas.spent(), 10);
+        assert_eq!(gas.total_gas_spent(), 10);
         assert_eq!(gas.refunded(), 0);
     }
 
@@ -473,12 +473,12 @@ mod tests {
 
         let gas = call_last_frame_return(ctx.clone(), InstructionResult::Stop, ret_gas);
         assert_eq!(gas.remaining(), 90);
-        assert_eq!(gas.spent(), 10);
+        assert_eq!(gas.total_gas_spent(), 10);
         assert_eq!(gas.refunded(), 2); // min(20, 10/5)
 
         let gas = call_last_frame_return(ctx, InstructionResult::Revert, ret_gas);
         assert_eq!(gas.remaining(), 90);
-        assert_eq!(gas.spent(), 10);
+        assert_eq!(gas.total_gas_spent(), 10);
         assert_eq!(gas.refunded(), 0);
     }
 
@@ -494,7 +494,7 @@ mod tests {
             .with_cfg(CfgEnv::new_with_spec(OpSpecId::BEDROCK));
         let gas = call_last_frame_return(ctx, InstructionResult::Stop, Gas::new(90));
         assert_eq!(gas.remaining(), 0);
-        assert_eq!(gas.spent(), 100);
+        assert_eq!(gas.total_gas_spent(), 100);
         assert_eq!(gas.refunded(), 0);
     }
 
@@ -511,7 +511,7 @@ mod tests {
             .with_cfg(CfgEnv::new_with_spec(OpSpecId::BEDROCK));
         let gas = call_last_frame_return(ctx, InstructionResult::Stop, Gas::new(90));
         assert_eq!(gas.remaining(), 100);
-        assert_eq!(gas.spent(), 0);
+        assert_eq!(gas.total_gas_spent(), 0);
         assert_eq!(gas.refunded(), 0);
     }
 
@@ -542,7 +542,10 @@ mod tests {
 
         let handler =
             BaseHandler::<_, EVMError<_, BaseTransactionError>, EthFrame<EthInterpreter>>::new();
-        handler.validate_against_state_and_deduct_caller(&mut evm).unwrap();
+        let mut init_and_floor_gas = InitialAndFloorGas::new(0, 0);
+        handler
+            .validate_against_state_and_deduct_caller(&mut evm, &mut init_and_floor_gas)
+            .unwrap();
 
         // Check the account balance is updated.
         let account = evm.ctx_mut().journal_mut().load_account(caller).unwrap();
@@ -583,7 +586,10 @@ mod tests {
 
         let handler =
             BaseHandler::<_, EVMError<_, BaseTransactionError>, EthFrame<EthInterpreter>>::new();
-        handler.validate_against_state_and_deduct_caller(&mut evm).unwrap();
+        let mut init_and_floor_gas = InitialAndFloorGas::new(0, 0);
+        handler
+            .validate_against_state_and_deduct_caller(&mut evm, &mut init_and_floor_gas)
+            .unwrap();
 
         // Check the account balance is updated.
         let account = evm.ctx_mut().journal_mut().load_account(caller).unwrap();
@@ -637,7 +643,10 @@ mod tests {
 
         let handler =
             BaseHandler::<_, EVMError<_, BaseTransactionError>, EthFrame<EthInterpreter>>::new();
-        handler.validate_against_state_and_deduct_caller(&mut evm).unwrap();
+        let mut init_and_floor_gas = InitialAndFloorGas::new(0, 0);
+        handler
+            .validate_against_state_and_deduct_caller(&mut evm, &mut init_and_floor_gas)
+            .unwrap();
 
         assert_eq!(
             *evm.ctx().chain(),
