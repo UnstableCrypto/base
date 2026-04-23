@@ -51,6 +51,9 @@ pub struct L2StackConfig {
     /// Number of L1 blocks to keep distance from the L1 head for the client (validator)
     /// consensus node's derivation pipeline.
     pub verifier_l1_confs: u64,
+    /// When `true`, the in-process batcher is not started. Use this to test
+    /// with an external batcher (e.g. the Go op-batcher).
+    pub skip_batcher: bool,
 }
 
 /// A complete L2 network stack composed of Builder + Consensus + Batcher.
@@ -70,7 +73,7 @@ pub struct L2StackConfig {
 pub struct L2Stack {
     builder: InProcessBuilder,
     builder_consensus: InProcessConsensus,
-    batcher: InProcessBatcher,
+    batcher: Option<InProcessBatcher>,
     client: InProcessClient,
     client_consensus: InProcessConsensus,
 }
@@ -144,16 +147,22 @@ impl L2Stack {
             .await
             .wrap_err("Failed to start builder consensus")?;
 
-        // 3. Start the in-process batcher, pointing at builder consensus RPC.
-        // No host gateway translation needed — the batcher runs in the same process as the test.
-        let batcher = InProcessBatcher::start(InProcessBatcherConfig {
-            l1_rpc_url: l1_rpc_url.clone(),
-            l2_rpc_url: builder.rpc_url()?,
-            rollup_rpc_url: builder_consensus.rpc_url(),
-            batcher_key: config.batcher_key,
-        })
-        .await
-        .wrap_err("Failed to start in-process batcher")?;
+        // 3. Optionally start the in-process batcher, pointing at builder consensus RPC.
+        // Skipped when an external batcher (e.g. the Go op-batcher) will be used instead.
+        let batcher = if config.skip_batcher {
+            None
+        } else {
+            Some(
+                InProcessBatcher::start(InProcessBatcherConfig {
+                    l1_rpc_url: l1_rpc_url.clone(),
+                    l2_rpc_url: builder.rpc_url()?,
+                    rollup_rpc_url: builder_consensus.rpc_url(),
+                    batcher_key: config.batcher_key,
+                })
+                .await
+                .wrap_err("Failed to start in-process batcher")?,
+            )
+        };
 
         // 4. Start the client (in-process EL).
         // If tx forwarding is enabled, configure it with the builder's RPC URL
@@ -233,9 +242,9 @@ impl L2Stack {
         &self.builder_consensus
     }
 
-    /// Returns a reference to the in-process batcher.
-    pub const fn batcher(&self) -> &InProcessBatcher {
-        &self.batcher
+    /// Returns a reference to the in-process batcher, if one was started.
+    pub const fn batcher(&self) -> Option<&InProcessBatcher> {
+        self.batcher.as_ref()
     }
 
     /// Returns a reference to the in-process client.

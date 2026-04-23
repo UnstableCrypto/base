@@ -131,6 +131,7 @@ pub struct DevnetBuilder {
     stable_config: Option<StableDevnetConfig>,
     tx_forwarding_config: Option<TxForwardingConfig>,
     verifier_l1_confs: u64,
+    skip_batcher: bool,
 }
 
 impl DevnetBuilder {
@@ -181,6 +182,13 @@ impl DevnetBuilder {
     /// client (validator) node's derivation pipeline.
     pub const fn with_verifier_l1_confs(mut self, confs: u64) -> Self {
         self.verifier_l1_confs = confs;
+        self
+    }
+
+    /// Skip the in-process batcher. Use this when testing with an external
+    /// batcher (e.g. the Go op-batcher).
+    pub const fn with_skip_batcher(mut self) -> Self {
+        self.skip_batcher = true;
         self
     }
 
@@ -283,6 +291,7 @@ impl DevnetBuilder {
             container_config: l2_container_config,
             tx_forwarding_config: self.tx_forwarding_config,
             verifier_l1_confs: self.verifier_l1_confs,
+            skip_batcher: self.skip_batcher,
         };
 
         let l2_stack = L2Stack::start(l2_config).await.wrap_err("Failed to start L2 stack")?;
