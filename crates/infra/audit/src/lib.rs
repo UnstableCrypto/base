@@ -34,9 +34,10 @@ pub use storage::{
 };
 
 mod types;
+pub use base_bundles::{BundleEvent, BundleId, DropReason, TransactionId};
 use tokio::sync::mpsc;
 use tracing::error;
-pub use types::{BundleEvent, BundleId, DropReason, Transaction, TransactionId};
+pub use types::Transaction;
 
 /// Connects bundle event receivers to publishers.
 #[derive(Debug)]

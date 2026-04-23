@@ -47,6 +47,26 @@ impl SpawnedForwarder {
         let mut tasks = Vec::with_capacity(config.builder_urls.len());
         let config = Arc::new(config);
 
+        let audit_client = config.audit_url.as_ref().and_then(|url| {
+            match HttpClientBuilder::default()
+                .request_timeout(config.request_timeout)
+                .build(url.as_str())
+            {
+                Ok(client) => {
+                    info!(audit_url = %url, "audit client enabled for forwarders");
+                    Some(client)
+                }
+                Err(err) => {
+                    error!(
+                        audit_url = %url,
+                        error = %err,
+                        "failed to build audit HTTP client, audit disabled",
+                    );
+                    None
+                }
+            }
+        });
+
         for url in &config.builder_urls {
             let client = match HttpClientBuilder::default()
                 .request_timeout(config.request_timeout)
@@ -67,6 +87,7 @@ impl SpawnedForwarder {
             let forwarder = Forwarder::new(
                 url.clone(),
                 client,
+                audit_client.clone(),
                 receiver,
                 Arc::clone(&config),
                 cancel.child_token(),

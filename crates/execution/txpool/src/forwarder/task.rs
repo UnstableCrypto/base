@@ -1,7 +1,8 @@
 use std::{collections::VecDeque, sync::Arc, time::Instant};
 
 use alloy_eips::Encodable2718;
-use alloy_primitives::Bytes;
+use alloy_primitives::{Bytes, TxHash};
+use base_bundles::BundleEvent;
 use jsonrpsee::{
     core::{
         ClientError,
@@ -85,11 +86,15 @@ pub struct Forwarder<T: PoolTransaction> {
     /// Pre-computed URL label shared cheaply across metric emissions.
     url_label: Arc<str>,
     client: HttpClient,
+    /// Optional audit RPC client. When set, after each successful builder flush
+    /// the forwarder fires a fire-and-forget `base_persistEventBatch` containing
+    /// one `MempoolForwarded` event per transaction in the just-sent batch.
+    audit_client: Option<HttpClient>,
     receiver: broadcast::Receiver<Arc<ValidPoolTransaction<T>>>,
     config: Arc<ForwarderConfig>,
     cancel: CancellationToken,
     limiter: RateLimiter,
-    buffer: Vec<ValidatedTransaction>,
+    buffer: Vec<(TxHash, ValidatedTransaction)>,
 }
 
 impl<T> Forwarder<T>
@@ -101,6 +106,7 @@ where
     pub fn new(
         builder_url: url::Url,
         client: HttpClient,
+        audit_client: Option<HttpClient>,
         receiver: broadcast::Receiver<Arc<ValidPoolTransaction<T>>>,
         config: Arc<ForwarderConfig>,
         cancel: CancellationToken,
@@ -109,7 +115,17 @@ where
         let initial_capacity = if config.max_batch_size == 0 { 256 } else { config.max_batch_size };
         let buffer = Vec::with_capacity(initial_capacity);
         let url_label: Arc<str> = builder_url.to_string().into();
-        Self { builder_url, url_label, client, receiver, config, cancel, limiter, buffer }
+        Self {
+            builder_url,
+            url_label,
+            client,
+            audit_client,
+            receiver,
+            config,
+            cancel,
+            limiter,
+            buffer,
+        }
     }
 
     /// Runs the forwarder loop until cancelled.
@@ -171,19 +187,23 @@ where
     ) -> bool {
         match result {
             Ok(tx) => {
+                let tx_hash = *tx.hash();
                 let sender = *tx.sender_ref();
                 let consensus = tx.transaction.clone_into_consensus();
                 let raw = Bytes::from(consensus.inner().encoded_2718());
                 let target_block_number = tx.transaction.target_block_number();
                 let min_timestamp = tx.transaction.min_timestamp_millis();
                 let max_timestamp = tx.transaction.max_timestamp_millis();
-                self.buffer.push(ValidatedTransaction {
-                    sender,
-                    raw,
-                    target_block_number,
-                    min_timestamp,
-                    max_timestamp,
-                });
+                self.buffer.push((
+                    tx_hash,
+                    ValidatedTransaction {
+                        sender,
+                        raw,
+                        target_block_number,
+                        min_timestamp,
+                        max_timestamp,
+                    },
+                ));
                 ForwarderMetrics::buffer_size(Arc::clone(&self.url_label))
                     .set(self.buffer.len() as f64);
                 false
@@ -221,7 +241,7 @@ where
         } else {
             self.buffer.len().min(self.config.max_batch_size)
         };
-        let batch: Vec<ValidatedTransaction> = self.buffer.drain(..batch_size).collect();
+        let batch: Vec<(TxHash, ValidatedTransaction)> = self.buffer.drain(..batch_size).collect();
         ForwarderMetrics::buffer_size(Arc::clone(&self.url_label)).set(self.buffer.len() as f64);
 
         if batch.is_empty() {
@@ -239,11 +259,12 @@ where
         self.limiter.record_send();
     }
 
-    async fn send_with_retries(&self, batch: Vec<ValidatedTransaction>) {
+    async fn send_with_retries(&self, batch: Vec<(TxHash, ValidatedTransaction)>) {
         let tx_count = batch.len() as u64;
         let overall_start = Instant::now();
+        let txs: Vec<ValidatedTransaction> = batch.iter().map(|(_, tx)| tx.clone()).collect();
         for attempt in 0..=self.config.max_retries {
-            let result = self.send_batch(&batch).await;
+            let result = self.send_batch(&txs).await;
 
             match result {
                 Ok(response) => {
@@ -273,6 +294,8 @@ where
                         ForwarderMetrics::num_tx_rejected_in_batch(Arc::clone(&self.url_label))
                             .increment(err_count);
                     }
+
+                    self.spawn_audit_call(batch.iter().map(|(h, _)| *h).collect());
                     return;
                 }
                 Err(err) if Self::is_retryable(&err) && attempt < self.config.max_retries => {
@@ -316,6 +339,41 @@ where
             request.insert("base_insertValidatedTransaction", (tx,)).expect("valid method name");
         }
         self.client.batch_request(request).await
+    }
+
+    fn spawn_audit_call(&self, tx_hashes: Vec<TxHash>) {
+        let Some(audit_client) = self.audit_client.clone() else {
+            return;
+        };
+        if tx_hashes.is_empty() {
+            return;
+        }
+        let url_label = Arc::clone(&self.url_label);
+        let events: Vec<BundleEvent> = tx_hashes
+            .into_iter()
+            .map(|tx_hash| BundleEvent::MempoolForwarded { tx_hash })
+            .collect();
+        let event_count = events.len() as u64;
+        tokio::spawn(async move {
+            let start = Instant::now();
+            let result = audit_client.request::<u32, _>("base_persistEventBatch", (events,)).await;
+            ForwarderMetrics::audit_rpc_latency(Arc::clone(&url_label))
+                .record(start.elapsed().as_secs_f64());
+            match result {
+                Ok(persisted) => {
+                    ForwarderMetrics::audit_batches_sent(Arc::clone(&url_label)).increment(1);
+                    ForwarderMetrics::audit_txs_persisted(url_label)
+                        .increment(u64::from(persisted));
+                    trace!(persisted, event_count, "audit batch persisted");
+                }
+                Err(err) => {
+                    warn!(error = %err, event_count, "audit base_persistEventBatch failed");
+                    ForwarderMetrics::audit_events_dropped(Arc::clone(&url_label))
+                        .increment(event_count);
+                    ForwarderMetrics::audit_errors(url_label).increment(1);
+                }
+            }
+        });
     }
 
     const fn is_retryable(err: &ClientError) -> bool {

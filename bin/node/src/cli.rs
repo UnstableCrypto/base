@@ -129,6 +129,15 @@ pub struct Args {
         requires = "enable_tx_forwarding"
     )]
     pub tx_forwarding_max_rps: u32,
+
+    /// Optional audit RPC endpoint. When set, the forwarder fires a fire-and-forget
+    /// `base_persistEventBatch` after each successful flush to a builder.
+    #[arg(
+        long = "tx-forwarding-audit-url",
+        value_name = "TX_FORWARDING_AUDIT_URL",
+        requires = "enable_tx_forwarding"
+    )]
+    pub tx_forwarding_audit_url: Option<Url>,
 }
 
 impl From<&Args> for Option<FlashblocksConfig> {
@@ -151,5 +160,6 @@ impl From<&Args> for TxForwardingConfig {
             .with_resend_after_ms(args.tx_forwarding_resend_after_ms)
             .with_max_batch_size(args.tx_forwarding_batch_size)
             .with_max_rps(args.tx_forwarding_max_rps)
+            .with_audit_url(args.tx_forwarding_audit_url.clone())
     }
 }

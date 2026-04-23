@@ -1,17 +1,27 @@
 //! RPC server for the audit archiver.
 //!
-//! Exposes the `base_persistRejectedTransactionBatch` method for receiving batches
-//! of rejected transactions from the builder and persisting them to S3.
+//! Exposes:
+//! - `base_persistRejectedTransactionBatch` — receives batches of rejected
+//!   transactions from the builder and persists them to S3.
+//! - `base_persistEvent` — receives a single `BundleEvent` (e.g. from a
+//!   mempool node forwarding a transaction) and persists it to S3 at the
+//!   key derived from the event's content.
+//! - `base_persistEventBatch` — receives a batch of `BundleEvent`s and
+//!   persists each to S3 concurrently. Returns the count successfully
+//!   persisted.
 
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
-use base_bundles::RejectedTransaction;
+use base_bundles::{BundleEvent, RejectedTransaction};
 use futures::stream::{self, StreamExt};
 use jsonrpsee::{core::RpcResult, proc_macros::rpc, types::error::ErrorObjectOwned};
 use jsonrpsee_types::error::ErrorCode;
 use tracing::{error, info};
 
-use crate::storage::S3EventReaderWriter;
+use crate::{reader::Event, storage::S3EventReaderWriter};
 
 const MAX_BATCH_SIZE: usize = 500;
 
@@ -25,6 +35,16 @@ pub trait AuditArchiverApi {
         &self,
         batch: Vec<RejectedTransaction>,
     ) -> RpcResult<u32>;
+
+    /// Persists a single bundle event to S3 storage at the key derived from
+    /// the event's content (see `BundleEvent::s3_event_key`).
+    #[method(name = "persistEvent")]
+    async fn persist_event(&self, event: BundleEvent) -> RpcResult<()>;
+
+    /// Persists a batch of bundle events to S3 storage concurrently.
+    /// Returns the number of events successfully persisted.
+    #[method(name = "persistEventBatch")]
+    async fn persist_event_batch(&self, batch: Vec<BundleEvent>) -> RpcResult<u32>;
 }
 
 /// RPC handler for audit archiver requests.
@@ -93,4 +113,67 @@ impl AuditArchiverApiServer for AuditArchiverRpc {
 
         Ok(persisted)
     }
+
+    async fn persist_event(&self, event: BundleEvent) -> RpcResult<()> {
+        let evt = build_event(event);
+
+        self.storage.write_event(&evt).await.map_err(|e| {
+            error!(error = %e, "failed to persist bundle event");
+            ErrorObjectOwned::owned(
+                ErrorCode::InternalError.code(),
+                format!("failed to persist event: {e}"),
+                None::<()>,
+            )
+        })?;
+
+        Ok(())
+    }
+
+    async fn persist_event_batch(&self, batch: Vec<BundleEvent>) -> RpcResult<u32> {
+        if batch.is_empty() {
+            return Ok(0);
+        }
+
+        let batch_size = batch.len();
+        if batch_size > MAX_BATCH_SIZE {
+            return Err(ErrorObjectOwned::owned(
+                ErrorCode::InvalidParams.code(),
+                format!("Batch size {batch_size} exceeds maximum of {MAX_BATCH_SIZE}"),
+                None::<()>,
+            ));
+        }
+
+        info!(batch_size, "Persisting bundle event batch");
+
+        let storage = Arc::clone(&self.storage);
+
+        let persisted = stream::iter(batch)
+            .map(move |event| {
+                let storage = Arc::clone(&storage);
+                async move {
+                    let evt = build_event(event);
+                    let result = storage.write_event(&evt).await;
+                    (evt, result)
+                }
+            })
+            .buffer_unordered(5)
+            .fold(0u32, |persisted, (evt, result)| async move {
+                if let Err(e) = result {
+                    error!(error = %e, key = %evt.key, "Failed to persist bundle event");
+                    persisted
+                } else {
+                    persisted + 1
+                }
+            })
+            .await;
+
+        Ok(persisted)
+    }
+}
+
+fn build_event(event: BundleEvent) -> Event {
+    let key = event.generate_event_key();
+    let timestamp =
+        SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    Event { key, event, timestamp }
 }

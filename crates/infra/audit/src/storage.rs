@@ -17,11 +17,7 @@ use futures::future;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
-use crate::{
-    metrics::Metrics,
-    reader::Event,
-    types::{BundleEvent, DropReason, TransactionId},
-};
+use crate::{BundleEvent, DropReason, TransactionId, metrics::Metrics, reader::Event};
 
 /// S3 key types for storing different event types.
 #[derive(Debug)]
@@ -106,6 +102,15 @@ pub enum BundleHistoryEvent {
         /// Drop reason.
         reason: DropReason,
     },
+    /// Single transaction was forwarded from a mempool node to a builder.
+    MempoolForwarded {
+        /// Event key.
+        key: String,
+        /// Event timestamp.
+        timestamp: i64,
+        /// Hash of the forwarded transaction.
+        tx_hash: TxHash,
+    },
 }
 
 impl BundleHistoryEvent {
@@ -116,7 +121,8 @@ impl BundleHistoryEvent {
             | Self::Cancelled { key, .. }
             | Self::BuilderIncluded { key, .. }
             | Self::BlockIncluded { key, .. }
-            | Self::Dropped { key, .. } => key,
+            | Self::Dropped { key, .. }
+            | Self::MempoolForwarded { key, .. } => key,
         }
     }
 }
@@ -159,6 +165,11 @@ fn to_history_event(event: &Event) -> BundleHistoryEvent {
             key: event.key.clone(),
             timestamp: event.timestamp,
             reason: reason.clone(),
+        },
+        BundleEvent::MempoolForwarded { tx_hash } => BundleHistoryEvent::MempoolForwarded {
+            key: event.key.clone(),
+            timestamp: event.timestamp,
+            tx_hash: *tx_hash,
         },
     }
 }
@@ -241,7 +252,7 @@ impl S3EventReaderWriter {
     /// Writes a single event as a standalone S3 object using `If-None-Match: *`.
     ///
     /// If the object already exists (412), another writer succeeded first — return Ok.
-    async fn write_event(&self, event: &Event) -> Result<()> {
+    pub async fn write_event(&self, event: &Event) -> Result<()> {
         let s3_key = event.event.s3_event_key();
         let history_event = to_history_event(event);
         let content = serde_json::to_string(&history_event)?;
@@ -501,10 +512,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::{
-        reader::Event,
-        types::{BundleEvent, DropReason},
-    };
+    use crate::{BundleEvent, DropReason, reader::Event};
 
     fn create_test_event(key: &str, timestamp: i64, bundle_event: BundleEvent) -> Event {
         Event { key: key.to_string(), timestamp, event: bundle_event }

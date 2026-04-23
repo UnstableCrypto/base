@@ -13,6 +13,11 @@ use url::Url;
 pub struct ForwarderConfig {
     /// Builder RPC endpoint URLs — one forwarder task per URL.
     pub builder_urls: Vec<Url>,
+    /// Optional audit RPC endpoint. When set, after each successful flush to a
+    /// builder the forwarder fires a `base_persistEventBatch` call containing
+    /// one `MempoolForwarded` event per transaction in the just-sent batch.
+    /// Fire-and-forget — failures are logged and metered, never block the forwarder.
+    pub audit_url: Option<Url>,
     /// Maximum RPC requests per second per forwarder (sliding window). 0 = unlimited.
     pub max_rps: u32,
     /// Maximum transactions per RPC request. 0 = unlimited.
@@ -29,6 +34,7 @@ impl Default for ForwarderConfig {
     fn default() -> Self {
         Self {
             builder_urls: Vec::new(),
+            audit_url: None,
             max_rps: 200,
             max_batch_size: 500,
             max_retries: 3,
@@ -42,6 +48,12 @@ impl ForwarderConfig {
     /// Sets the builder URLs.
     pub fn with_builder_urls(mut self, urls: Vec<Url>) -> Self {
         self.builder_urls = urls;
+        self
+    }
+
+    /// Sets the optional audit URL.
+    pub fn with_audit_url(mut self, url: Option<Url>) -> Self {
+        self.audit_url = url;
         self
     }
 

@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use tracing::{debug, error, info};
 
-use crate::types::BundleEvent;
+use crate::BundleEvent;
 
 /// Trait for publishing bundle events.
 #[async_trait]
@@ -46,7 +46,7 @@ impl KafkaBundleEventPublisher {
         match self.producer.send(record, tokio::time::Duration::from_secs(5)).await {
             Ok(_) => {
                 debug!(
-                    bundle_id = %bundle_id,
+                    bundle_id = ?bundle_id,
                     topic = %self.topic,
                     payload_size = payload.len(),
                     "successfully published event"
@@ -55,7 +55,7 @@ impl KafkaBundleEventPublisher {
             }
             Err((err, _)) => {
                 error!(
-                    bundle_id = %bundle_id,
+                    bundle_id = ?bundle_id,
                     topic = %self.topic,
                     error = %err,
                     "failed to publish event"
@@ -101,7 +101,7 @@ impl Default for LoggingBundleEventPublisher {
 impl BundleEventPublisher for LoggingBundleEventPublisher {
     async fn publish(&self, event: BundleEvent) -> Result<()> {
         info!(
-            bundle_id = %event.bundle_id(),
+            bundle_id = ?event.bundle_id(),
             event = ?event,
             "Received bundle event"
         );

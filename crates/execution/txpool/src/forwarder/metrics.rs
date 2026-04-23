@@ -27,4 +27,19 @@ base_metrics::define_metrics! {
     #[describe("Current number of transactions buffered and awaiting send")]
     #[label(builder_url)]
     buffer_size: gauge,
+    #[describe("Total audit batches sent successfully (base_persistEventBatch)")]
+    #[label(builder_url)]
+    audit_batches_sent: counter,
+    #[describe("Total audit RPC errors (base_persistEventBatch)")]
+    #[label(builder_url)]
+    audit_errors: counter,
+    #[describe("Total individual MempoolForwarded events successfully persisted by audit")]
+    #[label(builder_url)]
+    audit_txs_persisted: counter,
+    #[describe("Audit RPC round-trip latency in seconds (base_persistEventBatch)")]
+    #[label(builder_url)]
+    audit_rpc_latency: histogram,
+    #[describe("Total individual MempoolForwarded events dropped due to audit RPC failures")]
+    #[label(builder_url)]
+    audit_events_dropped: counter,
 }

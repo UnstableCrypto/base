@@ -16,6 +16,9 @@ pub use bundle::Bundle;
 mod cancel;
 pub use cancel::{BundleHash, CancelBundle};
 
+mod events;
+pub use events::{BundleEvent, BundleId, DropReason, TransactionId};
+
 mod meter;
 pub use meter::{MeterBundleResponse, OpcodeGas, TransactionResult};
 

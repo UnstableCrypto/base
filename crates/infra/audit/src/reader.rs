@@ -11,7 +11,7 @@ use rdkafka::{
 use tokio::time::sleep;
 use tracing::{error, info};
 
-use crate::{load_kafka_config_from_file, types::BundleEvent};
+use crate::{BundleEvent, load_kafka_config_from_file};
 
 /// Creates a Kafka consumer from a properties file.
 pub fn create_kafka_consumer(kafka_properties_file: &str) -> Result<StreamConsumer> {
@@ -95,7 +95,7 @@ impl EventReader for KafkaAuditLogReader {
                 let event: BundleEvent = serde_json::from_slice(payload)?;
 
                 info!(
-                    bundle_id = %event.bundle_id(),
+                    bundle_id = ?event.bundle_id(),
                     tx_ids = ?event.transaction_ids(),
                     timestamp = timestamp,
                     offset = message.offset(),

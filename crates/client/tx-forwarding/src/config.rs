@@ -26,6 +26,10 @@ pub struct TxForwardingConfig {
     pub max_batch_size: usize,
     /// Maximum RPC requests per second per forwarder (0 = unlimited).
     pub max_rps: u32,
+    /// Optional audit RPC endpoint. When set, after each successful forwarder flush
+    /// the forwarder fires a fire-and-forget `base_persistEventBatch` containing one
+    /// `MempoolForwarded` event per transaction in the batch.
+    pub audit_url: Option<Url>,
 }
 
 impl Default for TxForwardingConfig {
@@ -37,6 +41,7 @@ impl Default for TxForwardingConfig {
             resend_after_ms: DEFAULT_RESEND_AFTER_MS,
             max_batch_size: DEFAULT_MAX_BATCH_SIZE,
             max_rps: DEFAULT_MAX_RPS,
+            audit_url: None,
         }
     }
 }
@@ -70,6 +75,12 @@ impl TxForwardingConfig {
         self
     }
 
+    /// Sets the optional audit RPC URL.
+    pub fn with_audit_url(mut self, url: Option<Url>) -> Self {
+        self.audit_url = url;
+        self
+    }
+
     /// Converts to the consumer config used by `base-txpool`.
     pub fn to_consumer_config(&self) -> TxpoolConsumerConfig {
         TxpoolConsumerConfig::default()
@@ -82,5 +93,6 @@ impl TxForwardingConfig {
             .with_builder_urls(self.builder_urls.clone())
             .with_max_batch_size(self.max_batch_size)
             .with_max_rps(self.max_rps)
+            .with_audit_url(self.audit_url.clone())
     }
 }

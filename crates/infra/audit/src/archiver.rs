@@ -84,7 +84,7 @@ where
                             if noop_archive {
                                 debug!(
                                     worker_id,
-                                    bundle_id = %event.event.bundle_id(),
+                                    bundle_id = ?event.event.bundle_id(),
                                     tx_ids = ?event.event.transaction_ids(),
                                     timestamp = event.timestamp,
                                     "Noop archive - skipping event"
