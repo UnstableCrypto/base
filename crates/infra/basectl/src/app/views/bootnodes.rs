@@ -29,6 +29,42 @@ const NETWORK_ORDER: &[&str] = &[
     "base-mainnet/jovian",
     "base-zeronet/azul",
     "base-zeronet/jovian",
+    "op-mainnet",
+    "op-sepolia",
+    "unichain",
+    "unichain-sepolia",
+    "worldchain",
+    "worldchain-sepolia",
+    "zora",
+    "zora-sepolia",
+    "mode",
+    "mode-sepolia",
+    "ink",
+    "ink-sepolia",
+    "fraxtal",
+    "soneium",
+    "metal",
+    "redstone",
+    "swell",
+    "lisk",
+    "celo",
+    "boba",
+    "cyber",
+    "bob",
+    "lyra",
+    "shape",
+    "ethernity",
+    "hashkey",
+    "mint",
+    "orderly",
+    "binary",
+    "superseed",
+    "settlus",
+    "race",
+    "arena-z",
+    "polynomial",
+    "funki",
+    "automata",
     "opstack-unknown",
     "eth-mainnet",
     "eth-sepolia",
@@ -100,11 +136,49 @@ fn tag_color(tag: &str) -> Color {
         "base-sepolia/azul" | "base-sepolia/jovian" => Color::Cyan,
         "base-mainnet/azul" | "base-mainnet/jovian" => Color::Blue,
         "base-zeronet/azul" | "base-zeronet/jovian" => Color::LightMagenta,
-        "eth-mainnet" => Color::Green,
-        "eth-sepolia" => Color::Yellow,
-        "eth-holesky" | "eth-hoodi" => Color::Yellow,
+        // OP Stack chains — red family (Optimism brand)
+        "op-mainnet" => Color::Red,
+        "op-sepolia" => Color::LightRed,
+        // Superchain mainnets
+        "unichain"
+        | "worldchain"
+        | "zora"
+        | "mode"
+        | "ink"
+        | "fraxtal"
+        | "soneium"
+        | "metal"
+        | "redwood"
+        | "redstone"
+        | "swell"
+        | "lisk"
+        | "celo"
+        | "boba"
+        | "cyber"
+        | "bob"
+        | "lyra"
+        | "shape"
+        | "ethernity"
+        | "hashkey"
+        | "mint"
+        | "orderly"
+        | "binary"
+        | "superseed"
+        | "settlus"
+        | "race"
+        | "arena-z"
+        | "polynomial"
+        | "funki"
+        | "automata" => Color::LightRed,
+        // Superchain testnets
+        "unichain-sepolia"
+        | "worldchain-sepolia"
+        | "zora-sepolia"
+        | "mode-sepolia"
+        | "ink-sepolia" => Color::LightRed,
         "opstack-unknown" => Color::Magenta,
-        "eth-unknown" => Color::Green,
+        "eth-mainnet" | "eth-unknown" => Color::Green,
+        "eth-sepolia" | "eth-holesky" | "eth-hoodi" => Color::Yellow,
         _ => Color::DarkGray,
     }
 }
