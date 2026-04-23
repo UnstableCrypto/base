@@ -39,7 +39,7 @@ use crate::{
     rpc::{RpcClient, WalletProvider, create_wallet_provider},
     workload::{
         AccountPool, CalldataPayload, Erc20Payload, OsakaPayload, PrecompilePayload,
-        TransferPayload, WorkloadGenerator,
+        TransferPayload, WorkloadGenerator, XEN_GAS_BASE, XEN_GAS_PER_PROXY, XenPayload,
     },
 };
 
@@ -204,6 +204,12 @@ impl LoadRunner {
                     generator =
                         generator.with_payload(OsakaPayload::new(target.clone()), weight_pct);
                 }
+                TxType::Xen { multicall, state, term, proxies_per_tx } => {
+                    generator = generator.with_payload(
+                        XenPayload::new(*multicall, *state, *term, *proxies_per_tx),
+                        weight_pct,
+                    );
+                }
             }
         }
 
@@ -227,6 +233,9 @@ impl LoadRunner {
                     OsakaTarget::Clz => 80_000,
                     OsakaTarget::P256verifyOsaka | OsakaTarget::ModexpOsaka => 30_000,
                 },
+                TxType::Xen { proxies_per_tx, .. } => {
+                    XEN_GAS_BASE + XEN_GAS_PER_PROXY * (*proxies_per_tx as u64)
+                }
             };
             weighted_gas += gas_estimate * tx_config.weight as u64;
         }

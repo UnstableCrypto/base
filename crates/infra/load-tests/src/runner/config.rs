@@ -53,6 +53,19 @@ pub enum TxType {
         /// Target Osaka feature.
         target: OsakaTarget,
     },
+    /// XEN-shape `bulkClaimRank` payload: stresses the storage trie and drives
+    /// elevated account creation by deploying N CREATE2 worker contracts per
+    /// transaction, each writing a unique storage slot in `state`.
+    Xen {
+        /// Address of the deployed `Multicall` contract.
+        multicall: Address,
+        /// Address of the deployed `State` contract.
+        state: Address,
+        /// `term` argument forwarded to `State.claimRank`.
+        term: u64,
+        /// Number of workers (and storage writes) per transaction.
+        proxies_per_tx: u32,
+    },
 }
 
 /// Default maximum gas price cap (1000 gwei).

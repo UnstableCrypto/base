@@ -108,3 +108,23 @@ looper_contract: "0x..."  # Deployed PrecompileLooper contract
 ```
 
 The `PrecompileLooper` contract enables batch testing by calling a precompile multiple times in a single transaction, useful for scenarios like multi-signature verification or repeated hash operations.
+
+#### XEN-shape (storage trie + account creation)
+
+The `xen` payload mirrors XEN's `bulkClaimRank`: each transaction loops `proxies_per_tx` CREATE2 deployments of a `Worker` contract, and each worker writes a per-msg.sender slot in an underlying `State` contract — N new account-trie entries plus N unique storage-trie writes per tx, with no merging in `HashedPostState`. Useful for stressing the storage trie and driving elevated account creation in a single scenario.
+
+Sources, the bundled Foundry project, and deploy notes live in [`contracts/xen/`](contracts/xen/README.md). After deploying `Multicall` and `State` to the target network, configure the payload:
+
+```yaml
+sender_count: 100
+target_gps: 30000000
+transactions:
+  - weight: 100
+    type: xen
+    multicall: "0x..."  # Multicall address
+    state: "0x..."      # State address
+    term: 1000
+    proxies_per_tx: 10
+```
+
+Per-tx gas estimate: `50_000 + proxies_per_tx * 35_000`.

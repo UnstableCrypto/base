@@ -9,7 +9,8 @@ pub use seeded::SeededRng;
 mod payloads;
 pub use payloads::{
     CalldataPayload, Erc20Payload, OsakaPayload, Payload, PrecompileLooper, PrecompilePayload,
-    StoragePayload, TransferPayload, UniswapV2Payload, UniswapV3Payload, parse_precompile_id,
+    StoragePayload, TransferPayload, UniswapV2Payload, UniswapV3Payload, XEN_GAS_BASE,
+    XEN_GAS_PER_PROXY, XenContracts, XenPayload, parse_precompile_id,
 };
 
 mod generator;

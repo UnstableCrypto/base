@@ -26,7 +26,8 @@ mod workload;
 pub use workload::{
     AccountPool, CalldataPayload, Erc20Payload, FundedAccount, OsakaPayload, Payload,
     PrecompileLooper, PrecompilePayload, SeededRng, StoragePayload, TransferPayload,
-    UniswapV2Payload, UniswapV3Payload, WorkloadGenerator, parse_precompile_id,
+    UniswapV2Payload, UniswapV3Payload, WorkloadGenerator, XEN_GAS_BASE, XEN_GAS_PER_PROXY,
+    XenContracts, XenPayload, parse_precompile_id,
 };
 
 mod runner;

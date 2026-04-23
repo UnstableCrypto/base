@@ -227,6 +227,18 @@ pub enum TxTypeConfig {
         /// Target Osaka feature.
         target: OsakaTarget,
     },
+
+    /// XEN-shape `bulkClaimRank` payload (requires deployed `Multicall` + `State`).
+    Xen {
+        /// Address of the deployed `Multicall` contract.
+        multicall: String,
+        /// Address of the deployed `State` contract.
+        state: String,
+        /// `term` argument forwarded to `State.claimRank`.
+        term: u64,
+        /// Number of workers (CREATE2 deployments) per transaction.
+        proxies_per_tx: u32,
+    },
 }
 
 const fn default_calldata_size() -> usize {
@@ -411,6 +423,22 @@ impl TestConfig {
                 }
             }
             TxTypeConfig::Osaka { target } => TxType::Osaka { target: target.clone() },
+            TxTypeConfig::Xen { multicall, state, term, proxies_per_tx } => {
+                let multicall_addr = multicall.parse::<Address>().map_err(|e| {
+                    BaselineError::Config(format!(
+                        "invalid xen multicall address '{multicall}': {e}"
+                    ))
+                })?;
+                let state_addr = state.parse::<Address>().map_err(|e| {
+                    BaselineError::Config(format!("invalid xen state address '{state}': {e}"))
+                })?;
+                TxType::Xen {
+                    multicall: multicall_addr,
+                    state: state_addr,
+                    term: *term,
+                    proxies_per_tx: *proxies_per_tx,
+                }
+            }
         };
         Ok(TxConfig { weight: weighted.weight, tx_type })
     }
@@ -593,6 +621,65 @@ flashblocks_ws_url: wss://localhost:7111
         let config = TestConfig::from_yaml(yaml).unwrap();
         assert_eq!(config.rpc_ws_url.as_ref().unwrap().scheme(), "wss");
         assert_eq!(config.flashblocks_ws_url.as_ref().unwrap().scheme(), "wss");
+    }
+
+    #[test]
+    fn parse_xen_config() {
+        let yaml = r#"
+rpc: http://localhost:8545
+transactions:
+  - weight: 100
+    type: xen
+    multicall: "0x1111111111111111111111111111111111111111"
+    state: "0x2222222222222222222222222222222222222222"
+    term: 1000
+    proxies_per_tx: 10
+"#;
+        let config = TestConfig::from_yaml(yaml).unwrap();
+        assert_eq!(config.transactions.len(), 1);
+
+        match &config.transactions[0].tx_type {
+            TxTypeConfig::Xen { multicall, state, term, proxies_per_tx } => {
+                assert_eq!(multicall, "0x1111111111111111111111111111111111111111");
+                assert_eq!(state, "0x2222222222222222222222222222222222222222");
+                assert_eq!(*term, 1000);
+                assert_eq!(*proxies_per_tx, 10);
+            }
+            _ => panic!("expected Xen"),
+        }
+
+        let load_config = config.to_load_config(Some(1337)).unwrap();
+        assert_eq!(load_config.transactions.len(), 1);
+        match &load_config.transactions[0].tx_type {
+            TxType::Xen { multicall, state, term, proxies_per_tx } => {
+                let expected_multicall: Address =
+                    "0x1111111111111111111111111111111111111111".parse().unwrap();
+                let expected_state: Address =
+                    "0x2222222222222222222222222222222222222222".parse().unwrap();
+                assert_eq!(*multicall, expected_multicall);
+                assert_eq!(*state, expected_state);
+                assert_eq!(*term, 1000);
+                assert_eq!(*proxies_per_tx, 10);
+            }
+            _ => panic!("expected runner TxType::Xen"),
+        }
+    }
+
+    #[test]
+    fn parse_xen_config_rejects_bad_address() {
+        let yaml = r#"
+rpc: http://localhost:8545
+transactions:
+  - weight: 100
+    type: xen
+    multicall: "not-an-address"
+    state: "0x2222222222222222222222222222222222222222"
+    term: 1000
+    proxies_per_tx: 10
+"#;
+        let config = TestConfig::from_yaml(yaml).unwrap();
+        let err = config.to_load_config(Some(1337)).unwrap_err();
+        assert!(err.to_string().contains("multicall"));
     }
 
     #[test]

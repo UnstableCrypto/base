@@ -29,6 +29,9 @@ pub use uniswap::{UniswapV2Payload, UniswapV3Payload};
 mod osaka;
 pub use osaka::OsakaPayload;
 
+mod xen;
+pub use xen::{XEN_GAS_BASE, XEN_GAS_PER_PROXY, XenContracts, XenPayload};
+
 /// A transaction payload generator.
 pub trait Payload: Send + Sync + std::fmt::Debug {
     /// Returns the name of this payload type.

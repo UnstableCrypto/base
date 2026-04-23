@@ -1892,6 +1892,9 @@ fn format_tx_type(tx_type: &TxTypeConfig) -> String {
             };
             format!("osaka {t}")
         }
+        TxTypeConfig::Xen { proxies_per_tx, .. } => {
+            format!("xen ×{proxies_per_tx}")
+        }
     }
 }
 
