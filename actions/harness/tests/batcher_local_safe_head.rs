@@ -355,11 +355,7 @@ async fn engine_sync_state_safe_head_does_not_advance_for_sequencer_blocks() {
     }
 
     // The unsafe head advanced to 5, but the safe head stays at 0.
-    assert_eq!(
-        state.unsafe_head().block_info.number,
-        5,
-        "unsafe head should advance to 5"
-    );
+    assert_eq!(state.unsafe_head().block_info.number, 5, "unsafe head should advance to 5");
     assert_eq!(
         state.safe_head().block_info.number,
         0,
