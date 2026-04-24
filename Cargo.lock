@@ -4562,6 +4562,7 @@ dependencies = [
  "base-execution-txpool",
  "base-node-core",
  "clap",
+ "discv5",
  "eyre",
  "futures",
  "humantime",

@@ -62,9 +62,7 @@ impl Command {
         if self.v5 {
             info!("Initializing discv5");
             // exclude eth protocol nodes, we're looking for opel nodes
-            let config = Config::builder(self.v5_addr)
-                .must_not_include_keys(&[NetworkStackId::ETH, NetworkStackId::ETH2])
-                .build();
+            let config = Config::builder(self.v5_addr).build();
             let (discv5, updates) = Discv5::start(&sk, config).await?;
 
             // The upstream reth bootnode skips NAT resolution for discv5, leaving the ENR with
