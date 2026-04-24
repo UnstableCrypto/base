@@ -2,17 +2,16 @@
 //
 // Loads /config.json (UI content from etc/vibenet/config/vibenet.yaml) and
 // /contracts.json (written by vibenet-setup), renders them, and wires up
-// the chain-card utilities (Add to wallet, Copy RPC URL, Copy terminal
-// snippet). No build step, no bundler - one module, one stylesheet.
+// the chain-card utilities (click-to-copy values, Add to wallet). No build
+// step, no bundler - one module, one stylesheet.
 //
 // The RPC is currently open (no API key path), so URL building is
 // deterministic from the page's hostname.
 
 import { createWalletClient, custom } from "https://esm.sh/viem@2.21.0";
 
-// Hard-coded vibenet L2 chain id - matches L2_CHAIN_ID in vibenet-env and
-// the markdown instructions. We surface it for display and for the
-// wallet_addEthereumChain call below.
+// Hard-coded vibenet L2 chain id - matches L2_CHAIN_ID in vibenet-env. We
+// surface it for display and for the wallet_addEthereumChain call below.
 const VIBENET_CHAIN_ID = 84538453;
 
 async function loadJson(url) {
@@ -80,28 +79,6 @@ function buildFaucetUrl() {
   return `https://${PUBLIC_SERVICE_HOSTS.faucet}`;
 }
 
-// Rewrite the prod hostnames in any rendered markdown so copy-pasteable
-// URLs actually work when served from localhost. Prod keeps the markdown
-// verbatim.
-function localizeUrls(html) {
-  const host = location.hostname;
-  if (!isLocalHost(host)) return html;
-  const uiPort = parseInt(location.port || "80", 10);
-  const rpcPort = uiPort + 1;
-  const explorerPort = uiPort + 2;
-  const faucetPort = uiPort + 3;
-  const httpBase = `${location.protocol}//${host}:${rpcPort}`;
-  const wsScheme = location.protocol === "https:" ? "wss:" : "ws:";
-  const wsBase = `${wsScheme}//${host}:${rpcPort}`;
-  const explorerBase = `${location.protocol}//${host}:${explorerPort}`;
-  const faucetBase = `${location.protocol}//${host}:${faucetPort}`;
-  return html
-    .replaceAll(`https://${PUBLIC_SERVICE_HOSTS.rpc}`, httpBase)
-    .replaceAll(`wss://${PUBLIC_SERVICE_HOSTS.rpc}`, wsBase)
-    .replaceAll(`https://${PUBLIC_SERVICE_HOSTS.explorer}`, explorerBase)
-    .replaceAll(`https://${PUBLIC_SERVICE_HOSTS.faucet}`, faucetBase);
-}
-
 async function main() {
   const [config, contracts] = await Promise.all([
     loadJson("/config.json").catch(() => ({})),
@@ -132,28 +109,38 @@ async function main() {
   const faucetNav = document.getElementById("faucet-nav");
   if (faucetNav) faucetNav.href = faucetUrl;
 
-  const instructionsEl = document.getElementById("instructions");
-  const rendered = window.marked
-    ? window.marked.parse(config.instructions_markdown || "")
-    : `<pre>${config.instructions_markdown || ""}</pre>`;
-  instructionsEl.innerHTML = localizeUrls(rendered);
+  const faucetDesc = document.getElementById("faucet-description");
+  if (faucetDesc) {
+    faucetDesc.textContent =
+      (config.faucet && config.faucet.description) ||
+      "Drip testnet ETH or mint USDV to any address.";
+  }
+  const faucetLink = document.getElementById("faucet-link");
+  if (faucetLink) faucetLink.href = faucetUrl;
+
+  const explorerDesc = document.getElementById("explorer-description");
+  if (explorerDesc) {
+    explorerDesc.textContent =
+      (config.explorer && config.explorer.description) ||
+      "vibescan is the in-house block explorer for this devnet.";
+  }
+  const explorerSectionLink = document.getElementById("explorer-section-link");
+  if (explorerSectionLink) explorerSectionLink.href = explorerUrl;
 
   renderFeatures(config.features || []);
   renderContracts(contracts, explorerUrl);
 
-  document.getElementById("curl-snippet").textContent =
-    `curl -sX POST -H 'Content-Type: application/json' \\\n` +
-    `  --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' \\\n` +
-    `  ${rpcUrl}`;
-
   wireAddToWallet(rpcUrl, explorerUrl);
-  wireCopyButton("copy-rpc", () => document.getElementById("rpc-display").textContent);
-  wireCopyButton("copy-curl", () => document.getElementById("curl-snippet").textContent);
+  wireCopyableRows();
 }
 
 function renderFeatures(features) {
   const host = document.getElementById("features");
   host.innerHTML = "";
+  if (!features.length) {
+    host.innerHTML = `<p class="muted">No branch-specific features declared for this vibe.</p>`;
+    return;
+  }
   for (const f of features) {
     const card = document.createElement("div");
     card.className = "feature-card";
@@ -201,7 +188,7 @@ const WATCHABLE_TOKENS = {
 function renderContracts(contracts, explorerBase) {
   const host = document.getElementById("contracts-list");
   if (!contracts) {
-    host.innerHTML = `<p class="muted" style="padding: 0.75rem 1rem; margin: 0;">Contracts not yet deployed. Refresh in a few seconds.</p>`;
+    host.innerHTML = `<p class="muted" style="padding: 0.75rem 1rem; margin: 0;">No contracts deployed on this vibe.</p>`;
     return;
   }
   host.innerHTML = "";
@@ -244,7 +231,7 @@ function renderContracts(contracts, explorerBase) {
     rendered++;
   }
   if (!rendered) {
-    host.innerHTML = `<p class="muted" style="padding: 0.75rem 1rem; margin: 0;">No deployed contracts yet.</p>`;
+    host.innerHTML = `<p class="muted" style="padding: 0.75rem 1rem; margin: 0;">No contracts deployed on this vibe.</p>`;
   }
 }
 
@@ -306,18 +293,30 @@ function wireAddToWallet(rpcUrl, explorerUrl) {
   });
 }
 
-function wireCopyButton(btnId, getText) {
-  const btn = document.getElementById(btnId);
-  if (!btn) return;
-  btn.addEventListener("click", async () => {
-    const original = btn.textContent;
-    try {
-      await navigator.clipboard.writeText(getText());
-      btn.textContent = "Copied";
-    } catch {
-      btn.textContent = "Copy failed";
-    }
-    setTimeout(() => (btn.textContent = original), 1200);
+// Wire click-to-copy on any element with [data-copy-target] pointing at the
+// id of the <code> whose textContent should be copied. Shows a transient
+// "Copied" affordance inside the button's hint span.
+function wireCopyableRows() {
+  const rows = document.querySelectorAll("[data-copy-target]");
+  rows.forEach((row) => {
+    row.addEventListener("click", async () => {
+      const targetId = row.getAttribute("data-copy-target");
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      const hint = row.querySelector(".copy-hint");
+      const originalHint = hint ? hint.textContent : "";
+      try {
+        await navigator.clipboard.writeText(target.textContent || "");
+        if (hint) hint.textContent = "Copied";
+        row.classList.add("copied");
+      } catch {
+        if (hint) hint.textContent = "Copy failed";
+      }
+      setTimeout(() => {
+        if (hint) hint.textContent = originalHint;
+        row.classList.remove("copied");
+      }, 1200);
+    });
   });
 }
 

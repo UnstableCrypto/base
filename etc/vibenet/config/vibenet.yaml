@@ -12,53 +12,26 @@
 title: "base vibenet"
 subtitle: "An ephemeral Base devnet for trying out in-flight features."
 
-# Human-readable instructions shown on the landing page. Markdown is rendered
-# client-side.
-instructions_markdown: |
-  ## Connect your wallet
+# Faucet section content. The URL is resolved client-side based on the
+# hostname (prod vs local); only the description is authored here.
+faucet:
+  description: >-
+    Drip testnet ETH or mint USDV (our public-mint ERC-20) to any address.
+    Rate limits apply per IP and per destination address.
 
-  - **Chain ID:** `84538453`
-  - **RPC URL:** `https://rpc.vibes.base.org`
-  - **WS URL:** `wss://rpc.vibes.base.org/ws`
-  - **Explorer:** [vibescan](https://explorer.vibes.base.org/)
+# Explorer section content. URL is resolved client-side.
+explorer:
+  description: >-
+    vibescan is the in-house block explorer - browse blocks, transactions,
+    and per-address activity feeds.
 
-  The RPC is currently open - IP-based rate limits apply.
-
-  ## Get test funds
-
-  Use the [faucet](https://faucet.vibes.base.org/) to drip testnet ETH or
-  mint `USDV` (Vibe USD, our public-mint ERC-20) to any address. Rate
-  limits apply per IP and per destination address.
-
-  ## Pre-deployed contracts
-
-  See `/contracts.json` for live addresses. Currently deployed:
-
-  - `USDV` - Vibe USD, public-mint ERC-20 (6 decimals) for token-flow demos.
-  - `NFV` - Non-Fungible Vibe, public-mint ERC-721.
-
-  Coming soon:
-
-  - ERC-4337 canonical EntryPoint v0.7 / v0.8 + SimpleAccountFactory.
-  - Coinbase Smart Wallet factory.
-
-  ## Block explorer
-
-  [vibescan](https://explorer.vibes.base.org/) is the in-house block
-  explorer - browse blocks, transactions, and per-address activity feeds.
-  Server-rendered, no JS required.
-
-# Feature list shown on the landing page. Each item has a title, one-sentence
-# description, and optional link.
+# "Features this Vibe" - things unique to this devnet branch. Each item has
+# a title, one-sentence description, and optional link.
 features:
-  - title: "vibescan explorer"
-    description: "In-house block explorer with per-address activity feeds, indexed straight off the node."
-    link: "https://explorer.vibes.base.org/"
-  - title: "Faucet"
-    description: "Public testnet faucet. Drips ETH and mints USDV with per-IP + per-address cooldowns."
-    link: "https://faucet.vibes.base.org/"
   - title: "USDV (Vibe USD)"
-    description: "Public-mint ERC-20 for testing token flows. The faucet can mint it to any address."
+    description: "Public-mint ERC-20 (6 decimals) for testing token flows."
+  - title: "NFV (Non-Fungible Vibe)"
+    description: "Public-mint ERC-721 for NFT-flow demos."
 
 # Override injected at build time. Do not edit.
 branch: "unknown"

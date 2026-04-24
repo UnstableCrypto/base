@@ -6,7 +6,6 @@
   <title>base vibenet</title>
   <link rel="icon" type="image/png" href="/favicon.png" />
   <link rel="stylesheet" href="/style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/marked@14/marked.min.js"></script>
 </head>
 <body>
   <header class="site-header">
@@ -28,15 +27,24 @@
       <div class="chain-card">
         <div class="chain-row">
           <span class="chain-label">Chain ID</span>
-          <code id="chain-id">84538453</code>
+          <button type="button" class="chain-value copyable" data-copy-target="chain-id">
+            <code id="chain-id">84538453</code>
+            <span class="copy-hint" aria-hidden="true">Click to copy</span>
+          </button>
         </div>
         <div class="chain-row">
           <span class="chain-label">RPC URL</span>
-          <code id="rpc-display" class="chain-value truncate">...</code>
+          <button type="button" class="chain-value copyable" data-copy-target="rpc-display">
+            <code id="rpc-display" class="truncate">...</code>
+            <span class="copy-hint" aria-hidden="true">Click to copy</span>
+          </button>
         </div>
         <div class="chain-row">
           <span class="chain-label">WS URL</span>
-          <code id="ws-display" class="chain-value truncate">...</code>
+          <button type="button" class="chain-value copyable" data-copy-target="ws-display">
+            <code id="ws-display" class="truncate">...</code>
+            <span class="copy-hint" aria-hidden="true">Click to copy</span>
+          </button>
         </div>
         <div class="chain-row">
           <span class="chain-label">Explorer</span>
@@ -44,38 +52,36 @@
         </div>
         <div class="chain-actions">
           <button id="add-to-wallet" type="button">Add to wallet</button>
-          <button id="copy-rpc" type="button" class="secondary">Copy RPC URL</button>
         </div>
         <p id="wallet-status" class="muted small"></p>
       </div>
     </section>
 
-    <section id="instructions" class="content-prose"></section>
-
     <section>
-      <h2>Features</h2>
-      <div id="features" class="features-grid"></div>
-    </section>
-
-    <section>
-      <h2>Deployed contracts</h2>
-      <div id="contracts-list" class="contracts-list">
-        <p class="muted">loading...</p>
+      <h2>Faucet</h2>
+      <div class="info-card">
+        <p id="faucet-description" class="muted"></p>
+        <a id="faucet-link" class="info-link" href="#" target="_blank" rel="noopener">Open faucet &#x2197;</a>
       </div>
     </section>
 
     <section>
-      <h2>Quick test</h2>
-      <p class="muted">Paste this into a terminal to verify the RPC responds:</p>
-      <div class="terminal">
-        <div class="terminal-chrome">
-          <span class="dot dot-red" aria-hidden="true"></span>
-          <span class="dot dot-yellow" aria-hidden="true"></span>
-          <span class="dot dot-green" aria-hidden="true"></span>
-          <span class="terminal-title">zsh — vibenet</span>
-          <button id="copy-curl" type="button" class="copy-btn">Copy</button>
-        </div>
-        <pre id="curl-snippet" class="terminal-body"></pre>
+      <h2>Explorer</h2>
+      <div class="info-card">
+        <p id="explorer-description" class="muted"></p>
+        <a id="explorer-section-link" class="info-link" href="#" target="_blank" rel="noopener">Open vibescan &#x2197;</a>
+      </div>
+    </section>
+
+    <section>
+      <h2>Features this Vibe</h2>
+      <div id="features" class="features-grid"></div>
+    </section>
+
+    <section>
+      <h2>Contracts</h2>
+      <div id="contracts-list" class="contracts-list">
+        <p class="muted" style="padding: 0.75rem 1rem; margin: 0;">loading...</p>
       </div>
     </section>
   </main>
