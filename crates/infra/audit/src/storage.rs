@@ -241,7 +241,7 @@ impl S3EventReaderWriter {
     /// Writes a single event as a standalone S3 object using `If-None-Match: *`.
     ///
     /// If the object already exists (412), another writer succeeded first — return Ok.
-    async fn write_event(&self, event: &Event) -> Result<()> {
+    pub async fn write_event(&self, event: &Event) -> Result<()> {
         let s3_key = event.event.s3_event_key();
         let history_event = to_history_event(event);
         let content = serde_json::to_string(&history_event)?;
