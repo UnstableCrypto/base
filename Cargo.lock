@@ -1916,6 +1916,7 @@ dependencies = [
  "base-bundles",
  "base-metrics",
  "bytes",
+ "eyre",
  "futures",
  "jsonrpsee",
  "jsonrpsee-types",
@@ -1926,8 +1927,11 @@ dependencies = [
  "testcontainers",
  "testcontainers-modules",
  "tokio",
+ "tokio-util",
  "tracing",
+ "url",
  "uuid",
+ "wiremock",
 ]
 
 [[package]]
@@ -22564,6 +22568,7 @@ dependencies = [
  "futures-core",
  "futures-io",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "slab",
  "tokio",

@@ -10,6 +10,11 @@
 mod archiver;
 pub use archiver::KafkaAuditArchiver;
 
+mod connector;
+pub use connector::{
+    AuditConnector, AuditConnectorConfig, AuditConnectorMetrics, SpawnedAuditConnector,
+};
+
 mod kafka_config;
 pub use kafka_config::load_kafka_config_from_file;
 
@@ -34,27 +39,4 @@ pub use storage::{
 };
 
 mod types;
-use tokio::sync::mpsc;
-use tracing::error;
 pub use types::{BundleEvent, BundleId, DropReason, Transaction, TransactionId};
-
-/// Connects bundle event receivers to publishers.
-#[derive(Debug)]
-pub struct AuditConnector;
-
-impl AuditConnector {
-    /// Connects a bundle event receiver to a publisher, spawning a task to forward events.
-    pub fn connect<P>(event_rx: mpsc::Receiver<BundleEvent>, publisher: P)
-    where
-        P: BundleEventPublisher + 'static,
-    {
-        tokio::spawn(async move {
-            let mut event_rx = event_rx;
-            while let Some(event) = event_rx.recv().await {
-                if let Err(e) = publisher.publish(event).await {
-                    error!(error = %e, "failed to publish bundle event");
-                }
-            }
-        });
-    }
-}
