@@ -16,3 +16,17 @@ pub use upgrades::Upgrades;
 
 mod chain;
 pub use chain::ChainUpgrades;
+
+mod derived;
+
+mod registry;
+pub use registry::Registry;
+
+mod ethereum;
+pub use ethereum::{Holesky, Hoodi, Mainnet, Sepolia};
+
+mod l1_registry;
+pub use l1_registry::l1_config;
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod test_utils;

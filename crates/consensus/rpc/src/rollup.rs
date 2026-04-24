@@ -13,8 +13,8 @@ use std::{
 
 use alloy_eips::BlockNumberOrTag;
 use async_trait::async_trait;
+use base_common_genesis::RollupConfig;
 use base_consensus_engine::EngineState;
-use base_consensus_genesis::RollupConfig;
 use base_consensus_gossip::Metrics;
 use base_consensus_safedb::{SafeDBError, SafeDBReader, SafeHeadResponse};
 use base_protocol::SyncStatus;
@@ -67,6 +67,7 @@ impl<EngineRpcClient_: EngineRpcClient> RollupRpc<EngineRpcClient_> {
             safe_l1: l1_sync_status.safe_l1.unwrap_or_default(),
             finalized_l1: l1_sync_status.finalized_l1.unwrap_or_default(),
             unsafe_l2: l2_sync_status.sync_state.unsafe_head(),
+            local_safe_l2: l2_sync_status.sync_state.local_safe_head(),
             safe_l2: l2_sync_status.sync_state.safe_head(),
             finalized_l2: l2_sync_status.sync_state.finalized_head(),
         }

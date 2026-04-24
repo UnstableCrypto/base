@@ -6,12 +6,12 @@ use alloy_primitives::B256;
 use alloy_rpc_types_engine::{ForkchoiceUpdated, PayloadStatus, PayloadStatusEnum};
 use alloy_rpc_types_eth::Block as RpcBlock;
 use async_trait::async_trait;
-use base_common_rpc_types::Transaction as OpTransaction;
+use base_common_genesis::RollupConfig;
+use base_common_rpc_types::Transaction as BaseTransaction;
 use base_consensus_engine::{
     DelegatedForkchoiceUpdate, Engine,
     test_utils::{TestEngineStateBuilder, test_block_info, test_engine_client_builder},
 };
-use base_consensus_genesis::RollupConfig;
 use base_consensus_node::{
     EngineDerivationClient, EngineError, EngineProcessingRequest, EngineProcessor,
     EngineRequestReceiver,
@@ -56,8 +56,8 @@ const fn syncing_fcu() -> ForkchoiceUpdated {
     }
 }
 
-fn mismatched_block(number: u64) -> RpcBlock<OpTransaction> {
-    let mut block = RpcBlock::<OpTransaction>::default();
+fn mismatched_block(number: u64) -> RpcBlock<BaseTransaction> {
+    let mut block = RpcBlock::<BaseTransaction>::default();
     block.header.hash = B256::from([0xabu8; 32]);
     block.header.inner.number = number;
     block.header.inner.timestamp = number * 2;

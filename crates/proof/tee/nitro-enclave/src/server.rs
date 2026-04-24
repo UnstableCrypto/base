@@ -5,7 +5,7 @@ use alloy_primitives::{Address, B256, Bytes, keccak256, map::HashMap};
 use alloy_signer_local::PrivateKeySigner;
 use base_common_chains::ChainConfig;
 use base_common_evm::BaseEvmFactory;
-use base_consensus_genesis::RollupConfig;
+use base_common_genesis::RollupConfig;
 use base_proof::BootInfo;
 use base_proof_client::Prologue;
 use base_proof_preimage::PreimageKey;
@@ -254,7 +254,7 @@ impl Server {
 #[cfg(test)]
 mod tests {
     use alloy_primitives::b256;
-    use base_consensus_registry::Registry;
+    use base_common_chains::Registry;
 
     use super::*;
 

@@ -4,7 +4,7 @@ use std::{
 };
 
 use base_common_flashblocks::Flashblock;
-use base_consensus_genesis::SystemConfig;
+use base_common_genesis::SystemConfig;
 use tokio::{
     sync::{mpsc, watch},
     task::JoinHandle,
@@ -12,7 +12,7 @@ use tokio::{
 
 use crate::{
     commands::{DaTracker, FlashblockEntry, LoadingState},
-    config::{ChainConfig, ConductorNodeConfig},
+    config::{ConductorNodeConfig, MonitoringConfig},
     rpc::{
         BacklogFetchResult, BlockDaInfo, ConductorNodeStatus, L1BlockInfo, L1ConnectionMode,
         ProofsSnapshot, TimestampedFlashblock, ValidatorNodeStatus,
@@ -155,7 +155,7 @@ pub struct LoadTestTask {
 #[derive(Debug)]
 pub struct Resources {
     /// Active chain configuration.
-    pub config: ChainConfig,
+    pub config: MonitoringConfig,
     /// Data availability monitoring state.
     pub da: DaState,
     /// Flashblock stream state.
@@ -221,7 +221,7 @@ pub struct FlashState {
 
 impl Resources {
     /// Creates new resources with the given chain configuration.
-    pub fn new(config: ChainConfig) -> Self {
+    pub fn new(config: MonitoringConfig) -> Self {
         Self {
             config,
             da: DaState::new(),

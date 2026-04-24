@@ -11,7 +11,7 @@ use base_execution_rpc::{
     miner::OpMinerExtApi,
     witness::BaseDebugWitnessApi,
 };
-use base_execution_txpool::OpPooledTx;
+use base_execution_txpool::BasePooledTx;
 use base_node_core::{BaseEngineApiBuilder, BaseNodeTypes, BasePayloadValidatorBuilder};
 use reth_evm::ConfigureEvm;
 use reth_node_api::{BuildNextEnv, FullNodeComponents, HeaderTy, NodeAddOns, PayloadTypes, TxTy};
@@ -189,7 +189,7 @@ where
                     base_execution_chainspec::BaseChainSpec,
                 >,
             >,
-            Pool: TransactionPool<Transaction: OpPooledTx>,
+            Pool: TransactionPool<Transaction: BasePooledTx>,
         >,
     EthB: EthApiBuilder<N>,
     PVB: Send,
@@ -272,7 +272,7 @@ where
                 >,
             >,
         >,
-    <<N as FullNodeComponents>::Pool as TransactionPool>::Transaction: OpPooledTx,
+    <<N as FullNodeComponents>::Pool as TransactionPool>::Transaction: BasePooledTx,
     EthB: EthApiBuilder<N>,
     PVB: PayloadValidatorBuilder<N>,
     EB: EngineApiBuilder<N>,

@@ -12,7 +12,7 @@ use alloy_network::TxSigner;
 use alloy_primitives::{Address, Bytes};
 use alloy_signer::Signature;
 use base_common_consensus::{BaseTransactionInfo, BaseTxEnvelope};
-use base_common_evm::OpTransaction as OpRevm;
+use base_common_evm::BaseTransaction as BaseRevm;
 use reth_rpc_convert::{FromConsensusTx, SignTxRequestError, SignableTxRequest, TryIntoSimTx};
 use revm::context::TxEnv;
 
@@ -34,13 +34,13 @@ impl FromConsensusTx<BaseTxEnvelope> for Transaction {
     }
 }
 
-impl<Spec, Block: BlockEnvironment> TryIntoTxEnv<OpRevm<TxEnv>, Spec, Block>
+impl<Spec, Block: BlockEnvironment> TryIntoTxEnv<BaseRevm<TxEnv>, Spec, Block>
     for BaseTransactionRequest
 {
     type Err = EthTxEnvError;
 
-    fn try_into_tx_env(self, evm_env: &EvmEnv<Spec, Block>) -> Result<OpRevm<TxEnv>, Self::Err> {
-        Ok(OpRevm {
+    fn try_into_tx_env(self, evm_env: &EvmEnv<Spec, Block>) -> Result<BaseRevm<TxEnv>, Self::Err> {
+        Ok(BaseRevm {
             base: self.as_ref().clone().try_into_tx_env(evm_env)?,
             enveloped_tx: Some(Bytes::new()),
             deposit: Default::default(),

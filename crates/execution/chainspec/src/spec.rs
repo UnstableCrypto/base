@@ -8,7 +8,6 @@ use alloy_hardforks::Hardfork;
 use alloy_primitives::{B256, U256};
 use base_common_chains::{BaseUpgrade, Upgrades};
 use base_common_consensus::Predeploys;
-use base_execution_upgrades::BASE_MAINNET_UPGRADES;
 use derive_more::{Constructor, Deref, Into};
 use reth_chainspec::{
     BaseFeeParams, BaseFeeParamsKind, ChainSpec, DepositContract, DisplayHardforks, EthChainSpec,
@@ -19,8 +18,8 @@ use reth_network_peers::NodeRecord;
 use reth_primitives_traits::SealedHeader;
 
 use crate::{
-    BASE_DEV, BASE_DEVNET_0_SEPOLIA_DEV_0, BASE_MAINNET, BASE_SEPOLIA, BASE_ZERONET,
-    compute_jovian_base_fee, decode_holocene_base_fee,
+    BASE_DEV, BASE_DEVNET_0_SEPOLIA_DEV_0, BASE_MAINNET, BASE_MAINNET_UPGRADES, BASE_SEPOLIA,
+    BASE_ZERONET, compute_jovian_base_fee, decode_holocene_base_fee,
 };
 
 /// All supported chain names for the CLI.

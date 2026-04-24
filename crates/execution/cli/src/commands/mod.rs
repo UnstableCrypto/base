@@ -9,13 +9,14 @@ use reth_cli_commands::{
     download::manifest_cmd::SnapshotManifestCommand,
     dump_genesis, init_cmd,
     node::{self, NoArgs},
-    p2p, prune, re_execute, stage,
+    prune, re_execute, stage,
 };
 
 use crate::chainspec::BaseChainSpecParser;
 
 pub mod base_proofs;
 pub mod init_state;
+pub mod p2p;
 
 #[cfg(feature = "dev")]
 pub mod test_vectors;
@@ -42,7 +43,7 @@ pub enum Commands<Ext: clap::Args + fmt::Debug = NoArgs> {
     Stage(Box<stage::Command<BaseChainSpecParser>>),
     /// P2P Debugging utilities
     #[command(name = "p2p")]
-    P2P(Box<p2p::Command<BaseChainSpecParser>>),
+    P2P(Box<p2p::Command>),
     /// Write config to stdout
     #[command(name = "config")]
     Config(config_cmd::Command),
