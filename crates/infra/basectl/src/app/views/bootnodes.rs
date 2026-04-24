@@ -11,12 +11,15 @@ use base_bootnode_monitor::BootnodeSnapshot;
 
 use crate::{
     app::{Action, Resources, View},
+    app::resources::DiscoveryState,
     commands::COLOR_BASE_BLUE,
     tui::Keybinding,
 };
 
 const KEYBINDINGS: &[Keybinding] = &[
     Keybinding { key: "↑/↓ j/k", description: "Scroll peers" },
+    Keybinding { key: "J/K", description: "Scroll discovery" },
+    Keybinding { key: "d", description: "Discover network peers" },
     Keybinding { key: "Esc", description: "Back to home" },
     Keybinding { key: "?", description: "Toggle help" },
 ];
@@ -67,10 +70,12 @@ const NETWORK_ORDER: &[&str] = &[
     "automata",
     "opstack-unknown",
     "eth-mainnet",
+    "eth-mainnet-cl",
     "eth-sepolia",
     "eth-holesky",
     "eth-hoodi",
     "eth-unknown",
+    "eth-cl",
     "no-fork-id",
 ];
 
@@ -82,12 +87,13 @@ const NETWORK_ORDER: &[&str] = &[
 #[derive(Debug)]
 pub struct BootnodesView {
     scroll: usize,
+    disc_scroll: usize,
 }
 
 impl BootnodesView {
     /// Creates a new bootnode view.
     pub fn new() -> Self {
-        Self { scroll: 0 }
+        Self { scroll: 0, disc_scroll: 0 }
     }
 }
 
@@ -104,12 +110,22 @@ impl View for BootnodesView {
 
     fn handle_key(&mut self, key: KeyEvent, resources: &mut Resources) -> Action {
         let peer_count = resources.bootnodes.snapshot.as_ref().map_or(0, |s| s.peers.len());
+        let disc_peer_count = resources.bootnodes.discovery.peers.len();
         match key.code {
             KeyCode::Up | KeyCode::Char('k') if self.scroll > 0 => {
                 self.scroll -= 1;
             }
             KeyCode::Down | KeyCode::Char('j') if self.scroll + 1 < peer_count => {
                 self.scroll += 1;
+            }
+            KeyCode::Char('K') if self.disc_scroll > 0 => {
+                self.disc_scroll -= 1;
+            }
+            KeyCode::Char('J') if self.disc_scroll + 1 < disc_peer_count => {
+                self.disc_scroll += 1;
+            }
+            KeyCode::Char('d') if resources.bootnodes.discovery.configured() => {
+                resources.bootnodes.discovery.trigger();
             }
             _ => {}
         }
@@ -125,7 +141,18 @@ impl View for BootnodesView {
                 if self.scroll >= peer_count && peer_count > 0 {
                     self.scroll = peer_count - 1;
                 }
-                render_snapshot(frame, area, snapshot, self.scroll);
+                let disc_peer_count = resources.bootnodes.discovery.peers.len();
+                if self.disc_scroll >= disc_peer_count && disc_peer_count > 0 {
+                    self.disc_scroll = disc_peer_count - 1;
+                }
+                render_snapshot(
+                    frame,
+                    area,
+                    snapshot,
+                    self.scroll,
+                    &resources.bootnodes.discovery,
+                    self.disc_scroll,
+                );
             }
         }
     }
@@ -177,8 +204,9 @@ fn tag_color(tag: &str) -> Color {
         | "mode-sepolia"
         | "ink-sepolia" => Color::LightRed,
         "opstack-unknown" => Color::Magenta,
-        "eth-mainnet" | "eth-unknown" => Color::Green,
+        "eth-mainnet" | "eth-mainnet-cl" | "eth-unknown" => Color::Green,
         "eth-sepolia" | "eth-holesky" | "eth-hoodi" => Color::Yellow,
+        "eth-cl" => Color::LightGreen,
         _ => Color::DarkGray,
     }
 }
@@ -189,6 +217,14 @@ fn elapsed_str(queried_at: Instant) -> String {
         format!("{secs:.1}s ago")
     } else {
         format!("{:.0}m ago", secs / 60.0)
+    }
+}
+
+fn found_at_str(found_at_ms: u64) -> String {
+    if found_at_ms < 1000 {
+        format!("{found_at_ms}ms")
+    } else {
+        format!("{:.1}s", found_at_ms as f64 / 1000.0)
     }
 }
 
@@ -234,7 +270,14 @@ fn render_loading(f: &mut Frame<'_>, area: Rect) {
     f.render_widget(msg, chunks[1]);
 }
 
-fn render_snapshot(f: &mut Frame<'_>, area: Rect, snapshot: &BootnodeSnapshot, scroll: usize) {
+fn render_snapshot(
+    f: &mut Frame<'_>,
+    area: Rect,
+    snapshot: &BootnodeSnapshot,
+    scroll: usize,
+    discovery: &DiscoveryState,
+    disc_scroll: usize,
+) {
     let title = format!(" Bootnodes: {} ", snapshot.network_name);
     let block = Block::default()
         .title(title.as_str())
@@ -255,13 +298,25 @@ fn render_snapshot(f: &mut Frame<'_>, area: Rect, snapshot: &BootnodeSnapshot, s
     let bootnode_rows = snapshot.bootnodes.len() as u16;
     let summary_height = 5 + bootnode_rows + 1;
 
+    let has_discovery_data = discovery.running || !discovery.peers.is_empty();
+    let (peers_constraint, disc_constraint) = if has_discovery_data {
+        (Constraint::Percentage(50), Constraint::Percentage(50))
+    } else {
+        (Constraint::Min(0), Constraint::Length(2))
+    };
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(summary_height), Constraint::Min(0)])
+        .constraints([
+            Constraint::Length(summary_height),
+            peers_constraint,
+            disc_constraint,
+        ])
         .split(inner);
 
     render_summary(f, chunks[0], snapshot);
     render_peers_table(f, chunks[1], snapshot, scroll);
+    render_discovery(f, chunks[2], discovery, disc_scroll);
 }
 
 fn render_summary(f: &mut Frame<'_>, area: Rect, snapshot: &BootnodeSnapshot) {
@@ -416,9 +471,124 @@ fn render_peers_table(f: &mut Frame<'_>, area: Rect, snapshot: &BootnodeSnapshot
     f.render_stateful_widget(table, chunks[1], &mut state);
 }
 
+fn render_discovery(
+    f: &mut Frame<'_>,
+    area: Rect,
+    discovery: &DiscoveryState,
+    disc_scroll: usize,
+) {
+    let has_data = !discovery.peers.is_empty() || discovery.running;
+
+    if !has_data {
+        // Idle: show a one-line hint.
+        let hint = if discovery.configured() {
+            Line::from(vec![
+                Span::styled(
+                    "  ── Network Discovery ──────────────────────────────  ",
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::styled("[D]", Style::default().fg(Color::Yellow)),
+                Span::styled(" scan all network peers", Style::default().fg(Color::DarkGray)),
+            ])
+        } else {
+            Line::from(vec![Span::styled(
+                "  ── Network Discovery ──  (not available for this network)",
+                Style::default().fg(Color::DarkGray),
+            )])
+        };
+        f.render_widget(Paragraph::new(hint), area);
+        return;
+    }
+
+    // Header line with status and stats.
+    let elapsed_str = format!("{:.1}s", discovery.elapsed_secs);
+    let found_count = discovery.peers.len().to_string();
+    let scanned_str = discovery.scanned.to_string();
+
+    let header_spans = vec![
+        Span::styled("  ── Network Discovery ──  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Scanning...", Style::default().fg(Color::Yellow)),
+        Span::styled("   scanned: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(scanned_str, Style::default().fg(Color::Cyan)),
+        Span::styled("  │  found: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(found_count, Style::default().fg(Color::Cyan)),
+        Span::styled("  │  queued: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(discovery.queued.to_string(), Style::default().fg(Color::White)),
+        Span::styled("  │  encountered: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(discovery.encountered.to_string(), Style::default().fg(Color::White)),
+        Span::styled("  │  ", Style::default().fg(Color::DarkGray)),
+        Span::styled(elapsed_str, Style::default().fg(Color::White)),
+        Span::styled("  │  [D] restart", Style::default().fg(Color::DarkGray)),
+    ];
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(0)])
+        .split(area);
+
+    f.render_widget(Paragraph::new(Line::from(header_spans)), chunks[0]);
+
+    if chunks[1].height == 0 {
+        return;
+    }
+
+    // ── Discovery peers table ────────────────────────────────────────────────
+    let col_header = Row::new([
+        Cell::from("  NODE ID")
+            .style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+        Cell::from("ADDRESS")
+            .style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+        Cell::from("FORK")
+            .style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+        Cell::from("PROTO")
+            .style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+        Cell::from("FOUND AT")
+            .style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+    ])
+    .height(1);
+
+    let rows: Vec<Row<'_>> = discovery
+        .peers
+        .iter()
+        .map(|p| {
+            let proto_color =
+                if p.protocol == "discv4" { Color::Yellow } else { Color::Cyan };
+            Row::new([
+                Cell::from(format!("  {}", p.node_id_prefix))
+                    .style(Style::default().fg(Color::DarkGray)),
+                Cell::from(p.address.clone()).style(Style::default().fg(Color::White)),
+                Cell::from(p.network_tag).style(
+                    Style::default()
+                        .fg(tag_color(p.network_tag))
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Cell::from(p.protocol).style(Style::default().fg(proto_color)),
+                Cell::from(found_at_str(p.found_at_ms))
+                    .style(Style::default().fg(Color::DarkGray)),
+            ])
+            .height(1)
+        })
+        .collect();
+
+    let widths = [
+        Constraint::Length(14),
+        Constraint::Length(27),
+        Constraint::Length(20),
+        Constraint::Length(8),
+        Constraint::Min(0),
+    ];
+
+    let table = Table::new(rows, widths)
+        .header(col_header)
+        .row_highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+
+    let mut state = TableState::default().with_selected(Some(disc_scroll));
+    f.render_stateful_widget(table, chunks[1], &mut state);
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{elapsed_str, tag_color};
+    use super::{elapsed_str, found_at_str, tag_color};
     use ratatui::style::Color;
 
     #[test]
@@ -436,5 +606,14 @@ mod tests {
         let now = std::time::Instant::now();
         let s = elapsed_str(now);
         assert!(s.ends_with("s ago") || s.ends_with("m ago"));
+    }
+
+    #[test]
+    fn found_at_str_formatting() {
+        assert_eq!(found_at_str(342), "342ms");
+        assert_eq!(found_at_str(999), "999ms");
+        assert_eq!(found_at_str(1000), "1.0s");
+        assert_eq!(found_at_str(1200), "1.2s");
+        assert_eq!(found_at_str(5000), "5.0s");
     }
 }

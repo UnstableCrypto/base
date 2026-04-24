@@ -151,12 +151,29 @@ pub fn start_background_services(config: &MonitoringConfig, resources: &mut Reso
             resources.bootnodes.set_channel(bootnode_rx);
             let network_name = config.name.clone();
             let bootnodes_vec: Vec<String> = bootnodes.iter().map(|s| s.to_string()).collect();
+            let disc_bootnodes = bootnodes_vec.clone();
             tokio::spawn(base_bootnode_monitor::run_bootnode_poller(
                 network_name,
                 fork_hash,
                 bootnodes_vec,
                 bootnode_tx,
             ));
+
+            let target_prefix =
+                base_bootnode_monitor::target_prefix_for_network(&config.name);
+            if !target_prefix.is_empty() {
+                let (disc_trigger_tx, disc_trigger_rx) = mpsc::channel::<()>(1);
+                let (disc_update_tx, disc_update_rx) =
+                    mpsc::channel::<base_bootnode_monitor::DiscoveryUpdate>(500);
+                resources.bootnodes.discovery.set_channels(disc_trigger_tx, disc_update_rx);
+                tokio::spawn(base_bootnode_monitor::run_discovery_service(
+                    fork_hash,
+                    target_prefix,
+                    disc_bootnodes,
+                    disc_trigger_rx,
+                    disc_update_tx,
+                ));
+            }
         }
     }
 }

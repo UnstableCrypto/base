@@ -103,9 +103,10 @@ impl BootnodeProber {
         let mut network_counts: HashMap<&'static str, usize> = HashMap::new();
 
         for bootnode_str in bootnodes {
-            let (label, enr_opt) = self.resolve_bootnode(bootnode_str).await;
+            let enr_opt = self.resolve_bootnode(bootnode_str).await;
 
             let Some(enr) = enr_opt else {
+                let label = bootnode_label(bootnode_str);
                 bootnode_results.push(BootnodeResult {
                     label,
                     reachable: false,
@@ -115,6 +116,11 @@ impl BootnodeProber {
                 });
                 continue;
             };
+
+            let label = enr
+                .ip4()
+                .map(|ip| format!("{}:{}", ip, enr.udp4().unwrap_or(0)))
+                .unwrap_or_else(|| bootnode_label(bootnode_str));
 
             let start = Instant::now();
             let query_result = timeout(
@@ -189,66 +195,85 @@ impl BootnodeProber {
         }
     }
 
+    /// Queries the routing table of a remote node, returning all peers it knows.
+    ///
+    /// Times out after 5 seconds. Returns an empty vec on timeout or error.
+    pub async fn query_routing_table(&mut self, enr: Enr) -> Vec<Enr> {
+        match tokio::time::timeout(
+            Duration::from_secs(5),
+            self.disc.find_node_designated_peer(enr, ALL_DISTANCES.collect()),
+        )
+        .await
+        {
+            Ok(Ok(peers)) => {
+                for p in &peers {
+                    let _ = self.disc.add_enr(p.clone());
+                }
+                peers
+            }
+            Ok(Err(e)) => {
+                warn!(error = %e, "routing table query failed");
+                vec![]
+            }
+            Err(_) => vec![],
+        }
+    }
+
     /// Resolves a bootnode string to an ENR, using a cache for subsequent calls.
     ///
-    /// Returns `(display_label, Option<Enr>)`.
-    async fn resolve_bootnode(&mut self, bootnode_str: &str) -> (String, Option<Enr>) {
+    /// Returns `None` when resolution fails.
+    pub async fn resolve_bootnode(&mut self, bootnode_str: &str) -> Option<Enr> {
         if let Some(cached) = self.enr_cache.get(bootnode_str) {
-            let label = cached
-                .ip4()
-                .map(|ip| format!("{}:{}", ip, cached.udp4().unwrap_or(0)))
-                .unwrap_or_else(|| short_label(bootnode_str));
-            return (label, Some(cached.clone()));
+            return Some(cached.clone());
         }
 
         if bootnode_str.starts_with("enr:") {
             match bootnode_str.parse::<Enr>() {
                 Ok(enr) => {
-                    let label = enr
-                        .ip4()
-                        .map(|ip| format!("{}:{}", ip, enr.udp4().unwrap_or(0)))
-                        .unwrap_or_else(|| short_label(bootnode_str));
                     let _ = self.disc.add_enr(enr.clone());
                     self.enr_cache.insert(bootnode_str.to_string(), enr.clone());
-                    (label, Some(enr))
+                    Some(enr)
                 }
                 Err(e) => {
                     warn!(error = %e, bootnode = %bootnode_str, "failed to parse ENR");
-                    (short_label(bootnode_str), None)
+                    None
                 }
             }
         } else if bootnode_str.starts_with("enode://") {
-            let label = bootnode_str.split('@').nth(1).unwrap_or(bootnode_str).to_string();
             match enode_to_multiaddr(bootnode_str) {
                 Ok((multiaddr, _, _)) => {
                     match timeout(Duration::from_secs(5), self.disc.request_enr(multiaddr)).await {
                         Ok(Ok(enr)) => {
-                            let display = enr
-                                .ip4()
-                                .map(|ip| format!("{}:{}", ip, enr.udp4().unwrap_or(0)))
-                                .unwrap_or(label.clone());
                             let _ = self.disc.add_enr(enr.clone());
                             self.enr_cache.insert(bootnode_str.to_string(), enr.clone());
-                            (display, Some(enr))
+                            Some(enr)
                         }
                         Ok(Err(e)) => {
                             warn!(error = %e, bootnode = %bootnode_str, "discv5 request_enr failed");
-                            (label, None)
+                            None
                         }
                         Err(_) => {
                             warn!(bootnode = %bootnode_str, "discv5 request_enr timed out");
-                            (label, None)
+                            None
                         }
                     }
                 }
                 Err(e) => {
                     warn!(error = %e, bootnode = %bootnode_str, "enode parse failed");
-                    (label, None)
+                    None
                 }
             }
         } else {
-            (short_label(bootnode_str), None)
+            None
         }
+    }
+}
+
+fn bootnode_label(bootnode_str: &str) -> String {
+    if bootnode_str.starts_with("enode://") {
+        bootnode_str.split('@').nth(1).unwrap_or(bootnode_str).to_string()
+    } else {
+        short_label(bootnode_str)
     }
 }
 

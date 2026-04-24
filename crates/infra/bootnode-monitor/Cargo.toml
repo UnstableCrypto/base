@@ -10,8 +10,13 @@ workspace = true
 [dependencies]
 hex = { workspace = true }
 bytes = { workspace = true }
+rand_08 = { workspace = true }
+secp256k1 = { workspace = true }
 tokio = { workspace = true, features = ["net", "time", "sync"] }
+tokio-stream = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true, features = ["std"] }
 discv5 = { workspace = true, features = ["libp2p"] }
+reth-discv4 = { workspace = true }
+reth-network-peers = { workspace = true }
 unsigned-varint = { workspace = true }

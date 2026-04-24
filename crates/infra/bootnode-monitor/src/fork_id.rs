@@ -16,6 +16,10 @@ pub const BASE_ZERONET_FORK_HASH_JOVIAN: [u8; 4] = [0x44, 0x12, 0x5f, 0xac];
 /// Base Zeronet fork hash (Azul era, activates 2027-03).
 pub const BASE_ZERONET_FORK_HASH_AZUL: [u8; 4] = [0x30, 0xd7, 0x39, 0xc2];
 
+// Ethereum CL (beacon chain) fork digests — observed from live nodes.
+// Format: first 4 bytes of hash_tree_root(ForkData{fork_version, genesis_validators_root}).
+const ETH_MAINNET_CL_ELECTRA: [u8; 4] = [0x8c, 0x9f, 0x62, 0xfe];
+
 // Ethereum L1 fork hashes (from go-ethereum core/forkid/forkid_test.go).
 const ETH_MAINNET_CANCUN: [u8; 4] = [0x9f, 0x3d, 0x22, 0x54];
 const ETH_MAINNET_PRAGUE: [u8; 4] = [0xc3, 0x76, 0xcf, 0x8b];
@@ -40,6 +44,19 @@ const ETH_HOODI_BPO2: [u8; 4] = [0x23, 0xaa, 0x13, 0x51];
 /// All 256 XOR-distance buckets — querying with all of them returns the full routing table.
 pub const ALL_DISTANCES: std::ops::RangeInclusive<u64> = 1..=256;
 
+/// Returns the discovery target prefix for a given network name.
+///
+/// The prefix is matched against peer network tags to decide which peers to
+/// surface in the DHT crawl results. Returns `""` for unknown networks.
+pub fn target_prefix_for_network(network_name: &str) -> &'static str {
+    match network_name {
+        "mainnet" => "base-mainnet",
+        "sepolia" => "base-sepolia",
+        "zeronet" => "base-zeronet",
+        _ => "",
+    }
+}
+
 /// Returns the current fork hash for the given L2 chain ID, or `None` if unknown.
 pub fn fork_hash_for_chain(chain_id: u64) -> Option<[u8; 4]> {
     match chain_id {
@@ -57,6 +74,16 @@ fn parse_fork_hash_from_key(enr: &Enr, key: &[u8]) -> Option<[u8; 4]> {
     }
     if raw.len() >= 7 && raw[0] >= 0xc0 && raw[1] >= 0xc0 && raw[2] == 0x84 {
         return raw[3..7].try_into().ok();
+    }
+    None
+}
+
+/// Decodes the `eth2` CL ENR key: RLP bytes of 16 bytes, first 4 are the fork digest.
+fn parse_cl_fork_digest(enr: &Enr) -> Option<[u8; 4]> {
+    let raw = enr.get_raw_rlp(b"eth2")?;
+    // eth2 value is RLP bytes of exactly 16 bytes (0x90 = 0x80 + 16).
+    if raw.len() >= 5 && raw[0] == 0x90 {
+        return raw[1..5].try_into().ok();
     }
     None
 }
@@ -173,7 +200,11 @@ pub fn network_tag(enr: &Enr) -> &'static str {
         (None, Some(_)) => "eth-unknown",
         (None, None) => match parse_chain_id_from_opstack(enr) {
             Some(id) => superchain_tag(id),
-            None => "no-fork-id",
+            None => match parse_cl_fork_digest(enr) {
+                Some(h) if h == ETH_MAINNET_CL_ELECTRA => "eth-mainnet-cl",
+                Some(_) => "eth-cl",
+                None => "no-fork-id",
+            },
         },
     }
 }

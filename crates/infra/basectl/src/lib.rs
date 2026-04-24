@@ -3,9 +3,9 @@
 mod app;
 pub use app::{
     Action, App, BootnodesState, BootnodesView, CommandCenterView, ConductorState, ConductorView,
-    ConfigView, DaMonitorView, DaState, FlashState, FlashblocksView, HomeView, LoadTestTask,
-    LoadTestView, ProofsState, ProofsView, Resources, Router, TransactionPane, UpgradesView,
-    ValidatorState, View, ViewId, create_view, run_app, run_flashblocks_json,
+    ConfigView, DaMonitorView, DaState, DiscoveryState, FlashState, FlashblocksView, HomeView,
+    LoadTestTask, LoadTestView, ProofsState, ProofsView, Resources, Router, TransactionPane,
+    UpgradesView, ValidatorState, View, ViewId, create_view, run_app, run_flashblocks_json,
     start_background_services,
 };
 

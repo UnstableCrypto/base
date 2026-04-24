@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 
-use base_bootnode_monitor::BootnodeSnapshot;
+use base_bootnode_monitor::{BootnodeSnapshot, DiscoveredPeer, DiscoveryUpdate};
 
 use base_common_flashblocks::Flashblock;
 use base_common_genesis::SystemConfig;
@@ -25,6 +25,76 @@ use crate::{
 const MAX_FLASH_BLOCKS: usize = 30;
 const MAX_RECENT_DA_FLASHBLOCK_IDS: usize = 512;
 
+/// State for a DHT discovery crawl.
+#[derive(Debug, Default)]
+pub struct DiscoveryState {
+    /// Whether a crawl is currently running.
+    pub running: bool,
+    /// Number of nodes scanned so far.
+    pub scanned: usize,
+    /// Number of nodes currently waiting in the queue.
+    pub queued: usize,
+    /// Total unique nodes encountered in the current crawl cycle.
+    pub encountered: usize,
+    /// Elapsed seconds since the crawl started.
+    pub elapsed_secs: f64,
+    /// Peers found on the target network.
+    pub peers: Vec<DiscoveredPeer>,
+    rx: Option<mpsc::Receiver<DiscoveryUpdate>>,
+    /// Sender used to trigger a new crawl.
+    pub trigger_tx: Option<mpsc::Sender<()>>,
+}
+
+impl DiscoveryState {
+    /// Wires in the trigger and update channels.
+    pub fn set_channels(
+        &mut self,
+        trigger_tx: mpsc::Sender<()>,
+        rx: mpsc::Receiver<DiscoveryUpdate>,
+    ) {
+        self.trigger_tx = Some(trigger_tx);
+        self.rx = Some(rx);
+    }
+
+    /// Sends a crawl trigger, ignoring backpressure.
+    pub fn trigger(&self) {
+        if let Some(ref tx) = self.trigger_tx {
+            let _ = tx.try_send(());
+        }
+    }
+
+    /// Drains pending updates and applies them to state.
+    pub fn poll(&mut self) {
+        let Some(ref mut rx) = self.rx else { return };
+        while let Ok(update) = rx.try_recv() {
+            match update {
+                DiscoveryUpdate::Reset => {
+                    self.running = true;
+                    self.scanned = 0;
+                    self.queued = 0;
+                    self.encountered = 0;
+                    self.elapsed_secs = 0.0;
+                    self.peers.clear();
+                }
+                DiscoveryUpdate::Peer(peer) => {
+                    self.peers.push(peer);
+                }
+                DiscoveryUpdate::Progress { scanned, queued, encountered, elapsed_secs } => {
+                    self.scanned = scanned;
+                    self.queued = queued;
+                    self.encountered = encountered;
+                    self.elapsed_secs = elapsed_secs;
+                }
+            }
+        }
+    }
+
+    /// Returns `true` if the discovery service has been configured.
+    pub fn configured(&self) -> bool {
+        self.trigger_tx.is_some()
+    }
+}
+
 /// State for bootnode routing-table monitoring.
 #[derive(Debug, Default)]
 pub struct BootnodesState {
@@ -32,6 +102,8 @@ pub struct BootnodesState {
     pub snapshot: Option<BootnodeSnapshot>,
     /// Whether a background poller has been configured for this network.
     pub configured: bool,
+    /// DHT discovery crawl state.
+    pub discovery: DiscoveryState,
     rx: Option<tokio::sync::mpsc::Receiver<BootnodeSnapshot>>,
 }
 
@@ -42,12 +114,14 @@ impl BootnodesState {
         self.configured = true;
     }
 
-    /// Drains the latest snapshot from the background poller.
+    /// Drains the latest snapshot from the background poller and polls discovery state.
     pub fn poll(&mut self) {
-        let Some(ref mut rx) = self.rx else { return };
-        while let Ok(snapshot) = rx.try_recv() {
-            self.snapshot = Some(snapshot);
+        if let Some(ref mut rx) = self.rx {
+            while let Ok(snapshot) = rx.try_recv() {
+                self.snapshot = Some(snapshot);
+            }
         }
+        self.discovery.poll();
     }
 }
 

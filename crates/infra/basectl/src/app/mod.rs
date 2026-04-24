@@ -8,8 +8,8 @@ pub use core::App;
 
 mod resources;
 pub use resources::{
-    BootnodesState, ConductorState, DaState, FlashState, LoadTestTask, ProofsState, Resources,
-    ValidatorState,
+    BootnodesState, ConductorState, DaState, DiscoveryState, FlashState, LoadTestTask, ProofsState,
+    Resources, ValidatorState,
 };
 
 mod router;
