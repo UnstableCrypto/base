@@ -8,7 +8,7 @@ use std::{
 
 use alloy_consensus::BlockHeader;
 use alloy_primitives::{Address, B64, B256};
-use base_common_chains::{BaseUpgrade, Upgrades};
+use base_common_chains::Upgrades;
 use base_common_consensus::BasePrimitives;
 use base_common_rpc_types_engine::{BasePayloadAttributes, ExecutionData};
 use base_execution_chainspec::BaseChainSpec;
@@ -72,7 +72,7 @@ use serde::de::DeserializeOwned;
 use crate::{
     OpEngineApiBuilder, OpEngineTypes,
     args::{RollupArgs, TxpoolOrdering},
-    disc_filter::{BASE_ENR_KEY, BASE_PROTOCOL_ID, base_table_filter, init_azul_fork_id},
+    disc_filter::{BASE_ENR_KEY, BASE_PROTOCOL_ID},
     engine::OpEngineValidator,
 };
 
@@ -1072,11 +1072,7 @@ impl BaseNetworkBuilder {
         ctx: &BuilderContext<Node>,
     ) -> eyre::Result<NetworkConfig<Node::Provider, NetworkP>>
     where
-        Node: FullNodeTypes<
-            Types: NodeTypes<
-                ChainSpec: Hardforks + std::ops::Deref<Target = reth_chainspec::ChainSpec>,
-            >,
-        >,
+        Node: FullNodeTypes<Types: NodeTypes<ChainSpec: Hardforks>>,
         NetworkP: NetworkPrimitives,
     {
         let disable_txpool_gossip = self.disable_txpool_gossip;
@@ -1091,13 +1087,10 @@ impl BaseNetworkBuilder {
                     builder = builder.disable_discv4_discovery();
                 }
                 if !args.discovery.disable_discovery {
-                    init_azul_fork_id(ctx.chain_spec().hardfork_fork_id(BaseUpgrade::V1));
-
                     let base_version = version_metadata().cargo_pkg_version.as_ref();
 
-                    // Override the discv5 config produced by discovery_v5_builder()
-                    // to inject our table_filter (reth's ConfigBuilder doesn't expose
-                    // table_filter). Ports come from CLI args; IPs are corrected by
+                    // Override the discv5 config to set the Base protocol identity.
+                    // Ports come from CLI args; IPs are corrected by
                     // amend_listen_config_wrt_rlpx at build() time.
                     let listen_config = ListenConfig::from_two_sockets(
                         Some(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, args.discovery.discv5_port)),
@@ -1122,7 +1115,6 @@ impl BaseNetworkBuilder {
                             .add_enr_kv_pair(BASE_ENR_KEY, alloy_rlp::encode(base_version).into())
                             .discv5_config(
                                 reth_discv5::discv5::ConfigBuilder::new(listen_config)
-                                    .table_filter(base_table_filter)
                                     .protocol_identity(reth_discv5::discv5::ProtocolIdentity {
                                         protocol_id: BASE_PROTOCOL_ID,
                                         ..Default::default()
@@ -1148,11 +1140,7 @@ impl BaseNetworkBuilder {
 
 impl<Node, Pool> NetworkBuilder<Node, Pool> for BaseNetworkBuilder
 where
-    Node: FullNodeTypes<
-        Types: NodeTypes<
-            ChainSpec: Hardforks + std::ops::Deref<Target = reth_chainspec::ChainSpec>,
-        >,
-    >,
+    Node: FullNodeTypes<Types: NodeTypes<ChainSpec: Hardforks>>,
     Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TxTy<Node::Types>>>
         + Unpin
         + 'static,

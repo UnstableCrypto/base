@@ -40,9 +40,6 @@ reth-chainspec.workspace = true
 reth-cli-runner.workspace = true
 reth-node-builder.workspace = true
 
-# base
-base-common-chains.workspace = true
-
 # misc
 futures.workspace = true
 clap = { workspace = true, features = ["derive", "env"] }

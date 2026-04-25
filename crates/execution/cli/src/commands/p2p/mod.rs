@@ -1,7 +1,5 @@
 //! P2P subcommands, overriding the upstream bootnode with a discv5 NAT fix.
 
-use std::sync::Arc;
-
 use alloy_eips::BlockHashOrNumber;
 use backon::Retryable;
 use base_execution_chainspec::BaseChainSpec;
@@ -105,15 +103,8 @@ impl Command {
     }
 
     /// Returns the chain spec if one is embedded in the active subcommand.
-    ///
-    /// Header and Body delegate chain parsing internally to [`DownloadArgs`] whose `chain`
-    /// field is private, so we return `None` for those. Only the log-directory path suffix
-    /// uses this value, so the impact is cosmetic.
-    pub const fn chain_spec(&self) -> Option<&Arc<BaseChainSpec>> {
-        match &self.command {
-            Subcommands::Bootnode(cmd) => cmd.chain_spec(),
-            _ => None,
-        }
+    pub const fn chain_spec(&self) -> Option<&std::sync::Arc<BaseChainSpec>> {
+        None
     }
 }
 
@@ -138,7 +129,7 @@ enum Subcommands {
     /// `RLPx` utilities.
     Rlpx(rlpx::Command),
     /// Start a discovery-only bootnode.
-    Bootnode(bootnode::Command<crate::chainspec::BaseChainSpecParser>),
+    Bootnode(bootnode::Command),
     /// Print the enode identifier of this node.
     Enode(enode::Command),
 }

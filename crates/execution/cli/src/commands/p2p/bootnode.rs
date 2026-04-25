@@ -1,12 +1,9 @@
 //! Bootnode command with discv5 NAT fix.
 
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf};
 
-use base_common_chains::BaseUpgrade;
-use base_execution_chainspec::BaseChainSpec;
-use base_node_core::{BASE_ENR_KEY, BASE_PROTOCOL_ID, base_table_filter, init_azul_fork_id};
+use base_node_core::{BASE_ENR_KEY, BASE_PROTOCOL_ID};
 use clap::Parser;
-use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_util::{get_secret_key, load_secret_key::rng_secret_key};
 use reth_discv4::{DiscoveryUpdate, Discv4, Discv4Config};
 use reth_discv5::{
@@ -23,7 +20,7 @@ use tracing::{info, warn};
 
 /// Start a discovery-only bootnode.
 #[derive(Parser, Debug)]
-pub struct Command<C: ChainSpecParser = crate::chainspec::BaseChainSpecParser> {
+pub struct Command {
     /// Listen address for the bootnode for discv4
     #[arg(long, default_value = "0.0.0.0:30301")]
     pub v4_addr: SocketAddr,
@@ -45,20 +42,9 @@ pub struct Command<C: ChainSpecParser = crate::chainspec::BaseChainSpecParser> {
     /// Run a discv5 topic discovery bootnode in addition to discv4.
     #[arg(long)]
     pub v5: bool,
-
-    /// The chain this node is running.
-    #[arg(
-        long,
-        value_name = "CHAIN_OR_PATH",
-        long_help = C::help_message(),
-        default_value = C::default_value(),
-        value_parser = C::parser(),
-        global = true,
-    )]
-    pub chain: Arc<C::ChainSpec>,
 }
 
-impl<C: ChainSpecParser<ChainSpec = BaseChainSpec>> Command<C> {
+impl Command {
     /// Execute the bootnode command.
     pub async fn execute(self) -> eyre::Result<()> {
         info!(v4_addr = %self.v4_addr, v5_addr = %self.v5_addr, nat = %self.nat, v5 = self.v5, "Bootnode starting");
@@ -81,14 +67,11 @@ impl<C: ChainSpecParser<ChainSpec = BaseChainSpec>> Command<C> {
         if self.v5 {
             info!("Initializing discv5");
 
-            init_azul_fork_id(self.chain.hardfork_fork_id(BaseUpgrade::V1));
-
             let base_version = version_metadata().cargo_pkg_version.as_ref();
             let config = Config::builder(self.v5_addr)
                 .add_enr_kv_pair(BASE_ENR_KEY, alloy_rlp::encode(base_version).into())
                 .discv5_config(
                     discv5::ConfigBuilder::new(DEFAULT_DISCOVERY_V5_LISTEN_CONFIG)
-                        .table_filter(base_table_filter)
                         .protocol_identity(discv5::ProtocolIdentity {
                             protocol_id: BASE_PROTOCOL_ID,
                             ..Default::default()
@@ -159,11 +142,6 @@ impl<C: ChainSpecParser<ChainSpec = BaseChainSpec>> Command<C> {
         }
 
         Ok(())
-    }
-
-    /// Returns the chain spec if one is embedded in the active subcommand.
-    pub const fn chain_spec(&self) -> Option<&Arc<BaseChainSpec>> {
-        Some(&self.chain)
     }
 
     fn network_secret(&self) -> eyre::Result<SecretKey> {
