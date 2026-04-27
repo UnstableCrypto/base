@@ -80,3 +80,32 @@ Results:
 - `cargo clippy -p base-consensus-node --tests --benches --no-deps -- -D warnings` passed again; full clippy without `--no-deps` remains blocked by pre-existing dependency lints outside the touched crate
 Next:
 - if the finalizer is revisited, add a larger matrix of retained-tail sizes (for example finalize-at-1, finalize-at-1/4, finalize-at-1/2, finalize-at-3/4) to characterize how `split_off` scales with survivor count and to catch future regressions in queue-shape sensitivity
+
+## 2026-04-27 01:10 UTC
+Focus: `base-batcher-service` recent transaction startup scan in `RecentTxScanner::highest_submitted_l2_block()`.
+Hypothesis: the startup scan should not rescan every buffered channel after each L1 block when only channels touched by frames in the current block can transition to ready; restricting the drain to touched channel IDs should reduce unnecessary map scans, especially when the buffered channel set is large and the current block only advances a small subset.
+Commands:
+- `cargo test -p base-batcher-service recent_txs -- --nocapture`
+- `cargo bench -p base-batcher-service --bench recent_txs -- --warm-up-time 0.5 --measurement-time 1.5 --sample-size 20`
+- added a focused Criterion bench at `crates/batcher/service/benches/recent_txs.rs`
+- changed `RecentTxScanner` to track per-block `touched_channel_ids` and drain only those ready channels
+- added `drain_ready_channels_only_checks_touched_ids`
+- `cargo bench -p base-batcher-service --bench recent_txs -- --warm-up-time 0.5 --measurement-time 1.0 --sample-size 15`
+- `cargo clippy -p base-batcher-service --tests --benches --no-deps -- -D warnings`
+Results:
+- extracted two public benchmark hooks: `drain_ready_channels` for the touched-only path and `drain_all_ready_channels` for the old full-scan baseline, without changing `decode_channel` behavior
+- replaced the per-block `channels.iter().filter(|(_, ch)| ch.is_ready())` full scan with touched-ID draining in `highest_submitted_l2_block()`
+- added a regression test proving untouched ready channels remain buffered, touched incomplete channels stay buffered, and touched ready channels are decoded and removed when their ID is supplied
+- added `criterion` bench coverage for three shapes: fully touched mixed channels, fully touched incomplete channels, and sparse touched channels against a larger buffered set
+- validation passed: focused tests `6 passed`; `cargo clippy -p base-batcher-service --tests --benches --no-deps -- -D warnings` passed
+- benchmark results after the change:
+  - `baseline_scan_all_with_4096_ready_and_4096_incomplete`: `7.8886 ms .. 8.4072 ms`
+  - `4096_touched_ready_among_8192_channels`: `7.8312 ms .. 8.2868 ms` (effectively flat because ready-channel decode dominates)
+  - `baseline_scan_all_with_8192_incomplete`: `391.27 µs .. 672.34 µs`
+  - `4096_touched_incomplete_among_8192_channels`: `427.93 µs .. 511.84 µs` (same rough band)
+  - `baseline_scan_all_with_64_touched_ready_among_8192_channels`: `513.58 µs .. 720.29 µs`
+  - `64_touched_ready_among_8192_channels`: `507.07 µs .. 833.40 µs` (noisy, effectively flat)
+  - `baseline_scan_all_with_64_touched_incomplete_among_8192_channels`: `396.74 µs .. 424.37 µs`
+  - `64_touched_incomplete_among_8192_channels`: `366.17 µs .. 382.39 µs` (~8-10% lower in the sparse no-decode case, matching the intended avoided-scan scenario)
+Next:
+- if this path is revisited, grow the benchmark matrix around frame fan-out and touched-ID cardinality so the crossover point between touched-only draining and full-map scanning is explicit, especially for startup scans with many buffered but mostly untouched channels

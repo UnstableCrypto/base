@@ -106,6 +106,7 @@ impl RecentTxScanner {
                 timestamp: block.header.inner.timestamp,
             };
 
+            let mut touched_channel_ids = Vec::new();
             for tx in block.transactions.txns() {
                 if tx.inner.signer() != batcher_address {
                     continue;
@@ -122,6 +123,9 @@ impl RecentTxScanner {
                 };
 
                 for frame in frames {
+                    if !touched_channel_ids.contains(&frame.id) {
+                        touched_channel_ids.push(frame.id);
+                    }
                     let channel = channels
                         .entry(frame.id)
                         .or_insert_with(|| Channel::new(frame.id, block_info));
@@ -131,14 +135,13 @@ impl RecentTxScanner {
                 }
             }
 
-            // Drain channels that became complete within this block.
-            let complete_ids: Vec<ChannelId> =
-                channels.iter().filter(|(_, ch)| ch.is_ready()).map(|(id, _)| *id).collect();
-            for id in complete_ids {
-                if let Some(ch) = channels.remove(&id) {
-                    Self::decode_channel(&ch, block_info.timestamp, rollup_config, &mut highest_l2);
-                }
-            }
+            Self::drain_ready_channels(
+                &mut channels,
+                &touched_channel_ids,
+                block_info.timestamp,
+                rollup_config,
+                &mut highest_l2,
+            );
         }
 
         if let Some(block) = highest_l2 {
@@ -148,6 +151,48 @@ impl RecentTxScanner {
         }
 
         Ok(highest_l2)
+    }
+
+    /// Decodes all ready channels by scanning the full buffered map.
+    ///
+    /// This preserves the original O(n) scan behavior and is kept public so the
+    /// focused Criterion bench can compare the touched-only drain against the
+    /// full-map scan it replaced.
+    pub fn drain_all_ready_channels(
+        channels: &mut HashMap<ChannelId, Channel>,
+        inclusion_timestamp: u64,
+        rollup_config: &RollupConfig,
+        highest_l2: &mut Option<u64>,
+    ) {
+        let ready_channel_ids: Vec<ChannelId> =
+            channels.iter().filter(|(_, channel)| channel.is_ready()).map(|(id, _)| *id).collect();
+        for channel_id in ready_channel_ids {
+            if let Some(channel) = channels.remove(&channel_id) {
+                Self::decode_channel(&channel, inclusion_timestamp, rollup_config, highest_l2);
+            }
+        }
+    }
+
+    /// Decodes all channels that became ready within the current block.
+    ///
+    /// This helper is public so the startup-scan drain path can be benchmarked
+    /// directly without requiring a full RPC-backed recent-transaction scan.
+    pub fn drain_ready_channels(
+        channels: &mut HashMap<ChannelId, Channel>,
+        touched_channel_ids: &[ChannelId],
+        inclusion_timestamp: u64,
+        rollup_config: &RollupConfig,
+        highest_l2: &mut Option<u64>,
+    ) {
+        for channel_id in touched_channel_ids {
+            let is_ready = channels.get(channel_id).is_some_and(Channel::is_ready);
+            if !is_ready {
+                continue;
+            }
+            if let Some(channel) = channels.remove(channel_id) {
+                Self::decode_channel(&channel, inclusion_timestamp, rollup_config, highest_l2);
+            }
+        }
     }
 
     /// Decodes all batches from a complete channel and updates `highest_l2` with
@@ -175,6 +220,8 @@ impl RecentTxScanner {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use alloy_eips::eip1898::BlockNumHash;
     use alloy_primitives::B256;
     use alloy_rlp::Encodable;
@@ -324,5 +371,64 @@ mod tests {
         let mut highest = Some(2000u64);
         RecentTxScanner::decode_channel(&channel, 0, &cfg, &mut highest);
         assert_eq!(highest, Some(2000));
+    }
+
+    #[test]
+    fn drain_ready_channels_only_checks_touched_ids() {
+        let cfg = test_rollup_config(1000, 1000, 2);
+        let ready_channel = single_frame_channel(
+            [9u8; 16],
+            encode_single_batch(&SingleBatch { timestamp: 1010, ..Default::default() }),
+        );
+        let untouched_ready_id = ready_channel.id();
+        let touched_incomplete_id: ChannelId = [8u8; 16];
+        let mut touched_incomplete = Channel::new(touched_incomplete_id, BlockInfo::default());
+        touched_incomplete
+            .add_frame(
+                Frame {
+                    id: touched_incomplete_id,
+                    number: 0,
+                    data: b"partial".to_vec(),
+                    is_last: false,
+                },
+                BlockInfo::default(),
+            )
+            .expect("frame must be accepted");
+
+        let mut channels =
+            HashMap::from([(untouched_ready_id, ready_channel), (touched_incomplete_id, touched_incomplete)]);
+        let mut highest = None;
+
+        RecentTxScanner::drain_ready_channels(
+            &mut channels,
+            &[touched_incomplete_id],
+            0,
+            &cfg,
+            &mut highest,
+        );
+
+        assert_eq!(highest, None, "untouched ready channels should not be decoded this block");
+        assert!(
+            channels.contains_key(&untouched_ready_id),
+            "untouched ready channels must remain buffered"
+        );
+        assert!(
+            channels.contains_key(&touched_incomplete_id),
+            "touched but incomplete channels must remain buffered"
+        );
+
+        RecentTxScanner::drain_ready_channels(
+            &mut channels,
+            &[untouched_ready_id],
+            0,
+            &cfg,
+            &mut highest,
+        );
+
+        assert_eq!(highest, Some(1005));
+        assert!(
+            !channels.contains_key(&untouched_ready_id),
+            "touched ready channels must be drained once decoded"
+        );
     }
 }
