@@ -142,6 +142,17 @@ fn track_touched_channel_ids_with_tracker(frame_channel_ids: &[ChannelId]) -> Ve
     tracker.touched_channel_ids().to_vec()
 }
 
+fn track_touched_channel_ids_with_reused_tracker(
+    tracker: &mut TouchedChannelTracker,
+    frame_channel_ids: &[ChannelId],
+) -> Vec<ChannelId> {
+    tracker.reset_with_capacity(frame_channel_ids.len());
+    for channel_id in frame_channel_ids {
+        tracker.record(*channel_id);
+    }
+    tracker.touched_channel_ids().to_vec()
+}
+
 fn bench_recent_tx_drain_ready_channels(c: &mut Criterion) {
     let mut group = c.benchmark_group("batcher_service/recent_txs/drain_ready_channels");
     group.sample_size(20);
@@ -304,6 +315,15 @@ fn bench_recent_tx_track_touched_channel_ids(c: &mut Criterion) {
     group.bench_function("hashset_tracker_4096_unique_frame_channel_ids", |b| {
         b.iter(|| black_box(track_touched_channel_ids_with_tracker(black_box(&unique_frame_ids))));
     });
+    let mut reused_unique_tracker = TouchedChannelTracker::with_capacity(unique_frame_ids.len());
+    group.bench_function("reused_hashset_tracker_4096_unique_frame_channel_ids", |b| {
+        b.iter(|| {
+            black_box(track_touched_channel_ids_with_reused_tracker(
+                black_box(&mut reused_unique_tracker),
+                black_box(&unique_frame_ids),
+            ))
+        });
+    });
 
     let duplicate_fanout_frame_ids = duplicate_fanout_frame_channel_ids();
     group.bench_function("baseline_vec_scan_4096_frames_across_512_unique_channel_ids", |b| {
@@ -316,6 +336,16 @@ fn bench_recent_tx_track_touched_channel_ids(c: &mut Criterion) {
             black_box(track_touched_channel_ids_with_tracker(black_box(
                 &duplicate_fanout_frame_ids,
             )))
+        });
+    });
+    let mut reused_duplicate_tracker =
+        TouchedChannelTracker::with_capacity(duplicate_fanout_frame_ids.len());
+    group.bench_function("reused_hashset_tracker_4096_frames_across_512_unique_channel_ids", |b| {
+        b.iter(|| {
+            black_box(track_touched_channel_ids_with_reused_tracker(
+                black_box(&mut reused_duplicate_tracker),
+                black_box(&duplicate_fanout_frame_ids),
+            ))
         });
     });
 

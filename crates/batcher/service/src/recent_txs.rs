@@ -37,6 +37,25 @@ impl TouchedChannelTracker {
         }
     }
 
+    /// Clears the tracker so it can be reused for another block scan.
+    pub fn clear(&mut self) {
+        self.touched_channel_ids.clear();
+        self.seen_channel_ids.clear();
+    }
+
+    /// Clears the tracker and grows its backing storage if `capacity` requires it.
+    pub fn reset_with_capacity(&mut self, capacity: usize) {
+        self.clear();
+
+        if self.touched_channel_ids.capacity() < capacity {
+            self.touched_channel_ids.reserve(capacity - self.touched_channel_ids.capacity());
+        }
+
+        if self.seen_channel_ids.capacity() < capacity {
+            self.seen_channel_ids.reserve(capacity - self.seen_channel_ids.capacity());
+        }
+    }
+
     /// Records a touched channel ID the first time it appears in the current block.
     pub fn record(&mut self, channel_id: ChannelId) {
         if self.seen_channel_ids.insert(channel_id) {
@@ -98,6 +117,7 @@ impl RecentTxScanner {
 
         let mut channels: HashMap<ChannelId, Channel> = HashMap::new();
         let mut highest_l2: Option<u64> = None;
+        let mut touched_channel_ids = TouchedChannelTracker::default();
 
         // Fetch blocks in parallel with bounded concurrency, preserving L1 order.
         // Blocks are processed as the stream yields them so peak memory is
@@ -135,8 +155,7 @@ impl RecentTxScanner {
                 timestamp: block.header.inner.timestamp,
             };
 
-            let mut touched_channel_ids =
-                TouchedChannelTracker::with_capacity(block.transactions.len());
+            touched_channel_ids.reset_with_capacity(block.transactions.len());
             for tx in block.transactions.txns() {
                 if tx.inner.signer() != batcher_address {
                     continue;
@@ -476,5 +495,24 @@ mod tests {
         tracker.record(channel_id_a);
 
         assert_eq!(tracker.touched_channel_ids(), &[channel_id_b, channel_id_a, channel_id_c]);
+    }
+
+    #[test]
+    fn touched_channel_tracker_reset_allows_reuse_after_clear() {
+        let channel_id_a: ChannelId = [1u8; 16];
+        let channel_id_b: ChannelId = [2u8; 16];
+        let channel_id_c: ChannelId = [3u8; 16];
+        let mut tracker = TouchedChannelTracker::with_capacity(2);
+
+        tracker.record(channel_id_a);
+        tracker.record(channel_id_b);
+        assert_eq!(tracker.touched_channel_ids(), &[channel_id_a, channel_id_b]);
+
+        tracker.reset_with_capacity(4);
+        tracker.record(channel_id_b);
+        tracker.record(channel_id_c);
+        tracker.record(channel_id_b);
+
+        assert_eq!(tracker.touched_channel_ids(), &[channel_id_b, channel_id_c]);
     }
 }

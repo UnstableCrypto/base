@@ -135,3 +135,28 @@ Results:
 - existing drain-path benches stayed in the same rough bands as the prior run, so this iteration primarily improved per-block touched-ID bookkeeping rather than decode-heavy channel draining
 Next:
 - if startup scan latency is revisited again, add an end-to-end block-parsing bench that combines frame parsing, touched-ID tracking, and touched-only draining so the next iteration can quantify where bookkeeping stops mattering relative to channel decode cost
+
+## 2026-04-27 05:28 UTC
+Focus: `base-batcher-service` per-block tracker reuse inside `RecentTxScanner::highest_submitted_l2_block()`.
+Hypothesis: after replacing touched-channel deduplication with `TouchedChannelTracker`, the startup scan still allocates a fresh tracker per L1 block; reusing one tracker across blocks should shave a little more bookkeeping overhead off the scan without changing touched-ID order or drain semantics.
+Commands:
+- `cargo bench -p base-batcher-service --bench recent_txs -- --warm-up-time 0.5 --measurement-time 1.0 --sample-size 15`
+- edited `crates/batcher/service/src/recent_txs.rs` to let `TouchedChannelTracker` clear/reset its storage and reused a single tracker across the scan loop
+- extended `crates/batcher/service/benches/recent_txs.rs` with comparative microbenches for fresh-allocating vs. reused tracker bookkeeping
+- `cargo fmt --all`
+- `cargo test -p base-batcher-service recent_txs -- --nocapture`
+- `cargo bench -p base-batcher-service --bench recent_txs -- --warm-up-time 0.5 --measurement-time 1.0 --sample-size 15`
+- `cargo clippy -p base-batcher-service --tests --benches --no-deps -- -D warnings`
+Results:
+- added `TouchedChannelTracker::clear` and `reset_with_capacity`, then moved `highest_submitted_l2_block()` to reuse one tracker across the whole block scan instead of allocating a fresh `HashSet` + `Vec` pair for every fetched L1 block
+- added `touched_channel_tracker_reset_allows_reuse_after_clear` to lock in reuse semantics and prove dedup/order behavior survives resets; focused tests now pass (`8 passed`)
+- added two new Criterion cases to compare the old fresh-allocation tracker path against the reused tracker path directly
+- end-to-end drain-path benches stayed noisy and effectively flat, which matches prior runs that showed decode work dominates there
+- comparative bookkeeping microbench results on the confirming run:
+  - `hashset_tracker_4096_unique_frame_channel_ids`: `48.533 µs .. 48.898 µs`
+  - `reused_hashset_tracker_4096_unique_frame_channel_ids`: `48.225 µs .. 48.270 µs` (~0.9% lower median)
+  - `hashset_tracker_4096_frames_across_512_unique_channel_ids`: `44.627 µs .. 44.936 µs`
+  - `reused_hashset_tracker_4096_frames_across_512_unique_channel_ids`: `44.311 µs .. 44.498 µs` (~0.8% lower median)
+- `cargo clippy -p base-batcher-service --tests --benches --no-deps -- -D warnings` passed
+Next:
+- if the startup scan is revisited again, add a block-level benchmark that includes frame parsing plus touched-ID tracking so allocator reuse can be measured in a shape closer to real RPC-fetched blocks, not just the isolated tracker microbench
