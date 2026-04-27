@@ -25,9 +25,24 @@ const READY_TRANSITION_BLOCK_COUNT: usize = 4;
 const READY_TRANSITION_CHANNEL_COUNT: usize = 1_024;
 const STAGGERED_READY_BLOCK_COUNT: usize = 4;
 const STAGGERED_READY_CHANNEL_COUNT: usize = 1_024;
+const MIXED_READY_BLOCK_COUNT: usize = 4;
 const FRONT_LOADED_READY_CHANNEL_COUNTS: [usize; STAGGERED_READY_BLOCK_COUNT] =
     [512, 256, 128, 128];
 const BACK_LOADED_READY_CHANNEL_COUNTS: [usize; STAGGERED_READY_BLOCK_COUNT] = [128, 128, 256, 512];
+const MIXED_BACK_LOADED_READY_COHORTS: [ReadyTransitionCohort; 5] = [
+    ReadyTransitionCohort { start_block: 0, ready_block: 0, channel_count: 128 },
+    ReadyTransitionCohort { start_block: 0, ready_block: 1, channel_count: 128 },
+    ReadyTransitionCohort { start_block: 1, ready_block: 2, channel_count: 256 },
+    ReadyTransitionCohort { start_block: 0, ready_block: 3, channel_count: 256 },
+    ReadyTransitionCohort { start_block: 2, ready_block: 3, channel_count: 256 },
+];
+
+#[derive(Clone, Copy, Debug)]
+struct ReadyTransitionCohort {
+    start_block: usize,
+    ready_block: usize,
+    channel_count: usize,
+}
 
 fn test_rollup_config() -> RollupConfig {
     RollupConfig {
@@ -300,6 +315,57 @@ fn multi_block_weighted_ready_tx_payloads(ready_channel_counts: &[usize]) -> Vec
 
     debug_assert_eq!(channel_index, ready_channel_counts.iter().sum::<usize>());
     debug_assert_eq!(block_tx_payloads.len(), block_count);
+
+    block_tx_payloads
+}
+
+fn multi_block_cohort_ready_tx_payloads(
+    block_count: usize,
+    ready_cohorts: &[ReadyTransitionCohort],
+) -> Vec<Vec<Vec<u8>>> {
+    let mut block_tx_payloads: Vec<Vec<Vec<u8>>> = (0..block_count).map(|_| Vec::new()).collect();
+    let mut channel_index = 0usize;
+
+    for ready_cohort in ready_cohorts {
+        assert!(
+            ready_cohort.start_block <= ready_cohort.ready_block,
+            "ready cohort start block must not exceed its ready block"
+        );
+        assert!(
+            ready_cohort.ready_block < block_count,
+            "ready cohort ready block must stay within the requested block count"
+        );
+
+        for _ in 0..ready_cohort.channel_count {
+            let channel_id = channel_id(channel_index);
+            let encoded_batch = encode_single_batch(&SingleBatch {
+                timestamp: 1_010 + channel_index as u64 * 2,
+                ..Default::default()
+            });
+            let active_block_count = ready_cohort.ready_block - ready_cohort.start_block + 1;
+
+            for (frame_offset, frame_data) in
+                split_frame_data_across_blocks(&encoded_batch, active_block_count)
+                    .into_iter()
+                    .enumerate()
+            {
+                let block_index = ready_cohort.start_block + frame_offset;
+                block_tx_payloads[block_index].push(encode_tx_frames_payload(&[Frame {
+                    id: channel_id,
+                    number: frame_offset as u16,
+                    data: frame_data,
+                    is_last: block_index == ready_cohort.ready_block,
+                }]));
+            }
+
+            channel_index += 1;
+        }
+    }
+
+    debug_assert_eq!(
+        channel_index,
+        ready_cohorts.iter().map(|ready_cohort| ready_cohort.channel_count).sum::<usize>()
+    );
 
     block_tx_payloads
 }
@@ -1104,6 +1170,62 @@ fn bench_recent_tx_process_blocks_weighted_ready(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_recent_tx_process_blocks_mixed_ready(c: &mut Criterion) {
+    let mut group = c.benchmark_group("batcher_service/recent_txs/process_blocks_mixed_ready");
+    group.sample_size(15);
+
+    let rollup_config = test_rollup_config();
+    let block_tx_payloads = multi_block_cohort_ready_tx_payloads(
+        MIXED_READY_BLOCK_COUNT,
+        &MIXED_BACK_LOADED_READY_COHORTS,
+    );
+
+    group.bench_function("baseline_vec_scan_all_mixed_back_loaded_4_blocks_1024_channels", |b| {
+        b.iter_batched(
+            HashMap::new,
+            |mut channels| {
+                black_box(process_blocks_with_vec_tracking_and_full_scan(
+                    black_box(&mut channels),
+                    black_box(&block_tx_payloads),
+                    black_box(&rollup_config),
+                ));
+                black_box(channels)
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("fresh_tracker_mixed_back_loaded_4_blocks_1024_channels", |b| {
+        b.iter_batched(
+            HashMap::new,
+            |mut channels| {
+                black_box(process_blocks_with_fresh_tracker_and_touched_only_drain(
+                    black_box(&mut channels),
+                    black_box(&block_tx_payloads),
+                    black_box(&rollup_config),
+                ));
+                black_box(channels)
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("reused_tracker_mixed_back_loaded_4_blocks_1024_channels", |b| {
+        b.iter_batched(
+            HashMap::new,
+            |mut channels| {
+                black_box(process_blocks_with_tracker_and_touched_only_drain(
+                    black_box(&mut channels),
+                    black_box(&block_tx_payloads),
+                    black_box(&rollup_config),
+                ));
+                black_box(channels)
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_recent_tx_ready_channel_lookup,
@@ -1114,5 +1236,6 @@ criterion_group!(
     bench_recent_tx_process_blocks_ready_transition,
     bench_recent_tx_process_blocks_staggered_ready,
     bench_recent_tx_process_blocks_weighted_ready,
+    bench_recent_tx_process_blocks_mixed_ready,
 );
 criterion_main!(benches);

@@ -291,3 +291,22 @@ Results:
 - focused validation passed again: `cargo test -p base-batcher-service recent_txs -- --nocapture` (`8 passed`) and `cargo clippy -p base-batcher-service --tests --benches --no-deps -- -D warnings`
 Next:
 - if this startup-scan path is revisited again, add a mixed readiness matrix with uneven per-block touch counts (not just completion counts) so the next experiment can separate savings from survivor-heavy draining versus savings from fewer per-block frame parses
+
+## 2026-04-27 20:25 UTC
+Focus: `base-batcher-service` recent-tx startup scan mixed readiness benchmark coverage with uneven touch-start timing.
+Hypothesis: the weighted readiness matrix still starts every channel on block 0, so it conflates survivor-heavy drain savings with the cost of touching every channel on every earlier block; a cohort-based mixed fixture where some channels first appear on later blocks should separate those effects before any more production changes.
+Commands:
+- `cargo bench -p base-batcher-service --bench recent_txs process_blocks_weighted_ready -- --warm-up-time 0.5 --measurement-time 1.0 --sample-size 15`
+- extended `crates/batcher/service/benches/recent_txs.rs` with `ReadyTransitionCohort`, `multi_block_cohort_ready_tx_payloads`, and a new `process_blocks_mixed_ready` Criterion group
+- `cargo fmt --all`
+- `cargo bench -p base-batcher-service --bench recent_txs process_blocks_mixed_ready -- --warm-up-time 0.5 --measurement-time 1.0 --sample-size 15`
+- `cargo test -p base-batcher-service recent_txs -- --nocapture`
+- `cargo clippy -p base-batcher-service --tests --benches --no-deps -- -D warnings`
+Results:
+- refreshed the weighted-ready baseline before editing the bench file: front-loaded median `2.2425 ms` baseline vs `2.0634 ms` fresh tracker (~`8.0%` lower) vs `2.0278 ms` reused tracker (~`9.6%` lower); back-loaded median `2.5104 ms` baseline vs `2.2357 ms` fresh tracker (~`10.9%` lower) vs `2.1885 ms` reused tracker (~`12.8%` lower)
+- added benchmark-only mixed readiness coverage where `1024` channels are split into five cohorts with staggered start blocks and back-loaded completion (`128` ready on block 0, `128` on block 1, `256` starting at block 1 and ready on block 2, `256` spanning all four blocks, and `256` starting at block 2 and ready on block 3)
+- the new mixed fixture showed the touched-only path still wins when later cohorts do not exist in early blocks, but the gain is smaller than the fully back-loaded weighted case: `baseline_vec_scan_all_mixed_back_loaded_4_blocks_1024_channels` = `2.2023 ms`, `fresh_tracker_mixed_back_loaded_4_blocks_1024_channels` = `2.0648 ms` (~`6.2%` lower), `reused_tracker_mixed_back_loaded_4_blocks_1024_channels` = `2.0934 ms` (~`4.9%` lower)
+- compared with the weighted back-loaded result, the reduced win in the mixed fixture suggests a meaningful part of the touched-only benefit comes from avoiding scans over long-lived survivor-heavy channels, not just from distributing completion later in time
+- focused validation passed again: `cargo test -p base-batcher-service recent_txs -- --nocapture` (`8 passed`) and `cargo clippy -p base-batcher-service --tests --benches --no-deps -- -D warnings`
+Next:
+- if this startup-scan path is revisited again, add another mixed fixture that holds completion timing constant while varying only touch-start sparsity, so the next experiment can quantify how much of the win comes from survivor-heavy buffered maps versus per-block frame parsing volume
