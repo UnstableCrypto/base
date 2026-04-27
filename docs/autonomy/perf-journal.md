@@ -185,3 +185,26 @@ Results:
 - focused tests still passed (`8 passed`) and `cargo clippy -p base-batcher-service --tests --benches --no-deps -- -D warnings` passed
 Next:
 - if this startup scan path is revisited again, benchmark frame parsing plus touched-only draining together so the next candidate optimization is chosen from a more end-to-end block-level profile instead of another tiny lookup tweak
+
+## 2026-04-27 09:48 UTC
+Focus: `base-batcher-service` recent-tx startup scan block-level benchmarking coverage.
+Hypothesis: the existing microbenches proved touched-ID bookkeeping wins in isolation, but the next useful measurement layer is a block-level harness that includes version-0 frame parsing, channel mutation, and draining together; this should show whether the touched-only startup-scan changes still matter once more realistic per-block work is included.
+Commands:
+- `cargo bench -p base-batcher-service --bench recent_txs -- --warm-up-time 0.5 --measurement-time 1.0 --sample-size 15`
+- extended `crates/batcher/service/benches/recent_txs.rs` with a new `process_block` Criterion group that replays encoded version-0 frame payloads into the same `Frame::parse_frames` + channel update + drain flow used by `RecentTxScanner`
+- `cargo fmt --all`
+- `cargo bench -p base-batcher-service --bench recent_txs -- --warm-up-time 0.5 --measurement-time 1.0 --sample-size 15`
+- `cargo test -p base-batcher-service recent_txs -- --nocapture`
+- `cargo clippy -p base-batcher-service --tests --benches --no-deps -- -D warnings`
+Results:
+- added benchmark-only helpers that synthesize encoded transaction payloads and compare the old per-block `Vec::contains` + full-map drain strategy against the current tracker-backed touched-only drain path without requiring RPC I/O
+- the new `process_block` group closes the gap between tiny bookkeeping microbenches and the noisier end-to-end drain benchmarks by measuring parsing, channel insertion, touched-ID tracking, and draining together on a single fixture block
+- new block-level benchmark results:
+  - `baseline_vec_scan_all_4096_ready_unique_channels_from_empty`: `9.5927 ms .. 9.6277 ms`
+  - `tracker_touched_only_4096_ready_unique_channels_from_empty`: `7.6659 ms .. 7.8739 ms` (~19% lower median)
+  - `baseline_vec_scan_all_64_incomplete_touches_among_8192_buffered_channels`: `24.384 µs .. 25.826 µs`
+  - `tracker_touched_only_64_incomplete_touches_among_8192_buffered_channels`: `7.2882 µs .. 10.650 µs` (roughly 2.5-3x lower despite some noise)
+- this confirms the prior touched-only + tracker work still produces a measurable win once frame parsing and channel mutation are included, even though the decode-heavy drain benchmarks remain noisy on some shapes
+- focused validation passed again: `cargo test -p base-batcher-service recent_txs -- --nocapture` (`8 passed`) and `cargo clippy -p base-batcher-service --tests --benches --no-deps -- -D warnings`
+Next:
+- if this path is revisited again, add a multi-block benchmark that reuses the same tracker across successive synthetic L1 blocks so allocator reuse and survivor-heavy buffered-channel sets can be measured in a shape even closer to the real startup scan loop

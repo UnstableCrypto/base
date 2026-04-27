@@ -10,7 +10,9 @@ use alloy_primitives::B256;
 use alloy_rlp::Encodable;
 use base_batcher_service::{RecentTxScanner, TouchedChannelTracker};
 use base_common_genesis::{ChainGenesis, RollupConfig};
-use base_protocol::{Batch, BlockInfo, Channel, ChannelId, Frame, SingleBatch};
+use base_protocol::{
+    Batch, BlockInfo, Channel, ChannelId, DERIVATION_VERSION_0, Frame, SingleBatch,
+};
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 
 const READY_CHANNEL_COUNT: usize = 4_096;
@@ -127,6 +129,41 @@ fn duplicate_fanout_frame_channel_ids() -> Vec<ChannelId> {
         .collect()
 }
 
+fn encode_tx_frames_payload(frames: &[Frame]) -> Vec<u8> {
+    let mut encoded =
+        Vec::with_capacity(1 + frames.iter().map(|frame| frame.encode().len()).sum::<usize>());
+    encoded.push(DERIVATION_VERSION_0);
+    for frame in frames {
+        encoded.extend_from_slice(&frame.encode());
+    }
+    encoded
+}
+
+fn ready_tx_payload(id: ChannelId, timestamp: u64) -> Vec<u8> {
+    encode_tx_frames_payload(&[Frame {
+        id,
+        number: 0,
+        data: encode_single_batch(&SingleBatch { timestamp, ..Default::default() }),
+        is_last: true,
+    }])
+}
+
+fn incomplete_tx_payload(id: ChannelId, number: u16) -> Vec<u8> {
+    encode_tx_frames_payload(&[Frame { id, number, data: b"partial".to_vec(), is_last: false }])
+}
+
+fn ready_block_tx_payloads() -> Vec<Vec<u8>> {
+    (0..READY_CHANNEL_COUNT)
+        .map(|index| ready_tx_payload(channel_id(index), 1_010 + index as u64 * 2))
+        .collect()
+}
+
+fn sparse_incomplete_followup_tx_payloads() -> Vec<Vec<u8>> {
+    (0..SPARSE_TOUCHED_CHANNEL_COUNT)
+        .map(|index| incomplete_tx_payload(channel_id(index), 1))
+        .collect()
+}
+
 fn track_touched_channel_ids_with_vec(frame_channel_ids: &[ChannelId]) -> Vec<ChannelId> {
     let mut touched_channel_ids = Vec::with_capacity(frame_channel_ids.len());
     for channel_id in frame_channel_ids {
@@ -183,6 +220,60 @@ fn count_ready_touched_channels_with_get(
         }
     }
     ready_channels
+}
+
+fn process_block_with_vec_tracking_and_full_scan(
+    channels: &mut HashMap<ChannelId, Channel>,
+    tx_payloads: &[Vec<u8>],
+    rollup_config: &RollupConfig,
+) -> Option<u64> {
+    let block_info = BlockInfo::default();
+    let mut touched_channel_ids = Vec::with_capacity(tx_payloads.len());
+    for tx_payload in tx_payloads {
+        let frames =
+            Frame::parse_frames(tx_payload).expect("fixture tx payload must parse into frames");
+        for frame in frames {
+            if !touched_channel_ids.contains(&frame.id) {
+                touched_channel_ids.push(frame.id);
+            }
+            let channel =
+                channels.entry(frame.id).or_insert_with(|| Channel::new(frame.id, block_info));
+            channel.add_frame(frame, block_info).expect("fixture frame must be accepted");
+        }
+    }
+
+    let mut highest = None;
+    RecentTxScanner::drain_all_ready_channels(channels, 0, rollup_config, &mut highest);
+    highest
+}
+
+fn process_block_with_tracker_and_touched_only_drain(
+    channels: &mut HashMap<ChannelId, Channel>,
+    tx_payloads: &[Vec<u8>],
+    rollup_config: &RollupConfig,
+) -> Option<u64> {
+    let block_info = BlockInfo::default();
+    let mut touched_channel_ids = TouchedChannelTracker::with_capacity(tx_payloads.len());
+    for tx_payload in tx_payloads {
+        let frames =
+            Frame::parse_frames(tx_payload).expect("fixture tx payload must parse into frames");
+        for frame in frames {
+            touched_channel_ids.record(frame.id);
+            let channel =
+                channels.entry(frame.id).or_insert_with(|| Channel::new(frame.id, block_info));
+            channel.add_frame(frame, block_info).expect("fixture frame must be accepted");
+        }
+    }
+
+    let mut highest = None;
+    RecentTxScanner::drain_ready_channels(
+        channels,
+        touched_channel_ids.touched_channel_ids(),
+        0,
+        rollup_config,
+        &mut highest,
+    );
+    highest
 }
 
 fn bench_recent_tx_ready_channel_lookup(c: &mut Criterion) {
@@ -443,10 +534,85 @@ fn bench_recent_tx_track_touched_channel_ids(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_recent_tx_process_block(c: &mut Criterion) {
+    let mut group = c.benchmark_group("batcher_service/recent_txs/process_block");
+    group.sample_size(20);
+
+    let rollup_config = test_rollup_config();
+    let ready_tx_payloads = ready_block_tx_payloads();
+    group.bench_function("baseline_vec_scan_all_4096_ready_unique_channels_from_empty", |b| {
+        b.iter_batched(
+            HashMap::new,
+            |mut channels| {
+                black_box(process_block_with_vec_tracking_and_full_scan(
+                    black_box(&mut channels),
+                    black_box(&ready_tx_payloads),
+                    black_box(&rollup_config),
+                ));
+                black_box(channels)
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("tracker_touched_only_4096_ready_unique_channels_from_empty", |b| {
+        b.iter_batched(
+            HashMap::new,
+            |mut channels| {
+                black_box(process_block_with_tracker_and_touched_only_drain(
+                    black_box(&mut channels),
+                    black_box(&ready_tx_payloads),
+                    black_box(&rollup_config),
+                ));
+                black_box(channels)
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    let sparse_incomplete_tx_payloads = sparse_incomplete_followup_tx_payloads();
+    group.bench_function(
+        "baseline_vec_scan_all_64_incomplete_touches_among_8192_buffered_channels",
+        |b| {
+            b.iter_batched(
+                incomplete_channel_map,
+                |mut channels| {
+                    black_box(process_block_with_vec_tracking_and_full_scan(
+                        black_box(&mut channels),
+                        black_box(&sparse_incomplete_tx_payloads),
+                        black_box(&rollup_config),
+                    ));
+                    black_box(channels)
+                },
+                BatchSize::SmallInput,
+            );
+        },
+    );
+    group.bench_function(
+        "tracker_touched_only_64_incomplete_touches_among_8192_buffered_channels",
+        |b| {
+            b.iter_batched(
+                incomplete_channel_map,
+                |mut channels| {
+                    black_box(process_block_with_tracker_and_touched_only_drain(
+                        black_box(&mut channels),
+                        black_box(&sparse_incomplete_tx_payloads),
+                        black_box(&rollup_config),
+                    ));
+                    black_box(channels)
+                },
+                BatchSize::SmallInput,
+            );
+        },
+    );
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_recent_tx_ready_channel_lookup,
     bench_recent_tx_drain_ready_channels,
     bench_recent_tx_track_touched_channel_ids,
+    bench_recent_tx_process_block,
 );
 criterion_main!(benches);
