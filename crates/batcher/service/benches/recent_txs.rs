@@ -1,6 +1,9 @@
 //! Benchmarks for recent-transaction startup scan channel draining.
 
-use std::hint::black_box;
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    hint::black_box,
+};
 
 use alloy_eips::eip1898::BlockNumHash;
 use alloy_primitives::B256;
@@ -151,6 +154,94 @@ fn track_touched_channel_ids_with_reused_tracker(
         tracker.record(*channel_id);
     }
     tracker.touched_channel_ids().to_vec()
+}
+
+fn count_ready_touched_channels_with_entry_api(
+    channels: &mut HashMap<ChannelId, Channel>,
+    touched_channel_ids: &[ChannelId],
+) -> usize {
+    let mut ready_channels = 0;
+    for channel_id in touched_channel_ids {
+        let Entry::Occupied(channel_entry) = channels.entry(*channel_id) else {
+            continue;
+        };
+        if channel_entry.get().is_ready() {
+            ready_channels += 1;
+        }
+    }
+    ready_channels
+}
+
+fn count_ready_touched_channels_with_get(
+    channels: &HashMap<ChannelId, Channel>,
+    touched_channel_ids: &[ChannelId],
+) -> usize {
+    let mut ready_channels = 0;
+    for channel_id in touched_channel_ids {
+        if channels.get(channel_id).is_some_and(Channel::is_ready) {
+            ready_channels += 1;
+        }
+    }
+    ready_channels
+}
+
+fn bench_recent_tx_ready_channel_lookup(c: &mut Criterion) {
+    let mut group = c.benchmark_group("batcher_service/recent_txs/ready_channel_lookup");
+    group.sample_size(20);
+
+    let incomplete_ids = touched_incomplete_ids();
+    group.bench_function("baseline_get_4096_touched_incomplete_among_8192_channels", |b| {
+        b.iter_batched(
+            incomplete_channel_map,
+            |channels| {
+                black_box(count_ready_touched_channels_with_get(
+                    black_box(&channels),
+                    black_box(&incomplete_ids),
+                ))
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("entry_api_4096_touched_incomplete_among_8192_channels", |b| {
+        b.iter_batched(
+            incomplete_channel_map,
+            |mut channels| {
+                black_box(count_ready_touched_channels_with_entry_api(
+                    black_box(&mut channels),
+                    black_box(&incomplete_ids),
+                ))
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    let sparse_ids = touched_sparse_ids();
+    group.bench_function("baseline_get_64_touched_ready_among_8192_channels", |b| {
+        b.iter_batched(
+            sparse_ready_channel_map,
+            |channels| {
+                black_box(count_ready_touched_channels_with_get(
+                    black_box(&channels),
+                    black_box(&sparse_ids),
+                ))
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("entry_api_64_touched_ready_among_8192_channels", |b| {
+        b.iter_batched(
+            sparse_ready_channel_map,
+            |mut channels| {
+                black_box(count_ready_touched_channels_with_entry_api(
+                    black_box(&mut channels),
+                    black_box(&sparse_ids),
+                ))
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    group.finish();
 }
 
 fn bench_recent_tx_drain_ready_channels(c: &mut Criterion) {
@@ -354,6 +445,7 @@ fn bench_recent_tx_track_touched_channel_ids(c: &mut Criterion) {
 
 criterion_group!(
     benches,
+    bench_recent_tx_ready_channel_lookup,
     bench_recent_tx_drain_ready_channels,
     bench_recent_tx_track_touched_channel_ids,
 );

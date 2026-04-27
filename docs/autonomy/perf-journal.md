@@ -160,3 +160,28 @@ Results:
 - `cargo clippy -p base-batcher-service --tests --benches --no-deps -- -D warnings` passed
 Next:
 - if the startup scan is revisited again, add a block-level benchmark that includes frame parsing plus touched-ID tracking so allocator reuse can be measured in a shape closer to real RPC-fetched blocks, not just the isolated tracker microbench
+
+## 2026-04-27 07:36 UTC
+Focus: `base-batcher-service` ready-channel lookup cost inside `RecentTxScanner::drain_ready_channels()`.
+Hypothesis: after touched-only draining and touched-ID tracker improvements, the remaining per-channel bookkeeping might still benefit from avoiding the separate `HashMap::get` + `HashMap::remove` sequence; a focused lookup microbench should show whether an `entry`-based path is worth pursuing before touching production code.
+Commands:
+- `cargo bench -p base-batcher-service --bench recent_txs -- --warm-up-time 0.5 --measurement-time 1.0 --sample-size 15`
+- temporarily changed `RecentTxScanner::drain_ready_channels()` to use `HashMap::entry` and re-ran focused validation/benchmarks
+- reverted the production change after measurement showed no win
+- extended `crates/batcher/service/benches/recent_txs.rs` with a new `ready_channel_lookup` Criterion group that compares `get`-based readiness checks against `entry`-based lookups on the touched-only path
+- `cargo fmt --all`
+- `cargo test -p base-batcher-service recent_txs -- --nocapture`
+- `cargo clippy -p base-batcher-service --tests --benches --no-deps -- -D warnings`
+- `cargo bench -p base-batcher-service --bench recent_txs -- --warm-up-time 0.5 --measurement-time 1.0 --sample-size 15`
+Results:
+- added benchmark-only coverage for the ready-check bookkeeping gap without changing production logic; the bench file is now the only code delta for this run
+- the focused lookup microbench showed `entry` is not a clear win here and is often worse on the important no-ready and sparse-ready shapes, so the production `get` + `remove` implementation was intentionally left unchanged
+- confirming lookup results with the new benchmark group:
+  - `baseline_get_4096_touched_incomplete_among_8192_channels`: `411.61 µs .. 447.80 µs`
+  - `entry_api_4096_touched_incomplete_among_8192_channels`: `441.73 µs .. 593.54 µs` (slower / noisier)
+  - `baseline_get_64_touched_ready_among_8192_channels`: `395.70 µs .. 751.97 µs`
+  - `entry_api_64_touched_ready_among_8192_channels`: `378.14 µs .. 418.30 µs` (not enough evidence of a durable win given the baseline noise)
+- existing drain-path benches remained in the same rough bands, with decode-heavy cases still dominating end-to-end startup scan cost
+- focused tests still passed (`8 passed`) and `cargo clippy -p base-batcher-service --tests --benches --no-deps -- -D warnings` passed
+Next:
+- if this startup scan path is revisited again, benchmark frame parsing plus touched-only draining together so the next candidate optimization is chosen from a more end-to-end block-level profile instead of another tiny lookup tweak
