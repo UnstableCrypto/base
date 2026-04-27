@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use audit_archiver_lib::{
-    BundleEvent, BundleEventPublisher, BundleEventS3Reader, KafkaAuditArchiver,
-    KafkaAuditLogReader, KafkaBundleEventPublisher, S3EventReaderWriter,
+    BundleEvent, BundleEventPublisher, BundleEventReader, KafkaAuditArchiver, KafkaAuditLogReader,
+    KafkaBundleEventPublisher, S3EventReaderWriter,
 };
 use base_bundles::{BundleExtensions, test_utils::create_bundle_from_txn_data};
 use uuid::Uuid;

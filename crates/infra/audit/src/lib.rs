@@ -29,8 +29,8 @@ pub use rpc::{AuditArchiverApiServer, AuditArchiverRpc};
 
 mod storage;
 pub use storage::{
-    BundleEventS3Reader, BundleHistory, BundleHistoryEvent, EventWriter, S3EventReaderWriter,
-    S3Key, TransactionMetadata,
+    BundleEventReader, BundleHistory, BundleHistoryEvent, EventWriter, RejectedTxStore,
+    S3EventReaderWriter, TransactionMetadata,
 };
 
 mod types;
