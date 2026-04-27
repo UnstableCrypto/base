@@ -1,0 +1,49 @@
+[package]
+name = "base-roxy-proxy"
+description = "High-performance Ethereum JSON-RPC proxy"
+
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+base-roxy-cli.workspace = true
+base-roxy-config.workspace = true
+
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+eyre.workspace = true
+tracing.workspace = true
+clap = { workspace = true, features = ["derive"] }
+
+[features]
+default = []
+
+[dev-dependencies]
+criterion.workspace = true
+serde_json.workspace = true
+bytes.workspace = true
+base-roxy-rpc.workspace = true
+base-roxy-cache.workspace = true
+base-roxy-traits.workspace = true
+
+[[bench]]
+name = "codec_bench"
+harness = false
+
+[[bench]]
+name = "cache_bench"
+harness = false
+
+[[bench]]
+name = "router_bench"
+harness = false
+
+[[bench]]
+name = "rate_limiter_bench"
+harness = false

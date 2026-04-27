@@ -1,0 +1,36 @@
+[package]
+name = "base-roxy-cli"
+description = "CLI utilities for Roxy RPC proxy"
+
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# internal
+base-roxy-config.workspace = true
+base-roxy-server.workspace = true
+base-roxy-backend.workspace = true
+base-roxy-rpc.workspace = true
+base-roxy-traits.workspace = true
+base-roxy-cache.workspace = true
+
+# cli
+clap = { workspace = true, features = ["derive"] }
+
+# async
+tokio = { workspace = true, features = ["signal"] }
+axum = { workspace = true, features = ["http1", "http2", "tokio"] }
+
+# logging
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
+
+# error handling
+eyre.workspace = true

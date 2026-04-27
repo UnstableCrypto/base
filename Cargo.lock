@@ -5514,6 +5514,169 @@ name = "base-ring-buffer"
 version = "0.0.0"
 
 [[package]]
+name = "base-roxy-backend"
+version = "0.0.0"
+dependencies = [
+ "alloy-json-rpc",
+ "alloy-primitives",
+ "async-trait",
+ "base-roxy-traits",
+ "base-roxy-types",
+ "derive_more 2.1.1",
+ "reqwest 0.13.2",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "base-roxy-cache"
+version = "0.0.0"
+dependencies = [
+ "alloy-primitives",
+ "base-roxy-traits",
+ "brotli",
+ "bytes",
+ "derive_more 2.1.1",
+ "lru 0.16.4",
+ "redis 0.27.6",
+ "rstest",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "base-roxy-cli"
+version = "0.0.0"
+dependencies = [
+ "axum 0.8.9",
+ "base-roxy-backend",
+ "base-roxy-cache",
+ "base-roxy-config",
+ "base-roxy-rpc",
+ "base-roxy-server",
+ "base-roxy-traits",
+ "clap",
+ "eyre",
+ "tokio",
+ "tracing",
+ "tracing-subscriber 0.3.23",
+]
+
+[[package]]
+name = "base-roxy-config"
+version = "0.0.0"
+dependencies = [
+ "eyre",
+ "rstest",
+ "serde",
+ "toml 1.1.2+spec-1.1.0",
+]
+
+[[package]]
+name = "base-roxy-proxy"
+version = "0.0.0"
+dependencies = [
+ "base-roxy-cache",
+ "base-roxy-cli",
+ "base-roxy-config",
+ "base-roxy-rpc",
+ "base-roxy-traits",
+ "bytes",
+ "clap",
+ "criterion",
+ "eyre",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "base-roxy-rpc"
+version = "0.0.0"
+dependencies = [
+ "alloy-json-rpc",
+ "base-roxy-traits",
+ "base-roxy-types",
+ "bytes",
+ "derive_more 2.1.1",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "base-roxy-runtime"
+version = "0.0.0"
+dependencies = [
+ "base-roxy-traits",
+ "derive_more 2.1.1",
+ "tokio",
+]
+
+[[package]]
+name = "base-roxy-server"
+version = "0.0.0"
+dependencies = [
+ "alloy-json-rpc",
+ "axum 0.8.9",
+ "base-roxy-backend",
+ "base-roxy-cache",
+ "base-roxy-rpc",
+ "base-roxy-traits",
+ "base-roxy-types",
+ "bytes",
+ "eyre",
+ "futures",
+ "hyper 1.9.0",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower 0.5.3",
+ "tracing",
+]
+
+[[package]]
+name = "base-roxy-test-utils"
+version = "0.0.0"
+dependencies = [
+ "alloy-json-rpc",
+ "async-trait",
+ "base-roxy-traits",
+ "base-roxy-types",
+ "rstest",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "base-roxy-traits"
+version = "0.0.0"
+dependencies = [
+ "alloy-json-rpc",
+ "alloy-primitives",
+ "async-trait",
+ "base-roxy-types",
+ "bytes",
+ "derive_more 2.1.1",
+ "tokio",
+]
+
+[[package]]
+name = "base-roxy-types"
+version = "0.0.0"
+dependencies = [
+ "alloy-json-rpc",
+ "alloy-primitives",
+ "derive_more 2.1.1",
+ "rstest",
+]
+
+[[package]]
 name = "base-runtime"
 version = "0.0.0"
 dependencies = [
@@ -7752,7 +7915,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bb4d00bce7a9cfd07ded19530621a7df17c4c3b1c4e8fc2262471de404ce539a"
 dependencies = [
  "deadpool",
- "redis",
+ "redis 0.32.7",
 ]
 
 [[package]]
@@ -15452,6 +15615,30 @@ dependencies = [
 
 [[package]]
 name = "redis"
+version = "0.27.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09d8f99a4090c89cc489a94833c901ead69bfbf3877b4867d5482e321ee875bc"
+dependencies = [
+ "arc-swap",
+ "async-trait",
+ "bytes",
+ "combine",
+ "futures-util",
+ "itertools 0.13.0",
+ "itoa",
+ "num-bigint 0.4.6",
+ "percent-encoding",
+ "pin-project-lite",
+ "ryu",
+ "sha1_smol",
+ "socket2 0.5.10",
+ "tokio",
+ "tokio-util",
+ "url",
+]
+
+[[package]]
+name = "redis"
 version = "0.32.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "014cc767fefab6a3e798ca45112bccad9c6e0e218fbd49720042716c73cfef44"
@@ -22695,6 +22882,7 @@ dependencies = [
  "serde_spanned 1.1.1",
  "toml_datetime 1.1.1+spec-1.1.0",
  "toml_parser",
+ "toml_writer",
  "winnow 1.0.2",
 ]
 

@@ -1,0 +1,35 @@
+[package]
+name = "base-roxy-rpc"
+description = "RPC handling for Roxy RPC proxy"
+
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# internal
+base-roxy-types.workspace = true
+base-roxy-traits.workspace = true
+
+# alloy
+alloy-json-rpc.workspace = true
+
+# serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+bytes.workspace = true
+
+# derive macros
+derive_more = { workspace = true, features = ["debug", "display", "error"] }
+
+# misc
+tracing.workspace = true
+
+[dev-dependencies]
+rstest.workspace = true
