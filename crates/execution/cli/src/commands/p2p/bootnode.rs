@@ -60,10 +60,9 @@ impl Command {
 
         if self.v5 {
             info!("Starting discv5");
-            let mut inner_builder =
-                reth_discv5::discv5::ConfigBuilder::new(reth_discv5::discv5::ListenConfig::from(
-                    self.addr,
-                ));
+            let mut inner_builder = reth_discv5::discv5::ConfigBuilder::new(
+                reth_discv5::DEFAULT_DISCOVERY_V5_LISTEN_CONFIG,
+            );
             inner_builder.protocol_identity(reth_discv5::discv5::ProtocolIdentity {
                 protocol_id: BASE_PROTOCOL_ID,
                 ..Default::default()
