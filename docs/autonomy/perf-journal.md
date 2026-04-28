@@ -570,3 +570,24 @@ Results:
 - interpretation: raw span parsing is only about `5.7%` of the single-batch zlib post-decompression floor and `7.9%` of the `64`-batch floor, while `SpanBatchTransactions::full_txs` accounts for about `89%` of the single-batch cost and about `95%` of the `64`-batch cost; the remaining derive step above `full_txs` is comparatively small, so future optimization work should focus on transaction reconstruction/encoding inside `full_txs` rather than on raw span parsing or prefix/origin derivation
 Next:
 - if this decode path is revisited again, drill into `SpanBatchTransactions::full_txs` itself (for example `SpanBatchTransactionData::decode`, signature/to-field assembly, and `TxEnvelope::encode_2718`) so the next experiment can identify whether the remaining shared decode floor is dominated by span transaction-data parsing or transaction re-encoding.
+
+## 2026-04-28 22:23 UTC
+Focus: `base-protocol` span transaction reconstruction allocation in `SpanBatchTransactions::full_txs()`.
+Hypothesis: the span decode component bench now shows `SpanBatchTransactions::full_txs()` dominates `Batch::decode`, and the method already knows the exact number of output transactions up front; preallocating the output `Vec<Vec<u8>>` to `total_block_tx_count` should remove repeated outer-vector growth during reconstruction and yield a small measurable win without changing semantics.
+Commands:
+- `cargo bench -p base-protocol --bench batch_reader batch_decode_components -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10`
+- edited `crates/consensus/protocol/src/batch/transactions.rs` to change `full_txs()` from `Vec::new()` to `Vec::with_capacity(self.total_block_tx_count as usize)`
+- `cargo test -p base-protocol batch_reader -- --nocapture`
+- `cargo clippy -p base-protocol --tests --benches --no-deps -- -D warnings`
+- `cargo bench -p base-protocol --bench batch_reader batch_decode_components -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10`
+Results:
+- made a one-line production change that preallocates the outer `txs` vector in `SpanBatchTransactions::full_txs()`, matching the already-known transaction count and avoiding incremental growth while reconstructing encoded transactions
+- validation passed: `cargo test -p base-protocol batch_reader -- --nocapture` (`2 passed`) and `cargo clippy -p base-protocol --tests --benches --no-deps -- -D warnings`
+- focused benchmark results from the before/after `batch_decode_components` runs showed a small but measurable improvement in the hot `full_txs` stage while adjacent stages stayed effectively flat:
+  - `span_full_txs_only/1`: `3.0463 ms` -> `3.0158 ms` (~`1.0%` lower median)
+  - `span_full_txs_only/64`: `214.02 ms` -> `213.03 ms` (~`0.5%` lower median)
+  - `raw_span_decode_only/64`: `18.330 ms` -> `17.719 ms` (same order of magnitude; not the target of the change)
+  - `span_derive_only/64`: `223.09 ms` -> `222.24 ms` (effectively flat / within noise)
+- interpretation: most of the remaining `full_txs` floor is still inside transaction-data decode and transaction re-encoding, but preallocating the outer result buffer is a safe low-risk cleanup that trims a little allocator churn from the hottest measured substage
+Next:
+- if this decode path is revisited again, microbenchmark `SpanBatchTransactionData::decode` against `TxEnvelope::encode_2718` inside `full_txs()` so the next iteration can tell whether the remaining shared decode floor is dominated by span transaction-data parsing or by re-encoding reconstructed signed transactions.

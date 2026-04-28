@@ -238,7 +238,7 @@ impl SpanBatchTransactions {
 
     /// Retrieve all of the raw transactions from the [`SpanBatchTransactions`].
     pub fn full_txs(&self, chain_id: u64) -> Result<Vec<Vec<u8>>, SpanBatchError> {
-        let mut txs = Vec::new();
+        let mut txs = Vec::with_capacity(self.total_block_tx_count as usize);
         let mut to_idx = 0;
         let mut protected_bit_idx = 0;
         for idx in 0..self.total_block_tx_count {
