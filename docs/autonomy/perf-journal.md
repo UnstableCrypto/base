@@ -547,3 +547,26 @@ Results:
 - interpretation: outer RLP framing is only about `0.8%` of the single-batch post-decompression path and about `2.4%` to `2.6%` of the `64`-batch path; nearly all remaining shared decode cost sits inside `Batch::decode`/span derivation rather than payload extraction
 Next:
 - if this decode path is revisited again, add a deeper component split inside `Batch::decode` itself (for example `SingleBatch::decode` versus `RawSpanBatch::decode` plus span derivation) so the next experiment can identify whether large-channel cost is dominated by raw span parsing, transaction-data decoding, or span derivation.
+
+## 2026-04-28 20:10 UTC
+Focus: `base-protocol` shared post-decompression span decode split inside `Batch::decode`.
+Hypothesis: after isolating outer RLP framing, the remaining floor likely sits inside span-batch decoding; a deeper span-specific benchmark should reveal whether large-channel cost is dominated by raw span parsing, transaction reconstruction in `SpanBatchTransactions::full_txs`, or final `RawSpanBatch::derive` work.
+Commands:
+- `cargo bench -p base-protocol --bench batch_reader post_decompression_components -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10`
+- edited `crates/consensus/protocol/benches/batch_reader.rs` to add `span_batch_payloads_from_decompressed`, `raw_span_batch_templates_from_decompressed`, `decode_all_raw_span_batches`, `decode_all_raw_span_full_txs`, `derive_all_raw_span_batches`, and a new `protocol/batch_reader/batch_decode_components` Criterion group
+- `cargo fmt --all`
+- `cargo test -p base-protocol batch_reader -- --nocapture`
+- `cargo clippy -p base-protocol --tests --benches --no-deps -- -D warnings`
+- `cargo bench -p base-protocol --bench batch_reader batch_decode_components -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10`
+- extracted median `point_estimate` values from `target/criterion/protocol_batch_reader_{post_decompression_components,batch_decode_components}/*/*/new/estimates.json`
+Results:
+- kept production logic unchanged and extended the shared protocol benchmark to strip the leading span batch-type byte from each decompressed RLP payload, then measure three deeper `Batch::decode` stages independently: `RawSpanBatch::decode`, `SpanBatchTransactions::full_txs` on predecoded templates, and full `RawSpanBatch::derive`
+- validation passed: `cargo test -p base-protocol batch_reader -- --nocapture` (`2 passed`) and `cargo clippy -p base-protocol --tests --benches --no-deps -- -D warnings`
+- refreshed zlib post-decompression `Batch::decode` medians from the existing harness: `1` batch `3.3849866 ms`, `64` batches `222.0288915 ms`
+- new span-component medians:
+  - `RawSpanBatch::decode` only: `1` batch `192.06 µs`, `64` batches `17.576 ms`
+  - `SpanBatchTransactions::full_txs` only: `1` batch `3.0213 ms`, `64` batches `211.24 ms`
+  - full `RawSpanBatch::derive`: `1` batch `3.1785 ms`, `64` batches `221.62 ms`
+- interpretation: raw span parsing is only about `5.7%` of the single-batch zlib post-decompression floor and `7.9%` of the `64`-batch floor, while `SpanBatchTransactions::full_txs` accounts for about `89%` of the single-batch cost and about `95%` of the `64`-batch cost; the remaining derive step above `full_txs` is comparatively small, so future optimization work should focus on transaction reconstruction/encoding inside `full_txs` rather than on raw span parsing or prefix/origin derivation
+Next:
+- if this decode path is revisited again, drill into `SpanBatchTransactions::full_txs` itself (for example `SpanBatchTransactionData::decode`, signature/to-field assembly, and `TxEnvelope::encode_2718`) so the next experiment can identify whether the remaining shared decode floor is dominated by span transaction-data parsing or transaction re-encoding.

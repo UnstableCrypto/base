@@ -5,7 +5,7 @@ use std::hint::black_box;
 use alloy_primitives::{Bytes, hex};
 use alloy_rlp::Decodable;
 use base_common_genesis::{HardForkConfig, RollupConfig};
-use base_protocol::{Batch, BatchReader, Brotli};
+use base_protocol::{Batch, BatchReader, BatchType, Brotli, RawSpanBatch};
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use miniz_oxide::{
     deflate::{CompressionLevel, compress_to_vec_zlib},
@@ -109,6 +109,27 @@ fn batch_payloads_from_decompressed(mut data: &[u8]) -> Vec<Bytes> {
     batch_payloads
 }
 
+fn span_batch_payloads_from_decompressed(data: &[u8]) -> Vec<Bytes> {
+    batch_payloads_from_decompressed(data)
+        .into_iter()
+        .map(|batch_payload| match batch_payload.as_ref().first().copied() {
+            Some(batch_type) if batch_type == BatchType::SPAN => batch_payload.slice(1..),
+            Some(batch_type) => panic!("expected span batch fixture, got batch type {batch_type}"),
+            None => panic!("batch payload fixture must not be empty"),
+        })
+        .collect()
+}
+
+fn raw_span_batch_templates_from_decompressed(data: &[u8]) -> Vec<RawSpanBatch> {
+    span_batch_payloads_from_decompressed(data)
+        .into_iter()
+        .map(|raw_span_payload| {
+            let mut raw_span_payload = raw_span_payload.as_ref();
+            RawSpanBatch::decode(&mut raw_span_payload).expect("span batch fixture must decode")
+        })
+        .collect()
+}
+
 fn count_rlp_wrapped_batches(mut data: &[u8]) -> usize {
     let mut batch_count = 0;
 
@@ -133,6 +154,50 @@ fn decode_all_batch_payloads(batch_payloads: &[Bytes], cfg: &RollupConfig) -> us
     }
 
     batch_count
+}
+
+fn decode_all_raw_span_batches(raw_span_payloads: &[Bytes]) -> usize {
+    let mut batch_count = 0;
+
+    for raw_span_payload in raw_span_payloads {
+        let mut raw_span_payload = raw_span_payload.as_ref();
+        let raw_span_batch =
+            RawSpanBatch::decode(&mut raw_span_payload).expect("span batch fixture must decode");
+        black_box(raw_span_batch);
+        batch_count += 1;
+    }
+
+    batch_count
+}
+
+fn decode_all_raw_span_full_txs(raw_span_batches: &[RawSpanBatch], chain_id: u64) -> usize {
+    let mut tx_count = 0;
+
+    for raw_span_batch in raw_span_batches {
+        let txs = raw_span_batch
+            .payload
+            .txs
+            .full_txs(chain_id)
+            .expect("span batch fixture transactions must decode");
+        tx_count += txs.len();
+        black_box(txs);
+    }
+
+    tx_count
+}
+
+fn derive_all_raw_span_batches(raw_span_batches: &mut [RawSpanBatch], cfg: &RollupConfig) -> usize {
+    let mut block_count = 0;
+
+    for raw_span_batch in raw_span_batches {
+        let span_batch = raw_span_batch
+            .derive(cfg.block_time, cfg.genesis.l2_time, cfg.l2_chain_id.id())
+            .expect("span batch fixture must derive");
+        block_count += span_batch.batches.len();
+        black_box(span_batch);
+    }
+
+    block_count
 }
 
 fn bench_rollup_config(label: &'static str) -> RollupConfig {
@@ -368,6 +433,66 @@ fn bench_batch_reader_post_decompression_components(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_batch_reader_batch_decode_components(c: &mut Criterion) {
+    let mut group = c.benchmark_group("protocol/batch_reader/batch_decode_components");
+    group.sample_size(20);
+
+    let cfg = RollupConfig::default();
+    let chain_id = cfg.l2_chain_id.id();
+
+    for batch_count in BATCH_COUNTS {
+        let decompressed = decompressed_batch_fixture(batch_count);
+        let raw_span_payloads = span_batch_payloads_from_decompressed(decompressed.as_slice());
+        let raw_span_batches = raw_span_batch_templates_from_decompressed(decompressed.as_slice());
+
+        group.bench_with_input(
+            BenchmarkId::new("raw_span_decode_only", batch_count),
+            &raw_span_payloads,
+            |b, raw_span_payloads| {
+                b.iter(|| {
+                    black_box(decode_all_raw_span_batches(black_box(raw_span_payloads.as_slice())));
+                });
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("span_full_txs_only", batch_count),
+            &raw_span_batches,
+            |b, raw_span_batches| {
+                b.iter_batched(
+                    || raw_span_batches.clone(),
+                    |raw_span_batches| {
+                        black_box(decode_all_raw_span_full_txs(
+                            black_box(raw_span_batches.as_slice()),
+                            black_box(chain_id),
+                        ));
+                    },
+                    BatchSize::LargeInput,
+                );
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("span_derive_only", batch_count),
+            &raw_span_batches,
+            |b, raw_span_batches| {
+                b.iter_batched(
+                    || raw_span_batches.clone(),
+                    |mut raw_span_batches| {
+                        black_box(derive_all_raw_span_batches(
+                            black_box(raw_span_batches.as_mut_slice()),
+                            black_box(&cfg),
+                        ));
+                    },
+                    BatchSize::LargeInput,
+                );
+            },
+        );
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_batch_reader_constructor,
@@ -375,5 +500,6 @@ criterion_group!(
     bench_batch_reader_decode_all_batches,
     bench_batch_reader_post_decompression_decode_only,
     bench_batch_reader_post_decompression_components,
+    bench_batch_reader_batch_decode_components,
 );
 criterion_main!(benches);
