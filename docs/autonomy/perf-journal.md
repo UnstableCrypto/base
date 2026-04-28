@@ -450,3 +450,28 @@ Results:
 Next:
 - if this shared decode path is revisited again, extend the new `base-protocol` bench with a decompression-only split (zlib vs brotli) so the next iteration can tell whether any remaining decode floor is in `decompress_*` itself or in per-batch RLP decoding after decompression.
 
+## 2026-04-28 11:24 UTC
+Focus: `base-protocol` shared decode-path decompression-only benchmark coverage.
+Hypothesis: the new shared `BatchReader` bench still mixes codec work with per-batch decoding, so adding a decompression-only split for zlib and brotli on the same synthetic fixtures should show whether the remaining `64`-batch decode floor is mostly in decompression or in post-decompression batch decoding.
+Commands:
+- `cargo bench -p base-protocol --bench batch_reader decode_all_batches -- --warm-up-time 0.5 --measurement-time 1.0 --sample-size 20`
+- edited `crates/consensus/protocol/benches/batch_reader.rs` to add a reusable decompressed fixture builder plus a new `protocol/batch_reader/decompression_only` Criterion group covering zlib and brotli at `1` and `64` batches
+- `cargo fmt --all`
+- `cargo test -p base-protocol batch_reader -- --nocapture`
+- `cargo clippy -p base-protocol --tests --benches --no-deps -- -D warnings`
+- `cargo bench -p base-protocol --bench batch_reader decompression_only -- --warm-up-time 0.5 --measurement-time 1.0 --sample-size 20`
+- `cargo bench -p base-protocol --bench batch_reader decode_all_batches -- --warm-up-time 0.5 --measurement-time 1.0 --sample-size 20`
+- extracted median `point_estimate` values from `target/criterion/protocol_batch_reader_*/*/*/base/estimates.json`
+Results:
+- kept production logic unchanged and extended the shared protocol bench to measure decompression in isolation, which closes the remaining observability gap from the prior run without changing consensus or batcher behavior
+- validation passed: `cargo test -p base-protocol batch_reader -- --nocapture` (`2 passed`) and `cargo clippy -p base-protocol --tests --benches --no-deps -- -D warnings`
+- constructor medians remain the same order of magnitude as the prior run, confirming the owned-`Bytes` copy removal still dominates constructor-only cost: `1` batch baseline `8.045 µs` vs owned `5.96 ns`; `64` batches baseline `9.113 ms` vs owned `5.93 ns`
+- new decompression-only medians show codec cost already dominates the decode floor, and brotli is materially faster than zlib on the shared synthetic fixture sizes:
+  - `1` batch: zlib `1.960 ms`, brotli `4.208 ms`
+  - `64` batches: zlib `143.22 ms`, brotli `70.74 ms`
+- refreshed full decode medians after the bench expansion:
+  - `1` batch: baseline `5.356 ms` vs owned `5.368 ms` (effectively noise)
+  - `64` batches: baseline `375.47 ms` vs owned `363.63 ms` (~`3.2%` lower median)
+- interpretation: for large channels, decompression accounts for a substantial share of total decode time (`~38%` for zlib and `~19%` for brotli relative to the current `64`-batch full-decode medians), so the next meaningful optimization likely sits in zlib decompression or in the remaining per-batch RLP decode work rather than in additional constructor plumbing
+Next:
+- if this shared decode path is revisited again, split the `decode_all_batches` harness one step further by compression type so the next iteration can quantify how much of the remaining `~220 ms` to `~293 ms` non-constructor cost is specific to zlib channels versus shared post-decompression batch decoding.

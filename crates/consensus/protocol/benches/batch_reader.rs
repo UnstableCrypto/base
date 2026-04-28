@@ -1,19 +1,19 @@
-//! Benchmarks for [`BatchReader`] constructor and decode paths.
+//! Benchmarks for [`BatchReader`] constructor, decompression, and decode paths.
 
 use std::hint::black_box;
 
 use alloy_primitives::{Bytes, hex};
 use base_common_genesis::RollupConfig;
-use base_protocol::BatchReader;
+use base_protocol::{BatchReader, Brotli};
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use miniz_oxide::{
     deflate::{CompressionLevel, compress_to_vec_zlib},
-    inflate::decompress_to_vec_zlib,
+    inflate::{decompress_to_vec_zlib, decompress_to_vec_zlib_with_limit},
 };
 
 const BATCH_COUNTS: [usize; 2] = [1, 64];
 
-fn compressed_batch_fixture(batch_count: usize) -> (Bytes, usize) {
+fn decompressed_batch_fixture(batch_count: usize) -> Vec<u8> {
     let file_contents = String::from_utf8_lossy(include_bytes!("../testdata/batch.hex"));
     let file_contents = &file_contents[..file_contents.len() - 1];
     let raw = hex::decode(file_contents).expect("batch fixture must decode");
@@ -23,10 +23,28 @@ fn compressed_batch_fixture(batch_count: usize) -> (Bytes, usize) {
     for _ in 0..batch_count {
         multi_batch.extend_from_slice(&single_batch);
     }
+    multi_batch
+}
+
+fn compressed_batch_fixture(batch_count: usize) -> (Bytes, usize) {
+    let multi_batch = decompressed_batch_fixture(batch_count);
     let max_rlp_bytes_per_channel = multi_batch.len();
     let compressed = compress_to_vec_zlib(&multi_batch, CompressionLevel::BestSpeed.into()).into();
 
     (compressed, max_rlp_bytes_per_channel)
+}
+
+fn brotli_compressed_batch_fixture(batch_count: usize) -> (Bytes, usize) {
+    let multi_batch = decompressed_batch_fixture(batch_count);
+    let max_rlp_bytes_per_channel = multi_batch.len();
+
+    let mut compressed = Vec::new();
+    let mut input = multi_batch.as_slice();
+    let params = brotli::enc::BrotliEncoderParams::default();
+    brotli::BrotliCompress(&mut input, &mut compressed, &params)
+        .expect("batch fixture must brotli compress");
+
+    (compressed.into(), max_rlp_bytes_per_channel)
 }
 
 fn decode_all_batches(mut reader: BatchReader, cfg: &RollupConfig) -> usize {
@@ -72,6 +90,59 @@ fn bench_batch_reader_constructor(c: &mut Criterion) {
                             black_box(data),
                             black_box(max_rlp_bytes_per_channel),
                         ));
+                    },
+                    BatchSize::SmallInput,
+                );
+            },
+        );
+    }
+
+    group.finish();
+}
+
+fn bench_batch_reader_decompression_only(c: &mut Criterion) {
+    let mut group = c.benchmark_group("protocol/batch_reader/decompression_only");
+    group.sample_size(20);
+
+    for batch_count in BATCH_COUNTS {
+        let (zlib_compressed, max_rlp_bytes_per_channel) = compressed_batch_fixture(batch_count);
+        let (brotli_compressed, _) = brotli_compressed_batch_fixture(batch_count);
+
+        group.bench_with_input(
+            BenchmarkId::new("zlib", batch_count),
+            &zlib_compressed,
+            |b, compressed| {
+                b.iter_batched(
+                    || compressed.clone(),
+                    |data| {
+                        black_box(
+                            decompress_to_vec_zlib_with_limit(
+                                black_box(data).as_ref(),
+                                black_box(max_rlp_bytes_per_channel),
+                            )
+                            .expect("zlib fixture must decompress"),
+                        );
+                    },
+                    BatchSize::SmallInput,
+                );
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("brotli", batch_count),
+            &brotli_compressed,
+            |b, compressed| {
+                b.iter_batched(
+                    || compressed.clone(),
+                    |data| {
+                        black_box(
+                            Brotli
+                                .decompress(
+                                    black_box(data).as_ref(),
+                                    black_box(max_rlp_bytes_per_channel),
+                                )
+                                .expect("brotli fixture must decompress"),
+                        );
                     },
                     BatchSize::SmallInput,
                 );
@@ -131,5 +202,10 @@ fn bench_batch_reader_decode_all_batches(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_batch_reader_constructor, bench_batch_reader_decode_all_batches,);
+criterion_group!(
+    benches,
+    bench_batch_reader_constructor,
+    bench_batch_reader_decompression_only,
+    bench_batch_reader_decode_all_batches,
+);
 criterion_main!(benches);
