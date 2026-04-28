@@ -36,6 +36,13 @@ const MIXED_BACK_LOADED_READY_COHORTS: [ReadyTransitionCohort; 5] = [
     ReadyTransitionCohort { start_block: 0, ready_block: 3, channel_count: 256 },
     ReadyTransitionCohort { start_block: 2, ready_block: 3, channel_count: 256 },
 ];
+const MATCHED_VOLUME_BACK_LOADED_READY_COHORTS: [ReadyTransitionCohort; 5] = [
+    ReadyTransitionCohort { start_block: 0, ready_block: 0, channel_count: 128 },
+    ReadyTransitionCohort { start_block: 0, ready_block: 1, channel_count: 128 },
+    ReadyTransitionCohort { start_block: 0, ready_block: 2, channel_count: 256 },
+    ReadyTransitionCohort { start_block: 0, ready_block: 3, channel_count: 384 },
+    ReadyTransitionCohort { start_block: 1, ready_block: 3, channel_count: 128 },
+];
 
 #[derive(Clone, Copy, Debug)]
 struct ReadyTransitionCohort {
@@ -1334,6 +1341,126 @@ fn bench_recent_tx_process_blocks_touch_start_sparsity(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_recent_tx_process_blocks_touch_start_matched_volume(c: &mut Criterion) {
+    let mut group =
+        c.benchmark_group("batcher_service/recent_txs/process_blocks_touch_start_matched_volume");
+    group.sample_size(15);
+
+    let rollup_config = test_rollup_config();
+    let dense_start_block_tx_payloads =
+        multi_block_weighted_ready_tx_payloads(&BACK_LOADED_READY_CHANNEL_COUNTS);
+    let matched_volume_sparse_start_block_tx_payloads = multi_block_cohort_ready_tx_payloads(
+        MIXED_READY_BLOCK_COUNT,
+        &MATCHED_VOLUME_BACK_LOADED_READY_COHORTS,
+    );
+
+    group.bench_function(
+        "baseline_vec_scan_all_dense_start_back_loaded_4_blocks_1024_channels_matched_volume",
+        |b| {
+            b.iter_batched(
+                HashMap::new,
+                |mut channels| {
+                    black_box(process_blocks_with_vec_tracking_and_full_scan(
+                        black_box(&mut channels),
+                        black_box(&dense_start_block_tx_payloads),
+                        black_box(&rollup_config),
+                    ));
+                    black_box(channels)
+                },
+                BatchSize::SmallInput,
+            );
+        },
+    );
+    group.bench_function(
+        "fresh_tracker_dense_start_back_loaded_4_blocks_1024_channels_matched_volume",
+        |b| {
+            b.iter_batched(
+                HashMap::new,
+                |mut channels| {
+                    black_box(process_blocks_with_fresh_tracker_and_touched_only_drain(
+                        black_box(&mut channels),
+                        black_box(&dense_start_block_tx_payloads),
+                        black_box(&rollup_config),
+                    ));
+                    black_box(channels)
+                },
+                BatchSize::SmallInput,
+            );
+        },
+    );
+    group.bench_function(
+        "reused_tracker_dense_start_back_loaded_4_blocks_1024_channels_matched_volume",
+        |b| {
+            b.iter_batched(
+                HashMap::new,
+                |mut channels| {
+                    black_box(process_blocks_with_tracker_and_touched_only_drain(
+                        black_box(&mut channels),
+                        black_box(&dense_start_block_tx_payloads),
+                        black_box(&rollup_config),
+                    ));
+                    black_box(channels)
+                },
+                BatchSize::SmallInput,
+            );
+        },
+    );
+
+    group.bench_function(
+        "baseline_vec_scan_all_matched_volume_sparse_start_back_loaded_4_blocks_1024_channels",
+        |b| {
+            b.iter_batched(
+                HashMap::new,
+                |mut channels| {
+                    black_box(process_blocks_with_vec_tracking_and_full_scan(
+                        black_box(&mut channels),
+                        black_box(&matched_volume_sparse_start_block_tx_payloads),
+                        black_box(&rollup_config),
+                    ));
+                    black_box(channels)
+                },
+                BatchSize::SmallInput,
+            );
+        },
+    );
+    group.bench_function(
+        "fresh_tracker_matched_volume_sparse_start_back_loaded_4_blocks_1024_channels",
+        |b| {
+            b.iter_batched(
+                HashMap::new,
+                |mut channels| {
+                    black_box(process_blocks_with_fresh_tracker_and_touched_only_drain(
+                        black_box(&mut channels),
+                        black_box(&matched_volume_sparse_start_block_tx_payloads),
+                        black_box(&rollup_config),
+                    ));
+                    black_box(channels)
+                },
+                BatchSize::SmallInput,
+            );
+        },
+    );
+    group.bench_function(
+        "reused_tracker_matched_volume_sparse_start_back_loaded_4_blocks_1024_channels",
+        |b| {
+            b.iter_batched(
+                HashMap::new,
+                |mut channels| {
+                    black_box(process_blocks_with_tracker_and_touched_only_drain(
+                        black_box(&mut channels),
+                        black_box(&matched_volume_sparse_start_block_tx_payloads),
+                        black_box(&rollup_config),
+                    ));
+                    black_box(channels)
+                },
+                BatchSize::SmallInput,
+            );
+        },
+    );
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_recent_tx_ready_channel_lookup,
@@ -1346,5 +1473,6 @@ criterion_group!(
     bench_recent_tx_process_blocks_weighted_ready,
     bench_recent_tx_process_blocks_mixed_ready,
     bench_recent_tx_process_blocks_touch_start_sparsity,
+    bench_recent_tx_process_blocks_touch_start_matched_volume,
 );
 criterion_main!(benches);

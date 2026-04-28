@@ -327,6 +327,26 @@ Results:
 - added benchmark-only paired coverage that keeps the same approximate back-loaded completion shape (`128/128/256/512`) but compares a dense-start fixture where every channel begins on block 0 against the existing sparse-start cohort fixture where later channels only appear on later blocks
 - the new pairwise comparison makes the survivor-heavy contribution explicit: dense-start baseline `2.4536 ms` vs sparse-start baseline `2.2503 ms` (~`8.3%` lower just from later touch-start sparsity), while the touched-only path still improves both shapes but wins more on dense-start survivor-heavy blocks: dense-start fresh tracker `2.2463 ms` (~`8.4%` lower) and reused tracker `2.2340 ms` (~`9.0%` lower) versus sparse-start fresh tracker `2.1074 ms` (~`6.4%` lower) and reused tracker `2.1106 ms` (~`6.2%` lower)
 - this narrows the interpretation: a meaningful part of the startup-scan gain comes from avoiding scans over channels that have existed since early blocks, while later touch-start sparsity alone already removes a large slice of the old full-scan cost
-- focused validation passed again: `cargo test -p base-batcher-service recent_txs -- --nocapture` (`8 passed`) and `cargo clippy -p base-batcher-service --tests --benches --no-deps -- -D warnings`
 Next:
 - if this startup-scan path is revisited again, add a third pair where dense-start and sparse-start fixtures keep both completion counts and per-block transaction counts even closer so the remaining gap can be attributed almost entirely to survivor-heavy channel-map size rather than total parse volume
+
+## 2026-04-28 00:36 UTC
+Focus: `base-batcher-service` recent-tx startup scan matched-volume touch-start benchmark coverage.
+Hypothesis: the prior dense-start vs sparse-start pair still changed per-block transaction volume, so some of the baseline gap could still come from less frame parsing; adding a matched-volume sparse-start fixture should isolate survivor-heavy buffered-map cost more cleanly by keeping block-by-block payload counts aligned with the dense-start back-loaded shape.
+Commands:
+- `cargo bench -p base-batcher-service --bench recent_txs process_blocks_touch_start_sparsity -- --warm-up-time 0.5 --measurement-time 1.0 --sample-size 15`
+- extended `crates/batcher/service/benches/recent_txs.rs` with `MATCHED_VOLUME_BACK_LOADED_READY_COHORTS` and a new `process_blocks_touch_start_matched_volume` Criterion group
+- `cargo fmt --all`
+- `cargo bench -p base-batcher-service --bench recent_txs process_blocks_touch_start_matched_volume -- --warm-up-time 0.5 --measurement-time 1.0 --sample-size 15`
+- `cargo test -p base-batcher-service recent_txs -- --nocapture`
+- `cargo clippy -p base-batcher-service --tests --benches --no-deps -- -D warnings`
+Results:
+- refreshed the existing touch-start sparsity baseline before editing the bench file: dense-start baseline `2.4297 ms`, fresh tracker `2.1906 ms`, reused tracker `2.2198 ms`; sparse-start baseline `2.2413 ms`, fresh tracker `2.1163 ms`, reused tracker `2.1221 ms`
+- added benchmark-only matched-volume coverage where the sparse-start shape keeps the same total `1024` channels and the same per-block completion distribution as the dense-start back-loaded fixture, but delays only a `128`-channel cohort from block `0` to block `1`
+- the matched-volume harness reduced the old dense-vs-sparse baseline gap to about `0.8%` (`2.4297 ms` dense vs `2.4097 ms` matched-volume sparse), showing most of the earlier `8%+` gap came from reduced parse volume rather than survivor-heavy map size alone
+- even with matched block-by-block payload volume, the touched-only drain still beat the full scan in both shapes: dense-start fresh tracker `2.1906 ms` (~`9.8%` lower) and reused tracker `2.2198 ms` (~`8.6%` lower); matched-volume sparse-start fresh tracker `2.2298 ms` (~`7.5%` lower) and reused tracker `2.1861 ms` (~`9.3%` lower)
+- this narrows the interpretation further: touched-only draining still has a durable win even after controlling for parse volume, but the extra dense-vs-sparse gap is much smaller once per-block transaction counts are matched, so future production changes should target the drain/decode path rather than assuming large additional gains from touch-start sparsity alone
+- focused validation passed again: `cargo test -p base-batcher-service recent_txs -- --nocapture` (`8 passed`) and `cargo clippy -p base-batcher-service --tests --benches --no-deps -- -D warnings`
+Next:
+- if this startup-scan path is revisited again, add a benchmark that holds both block payload counts and touched-ID cardinality constant while varying ready-channel decode density, so the next experiment can decide whether any remaining optimization opportunity sits in touched-only draining, channel decode, or `Frame::parse_frames`
+
