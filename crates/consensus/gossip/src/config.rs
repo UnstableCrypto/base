@@ -1,13 +1,16 @@
 //! Gossipsub Config
 
-use std::time::Duration;
+use std::{
+    io::{Error, ErrorKind},
+    time::Duration,
+};
 
 use libp2p::{
     connection_limits::ConnectionLimits,
-    gossipsub::{Config, ConfigBuilder, Message, MessageId},
+    gossipsub::{Config, ConfigBuilder, DataTransform, Message, MessageId, RawMessage},
 };
-use openssl::sha::sha256;
-use snap::raw::Decoder;
+use openssl::sha::Sha256;
+use snap::raw::{Decoder, Encoder, decompress_len};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // GossipSub Constants
@@ -165,23 +168,88 @@ pub fn default_config() -> Config {
     default_config_builder().build().expect("default gossipsub config must be valid")
 }
 
+/// Snappy transform for gossipsub messages.
+///
+/// Inbound messages are decompressed before message ID computation and handler validation. The
+/// declared decompressed length is checked before allocating the output buffer.
+#[derive(Debug, Clone)]
+pub struct SnappyTransform {
+    /// Maximum allowed decompressed gossip payload size.
+    pub max_uncompressed_len: usize,
+    /// Maximum allowed compressed gossip payload size.
+    pub max_compressed_len: usize,
+}
+
+impl SnappyTransform {
+    /// Creates a new [`SnappyTransform`].
+    pub const fn new(max_uncompressed_len: usize, max_compressed_len: usize) -> Self {
+        Self { max_uncompressed_len, max_compressed_len }
+    }
+}
+
+impl Default for SnappyTransform {
+    fn default() -> Self {
+        Self::new(MAX_GOSSIP_SIZE, MAX_GOSSIP_SIZE)
+    }
+}
+
+impl DataTransform for SnappyTransform {
+    fn inbound_transform(&self, raw_message: RawMessage) -> Result<Message, std::io::Error> {
+        if raw_message.data.len() > self.max_compressed_len {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "snappy encoded gossip data exceeds maximum compressed size",
+            ));
+        }
+
+        let len = decompress_len(&raw_message.data)?;
+        if len > self.max_uncompressed_len {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "snappy decoded gossip data exceeds maximum uncompressed size",
+            ));
+        }
+
+        let data = Decoder::new().decompress_vec(&raw_message.data)?;
+        Ok(Message {
+            source: raw_message.source,
+            data,
+            sequence_number: raw_message.sequence_number,
+            topic: raw_message.topic,
+        })
+    }
+
+    fn outbound_transform(
+        &self,
+        _topic: &libp2p::gossipsub::TopicHash,
+        data: Vec<u8>,
+    ) -> Result<Vec<u8>, std::io::Error> {
+        if data.len() > self.max_uncompressed_len {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "gossip data exceeds maximum uncompressed size",
+            ));
+        }
+
+        let compressed = Encoder::new().compress_vec(&data)?;
+        if compressed.len() > self.max_compressed_len {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "snappy encoded gossip data exceeds maximum compressed size",
+            ));
+        }
+
+        Ok(compressed)
+    }
+}
+
 /// Computes the [`MessageId`] of a `gossipsub` message.
 fn compute_message_id(msg: &Message) -> MessageId {
-    let mut decoder = Decoder::new();
-    let id = decoder.decompress_vec(&msg.data).map_or_else(
-        |_| {
-            warn!(target: "cfg", "Failed to decompress message, using invalid snappy");
-            let domain_invalid_snappy: Vec<u8> = vec![0x0, 0x0, 0x0, 0x0];
-            sha256([domain_invalid_snappy.as_slice(), msg.data.as_slice()].concat().as_slice())
-                [..20]
-                .to_vec()
-        },
-        |data| {
-            let domain_valid_snappy: Vec<u8> = vec![0x1, 0x0, 0x0, 0x0];
-            sha256([domain_valid_snappy.as_slice(), data.as_slice()].concat().as_slice())[..20]
-                .to_vec()
-        },
-    );
+    const DOMAIN_VALID_SNAPPY: [u8; 4] = [0x1, 0x0, 0x0, 0x0];
+    let mut hasher = Sha256::new();
+    hasher.update(&DOMAIN_VALID_SNAPPY);
+    hasher.update(&msg.data);
+    let id = hasher.finish()[..20].to_vec();
 
     MessageId(id)
 }
@@ -209,8 +277,54 @@ mod tests {
         assert_eq!(cfg.max_established_per_peer, DEFAULT_MAX_ESTABLISHED_CONNECTIONS_PER_PEER);
     }
 
+    fn raw_message(data: Vec<u8>) -> RawMessage {
+        RawMessage {
+            source: None,
+            data,
+            sequence_number: None,
+            topic: libp2p::gossipsub::TopicHash::from_raw("test"),
+            signature: None,
+            key: None,
+            validated: false,
+        }
+    }
+
+    fn varint(mut value: u64) -> Vec<u8> {
+        let mut out = Vec::new();
+        loop {
+            let byte = (value & 0x7f) as u8;
+            value >>= 7;
+            if value == 0 {
+                out.push(byte);
+                break;
+            }
+            out.push(byte | 0x80);
+        }
+        out
+    }
+
     #[test]
-    fn test_compute_message_id_invalid_snappy() {
+    fn test_snappy_transform_rejects_large_decompressed_message() {
+        let transform = SnappyTransform::default();
+        let raw = raw_message(varint((MAX_GOSSIP_SIZE + 1) as u64));
+
+        assert!(transform.inbound_transform(raw).is_err());
+    }
+
+    #[test]
+    fn test_snappy_transform_roundtrip() {
+        let transform = SnappyTransform::default();
+        let data = vec![1, 2, 3, 4, 5];
+        let compressed = transform
+            .outbound_transform(&libp2p::gossipsub::TopicHash::from_raw("test"), data.clone())
+            .unwrap();
+        let msg = transform.inbound_transform(raw_message(compressed)).unwrap();
+
+        assert_eq!(msg.data, data);
+    }
+
+    #[test]
+    fn test_compute_message_id() {
         let msg = Message {
             source: None,
             data: vec![1, 2, 3, 4, 5],
@@ -219,22 +333,10 @@ mod tests {
         };
 
         let id = compute_message_id(&msg);
-        let hashed = sha256(&[&[0x0, 0x0, 0x0, 0x0], [1, 2, 3, 4, 5].as_slice()].concat());
-        assert_eq!(id.0, hashed[..20].to_vec());
-    }
-
-    #[test]
-    fn test_compute_message_id_valid_snappy() {
-        let compressed = snap::raw::Encoder::new().compress_vec(&[1, 2, 3, 4, 5]).unwrap();
-        let msg = Message {
-            source: None,
-            data: compressed,
-            sequence_number: None,
-            topic: libp2p::gossipsub::TopicHash::from_raw("test"),
-        };
-
-        let id = compute_message_id(&msg);
-        let hashed = sha256(&[&[0x1, 0x0, 0x0, 0x0], [1, 2, 3, 4, 5].as_slice()].concat());
+        let mut hasher = Sha256::new();
+        hasher.update(&[0x1, 0x0, 0x0, 0x0]);
+        hasher.update(&[1, 2, 3, 4, 5]);
+        let hashed = hasher.finish();
         assert_eq!(id.0, hashed[..20].to_vec());
     }
 }

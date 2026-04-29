@@ -25,7 +25,6 @@ alloy-primitives.workspace = true
 alloy-rpc-types-engine.workspace = true
 
 # Encoding
-snap = { workspace = true, optional = true }
 ethereum_ssz = { workspace = true, optional = true }
 ethereum_ssz_derive = { workspace = true, optional = true }
 
@@ -44,6 +43,7 @@ arbitrary = { workspace = true, features = ["derive"], optional = true }
 sha2.workspace = true
 
 [dev-dependencies]
+snap.workspace = true
 arbtest.workspace = true
 serde_json.workspace = true
 arbitrary = { workspace = true, features = ["derive"] }
@@ -62,7 +62,6 @@ std = [
 	"base-common-consensus/std",
 	"dep:ethereum_ssz",
 	"dep:ethereum_ssz_derive",
-	"dep:snap",
 	"serde?/std",
 	"sha2/std",
 	"thiserror/std",

@@ -4,12 +4,12 @@ use std::convert::Infallible;
 
 use derive_more::Debug;
 use libp2p::{
-    gossipsub::{Config, IdentTopic, MessageAuthenticity},
+    gossipsub::{AllowAllSubscriptionFilter, Config, IdentTopic, MessageAuthenticity},
     swarm::NetworkBehaviour,
 };
 use tracing::info;
 
-use crate::{ConnectionLimitsConfig, Event, Handler};
+use crate::{ConnectionLimitsConfig, Event, Handler, SnappyTransform};
 
 /// An error that can occur when creating a [`Behaviour`].
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -38,7 +38,7 @@ pub struct Behaviour {
     #[debug(skip)]
     pub ping: libp2p::ping::Behaviour,
     /// Enables gossipsub as the routing layer.
-    pub gossipsub: libp2p::gossipsub::Behaviour,
+    pub gossipsub: Gossipsub,
     /// Enables the identify protocol.
     #[debug(skip)]
     pub identify: libp2p::identify::Behaviour,
@@ -47,6 +47,9 @@ pub struct Behaviour {
     #[debug(skip)]
     pub sync_req_resp: libp2p_stream::Behaviour,
 }
+
+/// Gossipsub behaviour with Base's Snappy transform.
+pub type Gossipsub = libp2p::gossipsub::Behaviour<SnappyTransform>;
 
 impl Behaviour {
     /// Configures the swarm behaviors, subscribes to the gossip topics, and returns a new
@@ -75,7 +78,13 @@ impl Behaviour {
         let connection_limits = libp2p::connection_limits::Behaviour::new(connection_limits.into());
         let ping = libp2p::ping::Behaviour::default();
 
-        let mut gossipsub = libp2p::gossipsub::Behaviour::new(MessageAuthenticity::Anonymous, cfg)
+        let mut gossipsub =
+            libp2p::gossipsub::Behaviour::new_with_subscription_filter_and_transform(
+                MessageAuthenticity::Anonymous,
+                cfg,
+                AllowAllSubscriptionFilter {},
+                SnappyTransform::default(),
+            )
             .map_err(|_| BehaviourError::GossipsubCreationFailed)?;
 
         let identify = libp2p::identify::Behaviour::new(

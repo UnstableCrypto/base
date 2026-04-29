@@ -350,9 +350,9 @@ blocks from any protocol version.
 The `BlockHandler` implements the
 [`Handler`](https://github.com/base/base/blob/main/crates/consensus/gossip/src/handler.rs) trait,
 which has two methods: `handle()` for processing incoming messages and `topics()` for declaring
-which topics it cares about. When a gossip message arrives, the handler first checks which topic it
-came from to determine the correct decoding version, then decodes the payload, and then validates
-it:
+which topics it cares about. When a gossip message arrives, the gossipsub data transform has already
+decompressed the message. The handler checks which topic it came from to determine the correct
+decoding version, then decodes the payload, and then validates it:
 
 ```rust
 fn handle(&mut self, msg: Message) -> (MessageAcceptance, Option<NetworkPayloadEnvelope>) {

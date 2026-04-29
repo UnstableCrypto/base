@@ -20,7 +20,7 @@ pub use rpc::{
 };
 
 mod behaviour;
-pub use behaviour::{Behaviour, BehaviourError};
+pub use behaviour::{Behaviour, BehaviourError, Gossipsub};
 
 mod config;
 pub use config::{
@@ -29,7 +29,7 @@ pub use config::{
     DEFAULT_MAX_PENDING_OUTGOING_CONNECTIONS, DEFAULT_MESH_D, DEFAULT_MESH_DHI, DEFAULT_MESH_DLAZY,
     DEFAULT_MESH_DLO, GLOBAL_VALIDATE_THROTTLE, GOSSIP_HEARTBEAT, MAX_GOSSIP_SIZE,
     MAX_OUTBOUND_QUEUE, MAX_VALIDATE_QUEUE, MIN_GOSSIP_SIZE, PEER_SCORE_INSPECT_FREQUENCY,
-    SEEN_MESSAGES_TTL, default_config, default_config_builder,
+    SEEN_MESSAGES_TTL, SnappyTransform, default_config, default_config_builder,
 };
 
 mod gate;
