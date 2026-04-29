@@ -2,10 +2,14 @@
 
 use std::hint::black_box;
 
-use alloy_primitives::{Bytes, hex};
+use alloy_consensus::TxEnvelope;
+use alloy_eips::eip2718::Encodable2718;
+use alloy_primitives::{Address, Bytes, Signature, hex};
 use alloy_rlp::Decodable;
 use base_common_genesis::{HardForkConfig, RollupConfig};
-use base_protocol::{Batch, BatchReader, BatchType, Brotli, RawSpanBatch};
+use base_protocol::{
+    Batch, BatchReader, BatchType, Brotli, RawSpanBatch, SpanBatchTransactionData,
+};
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use miniz_oxide::{
     deflate::{CompressionLevel, compress_to_vec_zlib},
@@ -19,6 +23,26 @@ struct CompressionFixture {
     label: &'static str,
     compressed: Bytes,
     max_rlp_bytes_per_channel: usize,
+}
+
+#[derive(Clone)]
+struct SpanTransactionFixture {
+    tx_data: Vec<u8>,
+    nonce: u64,
+    gas: u64,
+    to: Option<Address>,
+    signature: Signature,
+    is_protected: bool,
+}
+
+#[derive(Clone)]
+struct DecodedSpanTransactionFixture {
+    tx: SpanBatchTransactionData,
+    nonce: u64,
+    gas: u64,
+    to: Option<Address>,
+    signature: Signature,
+    is_protected: bool,
 }
 
 fn decompressed_batch_fixture(batch_count: usize) -> Vec<u8> {
@@ -198,6 +222,164 @@ fn derive_all_raw_span_batches(raw_span_batches: &mut [RawSpanBatch], cfg: &Roll
     }
 
     block_count
+}
+
+fn span_transaction_fixtures_from_raw_span_batches(
+    raw_span_batches: &[RawSpanBatch],
+) -> Vec<SpanTransactionFixture> {
+    let total_tx_count = raw_span_batches
+        .iter()
+        .map(|raw_span_batch| raw_span_batch.payload.txs.total_block_tx_count as usize)
+        .sum();
+    let mut fixtures = Vec::with_capacity(total_tx_count);
+
+    for raw_span_batch in raw_span_batches {
+        let txs = &raw_span_batch.payload.txs;
+        let mut to_idx = 0;
+        let mut protected_bit_idx = 0;
+
+        for idx in 0..txs.total_block_tx_count as usize {
+            let contract_creation_bit = txs
+                .contract_creation_bits
+                .get_bit(idx)
+                .expect("span batch fixture contract creation bit must exist");
+            let to = if contract_creation_bit == 0 {
+                let to = *txs.tx_tos.get(to_idx).expect("span batch fixture to address must exist");
+                to_idx += 1;
+                Some(to)
+            } else {
+                None
+            };
+            let tx_type = *txs.tx_types.get(idx).expect("span batch fixture tx type must exist");
+            let is_protected = if tx_type.is_legacy() {
+                let is_protected =
+                    txs.protected_bits.get_bit(protected_bit_idx).unwrap_or_default() == 1;
+                protected_bit_idx += 1;
+                is_protected
+            } else {
+                true
+            };
+
+            fixtures.push(SpanTransactionFixture {
+                tx_data: txs.tx_data[idx].clone(),
+                nonce: *txs.tx_nonces.get(idx).expect("span batch fixture nonce must exist"),
+                gas: *txs.tx_gases.get(idx).expect("span batch fixture gas must exist"),
+                to,
+                signature: *txs.tx_sigs.get(idx).expect("span batch fixture signature must exist"),
+                is_protected,
+            });
+        }
+    }
+
+    fixtures
+}
+
+fn decode_all_span_transaction_data(span_transactions: &[SpanTransactionFixture]) -> usize {
+    let mut tx_count = 0;
+
+    for span_transaction in span_transactions {
+        let mut tx_data = span_transaction.tx_data.as_slice();
+        let tx = SpanBatchTransactionData::decode(&mut tx_data)
+            .expect("span batch fixture transaction data must decode");
+        black_box(tx);
+        tx_count += 1;
+    }
+
+    tx_count
+}
+
+fn decoded_span_transaction_fixtures(
+    span_transactions: &[SpanTransactionFixture],
+) -> Vec<DecodedSpanTransactionFixture> {
+    span_transactions
+        .iter()
+        .map(|span_transaction| {
+            let mut tx_data = span_transaction.tx_data.as_slice();
+            let tx = SpanBatchTransactionData::decode(&mut tx_data)
+                .expect("span batch fixture transaction data must decode");
+            DecodedSpanTransactionFixture {
+                tx,
+                nonce: span_transaction.nonce,
+                gas: span_transaction.gas,
+                to: span_transaction.to,
+                signature: span_transaction.signature,
+                is_protected: span_transaction.is_protected,
+            }
+        })
+        .collect()
+}
+
+fn build_all_signed_tx_envelopes(
+    span_transactions: &[DecodedSpanTransactionFixture],
+    chain_id: u64,
+) -> usize {
+    let mut tx_count = 0;
+
+    for span_transaction in span_transactions {
+        let tx_envelope = span_transaction
+            .tx
+            .to_signed_tx(
+                span_transaction.nonce,
+                span_transaction.gas,
+                span_transaction.to,
+                chain_id,
+                span_transaction.signature,
+                span_transaction.is_protected,
+            )
+            .expect("span batch fixture signed transaction must build");
+        black_box(tx_envelope);
+        tx_count += 1;
+    }
+
+    tx_count
+}
+
+fn signed_tx_envelopes_from_decoded_span_transactions(
+    span_transactions: &[DecodedSpanTransactionFixture],
+    chain_id: u64,
+) -> Vec<TxEnvelope> {
+    span_transactions
+        .iter()
+        .map(|span_transaction| {
+            span_transaction
+                .tx
+                .to_signed_tx(
+                    span_transaction.nonce,
+                    span_transaction.gas,
+                    span_transaction.to,
+                    chain_id,
+                    span_transaction.signature,
+                    span_transaction.is_protected,
+                )
+                .expect("span batch fixture signed transaction must build")
+        })
+        .collect()
+}
+
+fn encode_all_signed_tx_envelopes(tx_envelopes: &[TxEnvelope]) -> usize {
+    let mut total_bytes = 0;
+
+    for tx_envelope in tx_envelopes {
+        let mut buf = Vec::new();
+        tx_envelope.encode_2718(&mut buf);
+        total_bytes += buf.len();
+        black_box(buf);
+    }
+
+    total_bytes
+}
+
+fn encode_all_signed_tx_envelopes_exact_capacity(tx_envelopes: &[TxEnvelope]) -> usize {
+    let mut total_bytes = 0;
+
+    for tx_envelope in tx_envelopes {
+        let mut buf = Vec::with_capacity(tx_envelope.encode_2718_len());
+        tx_envelope.encode_2718(&mut buf);
+        total_bytes += buf.len();
+        black_box(buf);
+    }
+
+    total_bytes
 }
 
 fn bench_rollup_config(label: &'static str) -> RollupConfig {
@@ -493,6 +675,76 @@ fn bench_batch_reader_batch_decode_components(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_batch_reader_span_full_txs_components(c: &mut Criterion) {
+    let mut group = c.benchmark_group("protocol/batch_reader/span_full_txs_components");
+    group.sample_size(20);
+
+    let cfg = RollupConfig::default();
+    let chain_id = cfg.l2_chain_id.id();
+
+    for batch_count in BATCH_COUNTS {
+        let decompressed = decompressed_batch_fixture(batch_count);
+        let raw_span_batches = raw_span_batch_templates_from_decompressed(decompressed.as_slice());
+        let span_transactions = span_transaction_fixtures_from_raw_span_batches(&raw_span_batches);
+        let decoded_span_transactions = decoded_span_transaction_fixtures(&span_transactions);
+        let signed_tx_envelopes = signed_tx_envelopes_from_decoded_span_transactions(
+            &decoded_span_transactions,
+            chain_id,
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("span_tx_data_decode_only", batch_count),
+            &span_transactions,
+            |b, span_transactions| {
+                b.iter(|| {
+                    black_box(decode_all_span_transaction_data(black_box(
+                        span_transactions.as_slice(),
+                    )));
+                });
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("span_to_signed_tx_only", batch_count),
+            &decoded_span_transactions,
+            |b, decoded_span_transactions| {
+                b.iter(|| {
+                    black_box(build_all_signed_tx_envelopes(
+                        black_box(decoded_span_transactions.as_slice()),
+                        black_box(chain_id),
+                    ));
+                });
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("span_encode_2718_only", batch_count),
+            &signed_tx_envelopes,
+            |b, signed_tx_envelopes| {
+                b.iter(|| {
+                    black_box(encode_all_signed_tx_envelopes(black_box(
+                        signed_tx_envelopes.as_slice(),
+                    )));
+                });
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("span_encode_2718_exact_capacity_only", batch_count),
+            &signed_tx_envelopes,
+            |b, signed_tx_envelopes| {
+                b.iter(|| {
+                    black_box(encode_all_signed_tx_envelopes_exact_capacity(black_box(
+                        signed_tx_envelopes.as_slice(),
+                    )));
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_batch_reader_constructor,
@@ -501,5 +753,6 @@ criterion_group!(
     bench_batch_reader_post_decompression_decode_only,
     bench_batch_reader_post_decompression_components,
     bench_batch_reader_batch_decode_components,
+    bench_batch_reader_span_full_txs_components,
 );
 criterion_main!(benches);

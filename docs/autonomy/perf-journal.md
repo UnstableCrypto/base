@@ -591,3 +591,33 @@ Results:
 - interpretation: most of the remaining `full_txs` floor is still inside transaction-data decode and transaction re-encoding, but preallocating the outer result buffer is a safe low-risk cleanup that trims a little allocator churn from the hottest measured substage
 Next:
 - if this decode path is revisited again, microbenchmark `SpanBatchTransactionData::decode` against `TxEnvelope::encode_2718` inside `full_txs()` so the next iteration can tell whether the remaining shared decode floor is dominated by span transaction-data parsing or by re-encoding reconstructed signed transactions.
+
+## 2026-04-29 00:33 UTC
+Focus: `base-protocol` span transaction re-encoding allocation in `SpanBatchTransactions::full_txs()`.
+Hypothesis: the remaining `full_txs()` floor is likely split across transaction-data decode, signed-envelope construction, and `encode_2718`; if the encoding stage is still allocating from `Vec::new()` despite knowing `encode_2718_len()`, preallocating each transaction buffer should produce a measurable win and a new component harness should show how much of `full_txs()` it removes.
+Commands:
+- `cargo bench -p base-protocol --bench batch_reader batch_decode_components -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10`
+- extended `crates/consensus/protocol/benches/batch_reader.rs` with a new `protocol/batch_reader/span_full_txs_components` Criterion group that splits `SpanBatchTransactions::full_txs()` into `SpanBatchTransactionData::decode`, `SpanBatchTransactionData::to_signed_tx`, and `TxEnvelope::encode_2718`, including both `Vec::new()` and `Vec::with_capacity(tx_envelope.encode_2718_len())` encoding cases
+- edited `crates/consensus/protocol/src/batch/transactions.rs` to change the per-transaction encode buffer from `Vec::new()` to `Vec::with_capacity(tx_envelope.encode_2718_len())`
+- `cargo test -p base-protocol batch_reader -- --nocapture`
+- `cargo clippy -p base-protocol --tests --benches --no-deps -- -D warnings`
+- `cargo bench -p base-protocol --bench batch_reader batch_decode_components -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10`
+- `cargo bench -p base-protocol --bench batch_reader span_full_txs_components -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10`
+Results:
+- added durable benchmark coverage that makes the hottest remaining `full_txs()` stages explicit instead of guessing from aggregate decode time alone
+- the new component harness shows per-transaction signed-envelope construction dominates, but encoding allocation was still a meaningful secondary cost and exact-capacity buffers help a lot in isolation:
+  - `span_tx_data_decode_only/1`: `101.33 µs`
+  - `span_to_signed_tx_only/1`: `2.411 ms`
+  - `span_encode_2718_only/1`: `302.79 µs`
+  - `span_encode_2718_exact_capacity_only/1`: `145.36 µs` (~`52.0%` lower than `Vec::new()`)
+  - `span_tx_data_decode_only/64`: `11.166 ms`
+  - `span_to_signed_tx_only/64`: `160.47 ms`
+  - `span_encode_2718_only/64`: `25.780 ms`
+  - `span_encode_2718_exact_capacity_only/64`: `15.957 ms` (~`38.1%` lower than `Vec::new()`)
+- the production change moved the full `full_txs()` stage by a meaningful amount once measured end-to-end in the existing harness:
+  - `span_full_txs_only/1`: `3.0887 ms` -> `2.8193 ms` (~`8.7%` lower median from Criterion output)
+  - `span_full_txs_only/64`: `214.58 ms` -> `196.27 ms` (~`8.5%` lower median)
+  - `span_derive_only/64`: `223.39 ms` -> `205.48 ms` (~`8.0%` lower median), consistent with `derive` spending most of its time inside `full_txs()`
+- validation passed: `cargo test -p base-protocol batch_reader -- --nocapture` (`2 passed`) and `cargo clippy -p base-protocol --tests --benches --no-deps -- -D warnings`
+Next:
+- if this decode path is revisited again, use the new `span_full_txs_components` harness to test whether `SpanBatchTransactionData::to_signed_tx` can avoid more temporary allocation or repeated setup, since it now accounts for the largest remaining share of the `full_txs()` floor.
