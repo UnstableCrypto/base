@@ -780,3 +780,27 @@ Results:
 - branch/PR hygiene check: existing open PR remains `#2409` (`perf: optimize batcher hot paths`), so no new PR was opened
 Next:
 - if this decode path is revisited again, add one more synthetic sweep that varies only one shape dimension at a time (calldata size vs access-list size vs authorization-list size) so the next experiment can attribute the rich-shape slowdown to a specific hashed field rather than the combined larger fixture.
+
+## 2026-04-29 15:41 UTC
+Focus: `base-protocol` synthetic signature-hash dimension sensitivity across isolated calldata, access-list, and authorization-list expansions.
+Hypothesis: the prior `simple` versus `rich` synthetic benchmark proved larger payloads and typed lists matter, but it still changed multiple fields at once; a one-factor-at-a-time benchmark should isolate which hashed field drives most of the slowdown for each typed transaction kind before attempting any production optimization around `signature_hash()`.
+Commands:
+- `cargo bench -p base-protocol --bench batch_reader synthetic_signature_hash_shape_sensitivity -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10`
+- edited `crates/consensus/protocol/benches/batch_reader.rs` to add new synthetic shapes (`input_heavy`, `access_list_heavy`, `authorization_heavy`) plus a `protocol/batch_reader/synthetic_signature_hash_dimension_sensitivity` Criterion group
+- `cargo fmt --all`
+- `cargo bench -p base-protocol --bench batch_reader synthetic_signature_hash_dimension_sensitivity -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10`
+- `cargo test -p base-protocol batch_reader -- --nocapture`
+- `cargo clippy -p base-protocol --tests --benches --no-deps -- -D warnings`
+- extracted medians from `target/criterion/protocol_batch_reader_synthetic_signature_hash_{shape_sensitivity,dimension_sensitivity}/*/*/estimates.json`
+Results:
+- kept production logic unchanged and extended the shared protocol bench with isolated synthetic shape knobs so each tx kind now has the smallest relevant comparison set: legacy measures `simple` vs `input_heavy`, EIP-2930/EIP-1559 add `access_list_heavy`, and EIP-7702 adds `authorization_heavy`
+- validation passed: `cargo test -p base-protocol batch_reader -- --nocapture` (`2 passed`) and `cargo clippy -p base-protocol --tests --benches --no-deps -- -D warnings`
+- refreshed pre-edit shape-sensitivity medians confirmed the combined `rich` shape still widened the gap substantially on this machine: legacy `272.24 µs` -> `1.8249 ms`, EIP-2930 `274.73 µs` -> `3.0109 ms`, EIP-1559 `279.87 µs` -> `3.0098 ms`, EIP-7702 `530.81 µs` -> `3.8130 ms`
+- new isolated-dimension medians show calldata expansion is the largest single driver for every kind, while typed-list overhead is material but smaller than the full combined `rich` shape:
+  - legacy: `simple` `280.94 µs` (~`274 ns/tx`) vs `input_heavy` `1.8088 ms` (~`1.77 µs/tx`), so nearly all of the legacy rich-shape slowdown comes from calldata size alone
+  - EIP-2930: `simple` `283.16 µs` (~`277 ns/tx`), `input_heavy` `1.8169 ms` (~`1.77 µs/tx`), `access_list_heavy` `1.4907 ms` (~`1.46 µs/tx`); the combined rich shape at `3.0109 ms` is roughly additive across large calldata plus populated access lists
+  - EIP-1559: `simple` `286.09 µs` (~`279 ns/tx`), `input_heavy` `1.8213 ms` (~`1.78 µs/tx`), `access_list_heavy` `1.4885 ms` (~`1.45 µs/tx`); this tracks EIP-2930 closely, suggesting access-list hashing rather than fee-field differences drives most typed-list overhead
+  - EIP-7702: `simple` `531.93 µs` (~`519 ns/tx`), `input_heavy` `2.0648 ms` (~`2.02 µs/tx`), `access_list_heavy` `1.5182 ms` (~`1.48 µs/tx`), `authorization_heavy` `1.0616 ms` (~`1.04 µs/tx`); large calldata is still the biggest single contributor, but authorization hashing is a distinct secondary cost unique to 7702
+- interpretation: future hash-focused work should prioritize payload-size-sensitive hashing paths first, then separately evaluate access-list and EIP-7702 authorization handling; optimizing around typed-list serialization alone is unlikely to explain the full `rich` synthetic slowdown
+Next:
+- if this decode path is revisited again, add a mixed two-factor synthetic sweep (for example input+access-list for EIP-2930/EIP-1559 and input+authorization for EIP-7702) or profile upstream `signature_hash()` internals so the next experiment can test whether the near-additive slowdown comes from repeated RLP length calculation, list encoding, or keccak input materialization.
