@@ -647,3 +647,31 @@ Results:
 - PR status check: existing open PR remains `#2409` (`perf: optimize batcher hot paths`), so no new PR was opened
 Next:
 - revisit `SpanBatchTransactionData::to_signed_tx()` with a more structural candidate, likely reducing repeated cloning/setup inside typed transaction construction (`input`, access lists, or authorization lists) and validating it first against the existing `span_full_txs_components` harness before touching production code again.
+
+## 2026-04-29 04:48 UTC
+Focus: `base-protocol` span transaction reconstruction clone pressure inside `SpanBatchTransactions::full_txs()`.
+Hypothesis: `full_txs()` decodes each `SpanBatchTransactionData` and then rebuilds a signed envelope from borrowed transaction data, so adding owned `into_signed_tx` variants and moving `Bytes`/access lists/authorization lists into typed transactions might cut clone overhead inside the dominant `span_to_signed_tx_only` stage.
+Commands:
+- `cargo bench -p base-protocol --bench batch_reader batch_decode_components -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10`
+- `cargo bench -p base-protocol --bench batch_reader span_full_txs_components -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10`
+- edited `crates/consensus/protocol/src/batch/tx_data/{legacy,eip2930,eip1559,eip7702,wrapper}.rs` plus `crates/consensus/protocol/src/batch/transactions.rs` to add owned `into_signed_tx` helpers and route `full_txs()` through them
+- `cargo fmt --all`
+- `cargo test -p base-protocol batch_reader -- --nocapture`
+- `cargo clippy -p base-protocol --tests --benches --no-deps -- -D warnings`
+- `cargo bench -p base-protocol --bench batch_reader batch_decode_components -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10`
+- `cargo bench -p base-protocol --bench batch_reader span_full_txs_components -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10`
+- reverted the production edits after the confirming benchmarks regressed or stayed within noise on the targeted hot path
+Results:
+- refreshed pre-change medians on the current tree: `span_full_txs_only/1` = `2.8310 ms`, `span_full_txs_only/64` = `196.16 ms`, `span_to_signed_tx_only/1` = `2.4103 ms`, `span_to_signed_tx_only/64` = `160.40 ms`, `span_tx_data_decode_only/64` = `11.226 ms`, and `span_encode_2718_exact_capacity_only/64` = `15.981 ms`
+- the owned-conversion experiment validated cleanly but did not produce an end-to-end win and appears to hurt the isolated reconstruction component on this machine, so it was reverted and the branch is clean
+- confirming after-change medians before revert:
+  - `span_full_txs_only/1`: `2.8310 ms` -> `2.8514 ms` (~`0.7%` slower)
+  - `span_full_txs_only/64`: `196.16 ms` -> `196.61 ms` (~`0.2%` slower / effectively flat)
+  - `span_to_signed_tx_only/1`: `2.4103 ms` -> `2.4409 ms` (~`1.3%` slower)
+  - `span_to_signed_tx_only/64`: `160.40 ms` -> `162.24 ms` (~`1.1%` slower)
+  - `span_tx_data_decode_only/64`: `11.226 ms` -> `11.806 ms` (~`5.2%` slower)
+  - `span_encode_2718_exact_capacity_only/64`: `15.981 ms` -> `16.029 ms` (flat)
+- validation on the temporary experiment still passed: `cargo test -p base-protocol batch_reader -- --nocapture` (`2 passed`) and `cargo clippy -p base-protocol --tests --benches --no-deps -- -D warnings`
+- branch/PR hygiene check: `git status` is clean after revert and the existing open PR is still `#2409`, so there was nothing to commit or push this run
+Next:
+- avoid more ownership-plumbing experiments in `full_txs()` until a deeper component harness proves where the remaining `span_to_signed_tx_only` time is really spent; the next best target is a finer split inside signed transaction construction (for example signature-hash generation versus typed-transaction assembly per tx kind) so future edits can attack the dominant substage directly.
