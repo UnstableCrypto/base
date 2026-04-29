@@ -53,6 +53,14 @@ enum TypedTransactionFixture {
     Eip7702(TxEip7702),
 }
 
+#[derive(Clone, Copy)]
+enum TypedTransactionKind {
+    Legacy,
+    Eip2930,
+    Eip1559,
+    Eip7702,
+}
+
 fn decompressed_batch_fixture(batch_count: usize) -> Vec<u8> {
     let file_contents = String::from_utf8_lossy(include_bytes!("../testdata/batch.hex"));
     let file_contents = &file_contents[..file_contents.len() - 1];
@@ -403,12 +411,32 @@ fn typed_transaction_fixtures_from_decoded_span_transactions(
 }
 
 impl TypedTransactionFixture {
+    const fn kind(&self) -> TypedTransactionKind {
+        match self {
+            Self::Legacy(_) => TypedTransactionKind::Legacy,
+            Self::Eip2930(_) => TypedTransactionKind::Eip2930,
+            Self::Eip1559(_) => TypedTransactionKind::Eip1559,
+            Self::Eip7702(_) => TypedTransactionKind::Eip7702,
+        }
+    }
+
     fn signature_hash(&self) -> B256 {
         match self {
             Self::Legacy(tx) => tx.signature_hash(),
             Self::Eip2930(tx) => tx.signature_hash(),
             Self::Eip1559(tx) => tx.signature_hash(),
             Self::Eip7702(tx) => tx.signature_hash(),
+        }
+    }
+}
+
+impl TypedTransactionKind {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Legacy => "legacy",
+            Self::Eip2930 => "eip2930",
+            Self::Eip1559 => "eip1559",
+            Self::Eip7702 => "eip7702",
         }
     }
 }
@@ -423,6 +451,31 @@ fn signature_hash_all_typed_transactions(typed_transactions: &[TypedTransactionF
     }
 
     tx_count
+}
+
+fn typed_transaction_fixtures_grouped_by_kind(
+    typed_transactions: &[TypedTransactionFixture],
+) -> Vec<(TypedTransactionKind, Vec<TypedTransactionFixture>)> {
+    let mut legacy = Vec::new();
+    let mut eip2930 = Vec::new();
+    let mut eip1559 = Vec::new();
+    let mut eip7702 = Vec::new();
+
+    for typed_transaction in typed_transactions {
+        match typed_transaction.kind() {
+            TypedTransactionKind::Legacy => legacy.push(typed_transaction.clone()),
+            TypedTransactionKind::Eip2930 => eip2930.push(typed_transaction.clone()),
+            TypedTransactionKind::Eip1559 => eip1559.push(typed_transaction.clone()),
+            TypedTransactionKind::Eip7702 => eip7702.push(typed_transaction.clone()),
+        }
+    }
+
+    vec![
+        (TypedTransactionKind::Legacy, legacy),
+        (TypedTransactionKind::Eip2930, eip2930),
+        (TypedTransactionKind::Eip1559, eip1559),
+        (TypedTransactionKind::Eip7702, eip7702),
+    ]
 }
 
 fn build_all_signed_tx_envelopes(
@@ -920,6 +973,50 @@ fn bench_batch_reader_span_signed_tx_components(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_batch_reader_span_signature_hash_by_tx_type(c: &mut Criterion) {
+    let mut group = c.benchmark_group("protocol/batch_reader/span_signature_hash_by_tx_type");
+    group.sample_size(20);
+
+    let cfg = RollupConfig::default();
+    let chain_id = cfg.l2_chain_id.id();
+
+    for batch_count in BATCH_COUNTS {
+        let decompressed = decompressed_batch_fixture(batch_count);
+        let raw_span_batches = raw_span_batch_templates_from_decompressed(decompressed.as_slice());
+        let span_transactions = span_transaction_fixtures_from_raw_span_batches(&raw_span_batches);
+        let decoded_span_transactions = decoded_span_transaction_fixtures(&span_transactions);
+        let typed_transactions = typed_transaction_fixtures_from_decoded_span_transactions(
+            &decoded_span_transactions,
+            chain_id,
+        );
+
+        for (kind, typed_transactions) in
+            typed_transaction_fixtures_grouped_by_kind(&typed_transactions)
+        {
+            if typed_transactions.is_empty() {
+                continue;
+            }
+
+            group.bench_with_input(
+                BenchmarkId::new(
+                    format!("{}_{}_txs", kind.label(), typed_transactions.len()),
+                    batch_count,
+                ),
+                &typed_transactions,
+                |b, typed_transactions| {
+                    b.iter(|| {
+                        black_box(signature_hash_all_typed_transactions(black_box(
+                            typed_transactions.as_slice(),
+                        )));
+                    });
+                },
+            );
+        }
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_batch_reader_constructor,
@@ -930,5 +1027,6 @@ criterion_group!(
     bench_batch_reader_batch_decode_components,
     bench_batch_reader_span_full_txs_components,
     bench_batch_reader_span_signed_tx_components,
+    bench_batch_reader_span_signature_hash_by_tx_type,
 );
 criterion_main!(benches);

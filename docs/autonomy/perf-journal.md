@@ -702,3 +702,31 @@ Results:
 - branch/PR hygiene check: existing open PR remains `#2409` (`perf: optimize batcher hot paths`), so no new PR was opened
 Next:
 - if this path is revisited again, target `signature_hash()` specifically (or prove it cannot be amortized/cached safely in the span decode path) before attempting any more `to_signed_tx()` field-assembly changes.
+
+## 2026-04-29 09:06 UTC
+Focus: `base-protocol` span signature-hash cost distribution by transaction type.
+Hypothesis: after confirming `signature_hash()` dominates `SpanBatchTransactionData::to_signed_tx()`, the next useful narrowing step is to measure hash cost by typed transaction kind; if one kind is materially more expensive per transaction, future hash-focused work should target that path first instead of treating all span transactions the same.
+Commands:
+- `cargo bench -p base-protocol --bench batch_reader span_signed_tx_components -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10`
+- edited `crates/consensus/protocol/benches/batch_reader.rs` to add `TypedTransactionKind`, grouping helpers, and a new `protocol/batch_reader/span_signature_hash_by_tx_type` Criterion group
+- `cargo fmt --all`
+- `cargo test -p base-protocol batch_reader -- --nocapture`
+- `cargo clippy -p base-protocol --tests --benches --no-deps -- -D warnings`
+- `cargo bench -p base-protocol --bench batch_reader span_signature_hash_by_tx_type -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10`
+- extracted medians from `target/criterion/protocol_batch_reader_span_signature_hash_by_tx_type/*/*/new/estimates.json`
+- `gh pr list --head automation/perf-autopilot --state open`
+Results:
+- kept production logic unchanged and added benchmark-only coverage that groups the same decoded span fixtures by typed transaction kind before measuring `signature_hash()`
+- validation passed: `cargo test -p base-protocol batch_reader -- --nocapture` (`2 passed`) and `cargo clippy -p base-protocol --tests --benches --no-deps -- -D warnings`
+- the current fixture mix is almost entirely legacy and EIP-1559 transactions, with no EIP-7702 transactions present in `batch.hex`; the new bench therefore measured three active kinds on this machine
+- median signature-hash timings from the new group:
+  - `legacy_454_txs/1`: `983.158 µs` total, about `2.17 µs/tx`
+  - `eip2930_11_txs/1`: `21.489 µs` total, about `1.95 µs/tx`
+  - `eip1559_1301_txs/1`: `1.314 ms` total, about `1.01 µs/tx`
+  - `legacy_29056_txs/64`: `66.855 ms` total, about `2.30 µs/tx`
+  - `eip2930_704_txs/64`: `1.394 ms` total, about `1.98 µs/tx`
+  - `eip1559_83264_txs/64`: `88.996 ms` total, about `1.07 µs/tx`
+- interpretation: signature hashing is still the dominant stage overall, but its per-transaction cost is not uniform; legacy and EIP-2930 hashing are roughly 2x the per-tx cost of EIP-1559 on the current fixture mix, so any future optimization or upstream investigation should start with those hash paths or with fixture coverage that includes EIP-7702 before touching production decode logic
+- branch/PR hygiene check: existing open PR remains `#2409` (`perf: optimize batcher hot paths`), so no new PR was opened
+Next:
+- if this decode path is revisited again, either add a fixture with meaningful EIP-7702 coverage or inspect whether legacy/EIP-2930 `signature_hash()` paths can be optimized or replaced by a cheaper safe construction in the span decode flow before attempting any production changes.
