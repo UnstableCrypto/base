@@ -33,7 +33,7 @@
 //! provers zero) are skipped.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
 };
 
@@ -136,10 +136,10 @@ pub struct GameScanner {
     factory_client: Arc<dyn DisputeGameFactoryClient>,
     verifier_client: Arc<dyn AggregateVerifierClient>,
     config: ScannerConfig,
-    /// Cache of `(game_type, impl_address) → intermediate_block_interval` to avoid repeated
-    /// RPC calls. Keyed on both fields so that a governance `setImplementation` call
-    /// (which changes the impl address) automatically causes a cache miss.
-    interval_cache: Mutex<HashMap<(u32, Address), u64>>,
+    /// Cache of `game_proxy → intermediate_block_interval` to avoid repeated RPC calls while
+    /// preserving the interval used by each game's implementation. Pruned after each scan to the
+    /// candidate games still present in the current lookback window.
+    interval_cache: Mutex<HashMap<Address, u64>>,
 }
 
 impl std::fmt::Debug for GameScanner {
@@ -205,6 +205,7 @@ impl GameScanner {
         }
 
         candidates.sort_unstable_by_key(|c| c.index);
+        self.prune_interval_cache(candidates.iter().map(|candidate| candidate.factory.proxy));
 
         ChallengerMetrics::games_scanned_total().increment(games_to_scan);
         ChallengerMetrics::scan_head().set(end as f64);
@@ -256,7 +257,7 @@ impl GameScanner {
                 )
                 .map_err(Into::into)
             },
-            self.resolve_intermediate_block_interval(factory.game_type),
+            self.resolve_intermediate_block_interval(factory.proxy),
         )?;
 
         Ok(Some(CandidateGame {
@@ -337,41 +338,133 @@ impl GameScanner {
         }
     }
 
-    /// Resolves the intermediate block interval for a game type, using a cache
-    /// to avoid repeated RPC calls for the same `(game_type, impl_address)` pair.
+    /// Resolves the intermediate block interval for a game.
     ///
-    /// The impl address is always fetched from the factory so that a governance
-    /// `setImplementation` call (which changes the address) automatically
-    /// invalidates the cached value.
-    async fn resolve_intermediate_block_interval(&self, game_type: u32) -> Result<u64> {
-        let impl_address = self.factory_client.game_impls(game_type).await?;
-        if impl_address == Address::ZERO {
-            return Err(eyre::eyre!(
-                "no game implementation registered in DisputeGameFactory for game type {game_type}"
-            ));
-        }
-
-        let cache_key = (game_type, impl_address);
-
+    /// The interval is read from the game proxy, not the factory's current implementation for the
+    /// game type, because governance can replace the factory implementation while older in-progress
+    /// games still delegate to the implementation they were created from.
+    async fn resolve_intermediate_block_interval(&self, game_address: Address) -> Result<u64> {
         {
             let cache = self.interval_cache.lock().expect("interval_cache lock poisoned");
-            if let Some(&interval) = cache.get(&cache_key) {
+            if let Some(&interval) = cache.get(&game_address) {
                 return Ok(interval);
             }
         }
 
-        let interval = self.verifier_client.read_intermediate_block_interval(impl_address).await?;
+        let interval = self.verifier_client.read_intermediate_block_interval(game_address).await?;
 
         debug!(
-            game_type = game_type,
+            game_address = %game_address,
             interval = interval,
-            impl_address = %impl_address,
             "resolved intermediate block interval"
         );
 
         let mut cache = self.interval_cache.lock().expect("interval_cache lock poisoned");
-        cache.insert(cache_key, interval);
+        cache.insert(game_address, interval);
 
         Ok(interval)
+    }
+
+    fn prune_interval_cache(&self, retained_games: impl IntoIterator<Item = Address>) {
+        let retained_games: HashSet<_> = retained_games.into_iter().collect();
+        let mut cache = self.interval_cache.lock().expect("interval_cache lock poisoned");
+        let before = cache.len();
+
+        cache.retain(|game_address, _| retained_games.contains(game_address));
+
+        let entries_removed = before - cache.len();
+        if entries_removed > 0 {
+            debug!(
+                entries_removed = entries_removed,
+                entries_remaining = cache.len(),
+                "pruned intermediate block interval cache"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, sync::Arc};
+
+    use alloy_primitives::Address;
+    use base_proof_contracts::{AggregateVerifierClient, DisputeGameFactoryClient, GameStatus};
+
+    use super::{GameScanner, ScannerConfig};
+    use crate::test_utils::{
+        MockAggregateVerifier, MockDisputeGameFactory, addr, factory_game, mock_state,
+    };
+
+    #[tokio::test]
+    async fn scanner_reads_interval_from_each_game_proxy() {
+        let game_type = 1;
+
+        let factory: Arc<dyn DisputeGameFactoryClient> = Arc::new(MockDisputeGameFactory {
+            games: vec![factory_game(0, game_type), factory_game(1, game_type)],
+        });
+
+        let mut verifier_games = HashMap::new();
+        verifier_games.insert(addr(0), mock_state(GameStatus::InProgress, Address::ZERO, 100));
+        verifier_games.insert(addr(1), mock_state(GameStatus::InProgress, Address::ZERO, 200));
+
+        let verifier = Arc::new(MockAggregateVerifier::new(verifier_games));
+        verifier.set_intermediate_block_interval(addr(0), 10);
+        verifier.set_intermediate_block_interval(addr(1), 30);
+        let verifier_client: Arc<dyn AggregateVerifierClient> =
+            Arc::<MockAggregateVerifier>::clone(&verifier);
+
+        let scanner =
+            GameScanner::new(factory, verifier_client, ScannerConfig { lookback_games: 1000 });
+
+        let first = scanner.evaluate_game(0).await.unwrap().unwrap();
+        assert_eq!(first.intermediate_block_interval, 10);
+
+        let cached = scanner.evaluate_game(0).await.unwrap().unwrap();
+        assert_eq!(cached.intermediate_block_interval, 10);
+        assert_eq!(verifier.intermediate_block_interval_read_count(addr(0)), 1);
+
+        let after_upgrade = scanner.evaluate_game(1).await.unwrap().unwrap();
+        assert_eq!(after_upgrade.intermediate_block_interval, 30);
+        assert_eq!(verifier.intermediate_block_interval_read_count(addr(1)), 1);
+    }
+
+    #[tokio::test]
+    async fn scan_prunes_interval_cache_to_current_candidates() {
+        let factory: Arc<dyn DisputeGameFactoryClient> = Arc::new(MockDisputeGameFactory {
+            games: vec![
+                factory_game(0, 1),
+                factory_game(1, 1),
+                factory_game(2, 1),
+                factory_game(3, 1),
+            ],
+        });
+
+        let mut verifier_games = HashMap::new();
+        for i in 0..4 {
+            verifier_games.insert(addr(i), mock_state(GameStatus::InProgress, Address::ZERO, i));
+        }
+
+        let verifier = Arc::new(MockAggregateVerifier::new(verifier_games));
+        let verifier_client: Arc<dyn AggregateVerifierClient> =
+            Arc::<MockAggregateVerifier>::clone(&verifier);
+
+        let scanner =
+            GameScanner::new(factory, verifier_client, ScannerConfig { lookback_games: 2 });
+
+        let old_candidate = scanner.evaluate_game(0).await.unwrap().unwrap();
+        assert_eq!(old_candidate.index, 0);
+        assert!(scanner.interval_cache.lock().unwrap().contains_key(&addr(0)));
+
+        let candidates = scanner.scan().await.unwrap();
+        assert_eq!(
+            candidates.iter().map(|candidate| candidate.index).collect::<Vec<_>>(),
+            vec![2, 3]
+        );
+
+        let cache = scanner.interval_cache.lock().unwrap();
+        assert_eq!(cache.len(), 2);
+        assert!(!cache.contains_key(&addr(0)));
+        assert!(cache.contains_key(&addr(2)));
+        assert!(cache.contains_key(&addr(3)));
     }
 }
