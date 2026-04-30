@@ -1,0 +1,172 @@
+use std::{
+    fmt,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+use alloy_primitives::{Address, Bytes};
+
+use crate::{
+    Result, SignerIdentity, TdxCollectedQuote, TdxQuoteProvider, TdxReportData, TdxSigner,
+};
+
+/// TDX signer quote response.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TdxSignerQuote {
+    /// Uncompressed 65-byte secp256k1 signer public key.
+    pub signer_public_key: Bytes,
+    /// Ethereum signer address derived from the public key.
+    pub signer_address: Address,
+    /// Raw TDX quote bytes.
+    pub quote: Bytes,
+    /// Exact report data supplied to quote generation.
+    pub report_data: [u8; 64],
+    /// Quote collection timestamp in milliseconds.
+    pub quote_timestamp_millis: u64,
+    /// Provider-local quote metadata.
+    pub local_metadata: crate::TdxLocalQuoteMetadata,
+}
+
+/// TDX runtime owning signer identity and quote collection.
+pub struct TdxRuntime<P> {
+    signer: TdxSigner,
+    quote_provider: P,
+}
+
+impl<P> TdxRuntime<P> {
+    /// Creates a runtime from a signer and quote provider.
+    pub const fn new(signer: TdxSigner, quote_provider: P) -> Self {
+        Self { signer, quote_provider }
+    }
+
+    /// Returns the public signer identity.
+    pub fn signer_identity(&self) -> SignerIdentity {
+        self.signer.identity()
+    }
+
+    /// Returns the signer's public key.
+    pub fn signer_public_key(&self) -> Bytes {
+        self.signer.public_key()
+    }
+
+    /// Returns the signer's Ethereum address.
+    pub const fn signer_address(&self) -> Address {
+        self.signer.address()
+    }
+
+    /// Returns the quote provider.
+    pub const fn quote_provider(&self) -> &P {
+        &self.quote_provider
+    }
+}
+
+impl<P: TdxQuoteProvider> TdxRuntime<P> {
+    /// Collects a fresh quote using the current system time.
+    pub fn signer_quote(&self) -> Result<TdxSignerQuote> {
+        self.signer_quote_at(Self::now_millis()?)
+    }
+
+    /// Collects a quote using an explicit timestamp.
+    ///
+    /// This is primarily useful for deterministic tests and replay-safe verifier
+    /// input construction.
+    pub fn signer_quote_at(&self, quote_timestamp_millis: u64) -> Result<TdxSignerQuote> {
+        let public_key = self.signer.public_key();
+        let report_data = TdxReportData::for_public_key(&public_key, quote_timestamp_millis)?;
+        let TdxCollectedQuote { quote, metadata } = self.quote_provider.quote(&report_data)?;
+
+        Ok(TdxSignerQuote {
+            signer_public_key: public_key,
+            signer_address: self.signer.address(),
+            quote,
+            report_data,
+            quote_timestamp_millis,
+            local_metadata: metadata,
+        })
+    }
+
+    /// Returns the current Unix timestamp in milliseconds.
+    pub fn now_millis() -> Result<u64> {
+        Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64)
+    }
+}
+
+impl<P: fmt::Debug> fmt::Debug for TdxRuntime<P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TdxRuntime")
+            .field("signer_address", &self.signer.address())
+            .field("quote_provider", &self.quote_provider)
+            .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use alloy_primitives::{Bytes, keccak256};
+
+    use super::*;
+    use crate::{ConfigfsTdxQuoteProvider, MockTdxQuoteProvider, TdxReportData};
+
+    const TEST_KEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+    const TIMESTAMP_MILLIS: u64 = 1_711_111_111_000;
+
+    fn test_runtime() -> TdxRuntime<MockTdxQuoteProvider> {
+        let signer = TdxSigner::from_hex(TEST_KEY).unwrap();
+        let quote_provider = MockTdxQuoteProvider::new(Bytes::from_static(b"fixture-tdx-quote"));
+        TdxRuntime::new(signer, quote_provider)
+    }
+
+    #[test]
+    fn runtime_returns_signer_identity_quote_and_timestamp_metadata() {
+        let runtime = test_runtime();
+        let signer_quote = runtime.signer_quote_at(TIMESTAMP_MILLIS).unwrap();
+
+        assert_eq!(signer_quote.signer_public_key.len(), 65);
+        assert_eq!(signer_quote.signer_address, runtime.signer_address());
+        assert_eq!(signer_quote.quote, Bytes::from_static(b"fixture-tdx-quote"));
+        assert_eq!(signer_quote.quote_timestamp_millis, TIMESTAMP_MILLIS);
+        assert_eq!(signer_quote.local_metadata.provider, "mock");
+    }
+
+    #[test]
+    fn quote_report_data_prefix_matches_public_key_hash() {
+        let runtime = test_runtime();
+        let signer_quote = runtime.signer_quote_at(TIMESTAMP_MILLIS).unwrap();
+
+        assert_eq!(
+            &signer_quote.report_data[..32],
+            keccak256(&signer_quote.signer_public_key[1..65]).as_slice()
+        );
+        assert_eq!(
+            &signer_quote.report_data[32..],
+            TdxReportData::timestamped_app_binding(TIMESTAMP_MILLIS).as_slice()
+        );
+    }
+
+    #[test]
+    fn runtime_debug_does_not_expose_private_key_material() {
+        let runtime = test_runtime();
+        let debug = format!("{runtime:?}");
+
+        assert!(debug.contains("TdxRuntime"));
+        assert!(debug.contains("signer_address"));
+        assert!(
+            !debug.contains("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
+        );
+    }
+
+    #[test]
+    #[ignore = "requires a real TDX guest with Linux TSM/configfs mounted"]
+    fn real_tdx_guest_smoke_test_collects_quote_for_generated_signer() {
+        let signer = TdxSigner::generate(&mut rand_08::rngs::OsRng);
+        let provider = ConfigfsTdxQuoteProvider::new("base-tdx-runtime-smoke");
+        let runtime = TdxRuntime::new(signer, provider);
+
+        let signer_quote = runtime.signer_quote().unwrap();
+
+        assert!(!signer_quote.quote.is_empty());
+        assert_eq!(
+            &signer_quote.report_data[..32],
+            keccak256(&signer_quote.signer_public_key[1..65]).as_slice()
+        );
+    }
+}

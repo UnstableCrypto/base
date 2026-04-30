@@ -1,0 +1,75 @@
+use std::{io, time::SystemTimeError};
+
+use thiserror::Error;
+
+/// Errors produced by TDX runtime signer and quote collection code.
+#[derive(Debug, Error)]
+pub enum TdxRuntimeError {
+    /// Failed to parse or create a secp256k1 signing key.
+    #[error("failed to parse TDX signer key: {0}")]
+    SignerKey(String),
+    /// Failed to parse hex-encoded input.
+    #[error("failed to parse hex input: {0}")]
+    Hex(String),
+    /// The signer public key is not an uncompressed 65-byte secp256k1 key.
+    #[error("invalid signer public key")]
+    InvalidPublicKey,
+    /// TDX report data must be exactly 64 bytes.
+    #[error("TDX report data must be exactly 64 bytes, got {0}")]
+    InvalidReportDataLength(usize),
+    /// The TSM/configfs provider reported a non-TDX backend.
+    #[error("TSM/configfs provider is not a TDX guest provider: {0}")]
+    UnexpectedConfigfsProvider(String),
+    /// The TSM/configfs report generation changed unexpectedly.
+    #[error(
+        "TSM/configfs report generation changed while collecting a quote: expected {expected}, got {actual}"
+    )]
+    ConfigfsGenerationMismatch {
+        /// Expected generation counter after this quote request.
+        expected: u64,
+        /// Actual generation counter read from configfs.
+        actual: u64,
+    },
+    /// Quote generation failed.
+    #[error("TDX quote generation failed: {0}")]
+    QuoteGeneration(String),
+    /// System clock is before the Unix epoch.
+    #[error("system clock error: {0}")]
+    SystemTime(String),
+    /// Filesystem I/O failed while collecting a quote.
+    #[error("filesystem error at {path}: {source}")]
+    Filesystem {
+        /// Path that failed.
+        path: String,
+        /// Underlying I/O error.
+        source: io::Error,
+    },
+}
+
+impl TdxRuntimeError {
+    /// Creates a filesystem error without exposing secret material in logs.
+    pub fn filesystem(path: impl Into<String>, source: io::Error) -> Self {
+        Self::Filesystem { path: path.into(), source }
+    }
+}
+
+impl From<SystemTimeError> for TdxRuntimeError {
+    fn from(error: SystemTimeError) -> Self {
+        Self::SystemTime(error.to_string())
+    }
+}
+
+/// Result alias for TDX runtime operations.
+pub type Result<T> = std::result::Result<T, TdxRuntimeError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_send_sync<T: Send + Sync>() {}
+
+    #[test]
+    fn error_type_is_send_sync() {
+        assert_send_sync::<TdxRuntimeError>();
+    }
+}

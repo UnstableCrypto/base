@@ -5340,6 +5340,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "base-proof-tee-tdx-runtime"
+version = "0.0.0"
+dependencies = [
+ "alloy-primitives",
+ "alloy-signer-local",
+ "hex",
+ "k256",
+ "rand 0.8.6",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "base-proof-tee-tdx-verifier"
 version = "0.0.0"
 dependencies = [
