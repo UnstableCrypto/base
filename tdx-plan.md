@@ -142,7 +142,8 @@ last 32 bytes   = app-specific binding data, initially keccak256("base-tdx-tee-p
 ```
 
 - Generate a TDX quote behind a narrow `TdxQuoteProvider` trait. The initial implementation target is the Linux guest TSM/configfs quote path; any DCAP/QGS FFI needed by the deployment must be implemented as a second provider behind the same trait.
-- Return the raw quote and any local quote-generation metadata needed by the verifier input builder.
+- Return the raw quote and any local quote-generation metadata needed by the verifier input builder,
+  including the quote collection timestamp in milliseconds.
 - Add a deterministic mock quote provider for local tests and CI.
 
 Success criteria:

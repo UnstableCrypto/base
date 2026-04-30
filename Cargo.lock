@@ -5340,6 +5340,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "base-proof-tee-tdx-verifier"
+version = "0.0.0"
+dependencies = [
+ "alloy-primitives",
+ "alloy-sol-types",
+ "base-proof-contracts",
+ "k256",
+ "p256 0.13.2",
+ "rstest",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "time",
+ "x509-parser",
+]
+
+[[package]]
 name = "base-proofs-extension"
 version = "0.0.0"
 dependencies = [
