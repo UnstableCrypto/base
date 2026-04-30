@@ -4,8 +4,8 @@ use alloy_eips::BlockNumHash;
 use alloy_primitives::map::HashMap;
 use async_trait::async_trait;
 use base_common_consensus::BaseBlock;
+use base_common_genesis::{RollupConfig, SystemConfig};
 use base_consensus_derive::{L2ChainProvider, PipelineError, PipelineErrorKind};
-use base_consensus_genesis::{RollupConfig, SystemConfig};
 use base_protocol::{BatchValidationProvider, BlockInfo, L2BlockInfo};
 
 /// Error type for [`ActionL2ChainProvider`].
@@ -90,7 +90,7 @@ impl ActionL2ChainProvider {
         self.blocks.insert(block.block_info.number, block);
     }
 
-    /// Insert a known L2 op-block (with transactions) into the provider.
+    /// Insert a known L2 block with transactions into the provider.
     pub fn insert_op_block(&mut self, number: u64, block: BaseBlock) {
         self.op_blocks.insert(number, block);
     }

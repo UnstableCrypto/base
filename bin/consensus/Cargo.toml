@@ -27,8 +27,8 @@ alloy-primitives.workspace = true
 base-common-network.workspace = true
 
 # consensus
-base-consensus-genesis.workspace = true
-base-consensus-registry.workspace = true
+base-common-chains.workspace = true
+base-common-genesis.workspace = true
 base-consensus-node = { workspace = true, features = ["metrics"] }
 base-consensus-providers = { workspace = true, features = ["metrics"] }
 

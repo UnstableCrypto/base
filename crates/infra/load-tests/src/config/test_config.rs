@@ -1,8 +1,7 @@
 use std::{fmt, path::Path, time::Duration};
 
-use alloy_primitives::Address;
+use alloy_primitives::{Address, U256};
 use alloy_signer_local::PrivateKeySigner;
-use rand::Rng;
 use revm::precompile::PrecompileId;
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -96,6 +95,12 @@ pub struct TestConfig {
     /// Maximum in-flight transactions per sender.
     pub in_flight_per_sender: u32,
 
+    /// Number of transactions to batch together before submitting to the RPC.
+    pub batch_size: u32,
+
+    /// Maximum time to wait for a batch to fill before flushing (e.g., "50ms", "200ms").
+    pub batch_timeout: Option<String>,
+
     /// Test duration (e.g., "30s", "5m", "1h").
     pub duration: Option<String>,
 
@@ -103,6 +108,10 @@ pub struct TestConfig {
     pub target_gps: Option<u64>,
 
     /// Seed for deterministic account generation (used if mnemonic not provided).
+    ///
+    /// Defaults to `12345` for reproducible single-run testing and fund recovery. Concurrent runs
+    /// against the same chain without overriding this will derive identical
+    /// accounts and collide on nonces.
     pub seed: u64,
 
     /// Chain ID (if not provided, fetched from RPC).
@@ -115,10 +124,15 @@ pub struct TestConfig {
     #[serde(default)]
     pub looper_contract: Option<String>,
 
-    /// WebSocket JSON-RPC endpoint URL for block subscription (enables block latency tracking).
-    #[serde(default, alias = "ws_url")]
-    pub rpc_ws_url: Option<Url>,
-    /// WebSocket URL for flashblocks subscription (enables flashblock latency tracking).
+    /// Amount of each swap token to distribute to each sender (in wei, as string).
+    /// Only used when swap transaction types are configured.
+    #[serde(default = "default_swap_token_amount")]
+    pub swap_token_amount: String,
+
+    /// JSON-RPC endpoint for block tracking (WebSocket subscription or HTTP polling).
+    #[serde(default, alias = "rpc_ws_url", alias = "ws_url")]
+    pub block_watcher_url: Option<Url>,
+    /// WebSocket URL for flashblocks subscription.
     #[serde(default, alias = "flashblocks_url")]
     pub flashblocks_ws_url: Option<Url>,
 }
@@ -129,16 +143,19 @@ impl Default for TestConfig {
             rpc: Url::parse("http://localhost:8545").expect("valid URL"),
             mnemonic: None,
             funding_amount: "10000000000000000".to_string(),
-            sender_count: 10,
+            sender_count: 100,
             sender_offset: 0,
-            in_flight_per_sender: 16,
-            duration: Some("30s".to_string()),
-            target_gps: Some(2_100_000),
-            seed: rand::rng().random(),
+            in_flight_per_sender: 256,
+            batch_size: 50,
+            batch_timeout: Some("100ms".to_string()),
+            duration: Some("60s".to_string()),
+            target_gps: Some(20_000_000),
+            seed: 12345,
             chain_id: None,
             transactions: vec![WeightedTxType { weight: 100, tx_type: TxTypeConfig::Transfer }],
             looper_contract: None,
-            rpc_ws_url: None,
+            swap_token_amount: default_swap_token_amount(),
+            block_watcher_url: None,
             flashblocks_ws_url: None,
         }
     }
@@ -159,7 +176,8 @@ impl fmt::Debug for TestConfig {
             .field("chain_id", &self.chain_id)
             .field("transactions", &self.transactions)
             .field("looper_contract", &self.looper_contract)
-            .field("rpc_ws_url", &self.rpc_ws_url)
+            .field("swap_token_amount", &self.swap_token_amount)
+            .field("block_watcher_url", &self.block_watcher_url)
             .field("flashblocks_ws_url", &self.flashblocks_ws_url)
             .finish()
     }
@@ -227,6 +245,42 @@ pub enum TxTypeConfig {
         /// Target Osaka feature.
         target: OsakaTarget,
     },
+    /// Uniswap V3 style swap.
+    UniswapV3 {
+        /// Router contract address.
+        router: String,
+        /// Input token address.
+        token_in: String,
+        /// Output token address.
+        token_out: String,
+        /// Fee tier (default 3000 = 0.3%).
+        #[serde(default = "default_uniswap_v3_fee")]
+        fee: u32,
+        /// Minimum swap amount in wei.
+        #[serde(default = "default_swap_min_amount")]
+        min_amount: String,
+        /// Maximum swap amount in wei.
+        #[serde(default = "default_swap_max_amount")]
+        max_amount: String,
+    },
+    /// Aerodrome Slipstream (concentrated liquidity) swap.
+    AerodromeCl {
+        /// CL Router contract address.
+        router: String,
+        /// Input token address.
+        token_in: String,
+        /// Output token address.
+        token_out: String,
+        /// Tick spacing for the pool.
+        #[serde(default = "default_aerodrome_tick_spacing")]
+        tick_spacing: i32,
+        /// Minimum swap amount in wei.
+        #[serde(default = "default_swap_min_amount")]
+        min_amount: String,
+        /// Maximum swap amount in wei.
+        #[serde(default = "default_swap_max_amount")]
+        max_amount: String,
+    },
 }
 
 const fn default_calldata_size() -> usize {
@@ -239,6 +293,26 @@ const fn default_repeat_count() -> usize {
 
 const fn default_iterations() -> u32 {
     1
+}
+
+fn default_swap_min_amount() -> String {
+    "1000000000000000".to_string()
+}
+
+fn default_swap_max_amount() -> String {
+    "10000000000000000".to_string()
+}
+
+const fn default_uniswap_v3_fee() -> u32 {
+    3000
+}
+
+const fn default_aerodrome_tick_spacing() -> i32 {
+    100
+}
+
+fn default_swap_token_amount() -> String {
+    "1000000000000000000000".to_string() // 1000 tokens (1000e18)
 }
 
 impl TestConfig {
@@ -265,9 +339,6 @@ impl TestConfig {
             return Err(BaselineError::Config("sender_count must be > 0".into()));
         }
 
-        if let Some(url) = &self.rpc_ws_url {
-            Self::validate_ws_url(url, "rpc_ws_url")?;
-        }
         if let Some(url) = &self.flashblocks_ws_url {
             Self::validate_ws_url(url, "flashblocks_ws_url")?;
         }
@@ -335,6 +406,16 @@ impl TestConfig {
         })
     }
 
+    /// Parses the swap token amount string into a U256.
+    pub fn parse_swap_token_amount(&self) -> Result<alloy_primitives::U256> {
+        self.swap_token_amount.parse().map_err(|e| {
+            BaselineError::Config(format!(
+                "invalid swap_token_amount '{}': {e}",
+                self.swap_token_amount
+            ))
+        })
+    }
+
     /// Converts this test config into a `LoadConfig` for runtime use.
     pub fn to_load_config(
         &self,
@@ -354,6 +435,16 @@ impl TestConfig {
             self.transactions.iter().map(|t| self.convert_tx_type(t)).collect::<Result<Vec<_>>>()?
         };
 
+        let batch_timeout = self
+            .batch_timeout
+            .as_ref()
+            .map(|d| {
+                humantime::parse_duration(d.trim())
+                    .map_err(|e| BaselineError::Config(format!("invalid batch_timeout '{d}': {e}")))
+            })
+            .transpose()?
+            .unwrap_or(Duration::from_millis(100));
+
         Ok(crate::runner::LoadConfig {
             rpc_http_url,
             chain_id: resolved_chain_id,
@@ -365,10 +456,10 @@ impl TestConfig {
             target_gps: self.target_gps.unwrap_or(2_100_000),
             duration,
             max_in_flight_per_sender: self.in_flight_per_sender as u64,
-            batch_size: 5,
-            batch_timeout: Duration::from_millis(50),
+            batch_size: self.batch_size.max(1) as usize,
+            batch_timeout,
             max_gas_price: crate::runner::DEFAULT_MAX_GAS_PRICE,
-            rpc_ws_url: self.rpc_ws_url.clone(),
+            block_watcher_url: self.block_watcher_url.clone(),
             flashblocks_ws_url: self.flashblocks_ws_url.clone(),
         })
     }
@@ -411,9 +502,88 @@ impl TestConfig {
                 }
             }
             TxTypeConfig::Osaka { target } => TxType::Osaka { target: target.clone() },
+            TxTypeConfig::UniswapV3 {
+                router,
+                token_in,
+                token_out,
+                fee,
+                min_amount,
+                max_amount,
+            } => {
+                let router = parse_address(router, "uniswap_v3 router")?;
+                let token_in = parse_address(token_in, "uniswap_v3 token_in")?;
+                let token_out = parse_address(token_out, "uniswap_v3 token_out")?;
+                let max_u24: u32 = (1 << 24) - 1;
+                if *fee > max_u24 {
+                    return Err(BaselineError::Config(format!(
+                        "uniswap_v3 fee {fee} exceeds u24 max ({max_u24})"
+                    )));
+                }
+                let min_amount = parse_amount(min_amount, "uniswap_v3 min_amount")?;
+                let max_amount = parse_amount(max_amount, "uniswap_v3 max_amount")?;
+                validate_swap_amounts(min_amount, max_amount, "uniswap_v3")?;
+                TxType::UniswapV3 { router, token_in, token_out, fee: *fee, min_amount, max_amount }
+            }
+            TxTypeConfig::AerodromeCl {
+                router,
+                token_in,
+                token_out,
+                tick_spacing,
+                min_amount,
+                max_amount,
+            } => {
+                let router = parse_address(router, "aerodrome_cl router")?;
+                let token_in = parse_address(token_in, "aerodrome_cl token_in")?;
+                let token_out = parse_address(token_out, "aerodrome_cl token_out")?;
+                let min_amount = parse_amount(min_amount, "aerodrome_cl min_amount")?;
+                let max_amount = parse_amount(max_amount, "aerodrome_cl max_amount")?;
+                validate_swap_amounts(min_amount, max_amount, "aerodrome_cl")?;
+                if !(-8_388_608..=8_388_607).contains(tick_spacing) {
+                    return Err(BaselineError::Config(format!(
+                        "aerodrome_cl tick_spacing {tick_spacing} exceeds i24 range"
+                    )));
+                }
+                TxType::AerodromeCl {
+                    router,
+                    token_in,
+                    token_out,
+                    tick_spacing: *tick_spacing,
+                    min_amount,
+                    max_amount,
+                }
+            }
         };
         Ok(TxConfig { weight: weighted.weight, tx_type })
     }
+}
+
+fn parse_address(s: &str, field: &str) -> Result<Address> {
+    s.parse::<Address>()
+        .map_err(|e| BaselineError::Config(format!("invalid {field} address '{s}': {e}")))
+}
+
+fn parse_amount(s: &str, field: &str) -> Result<U256> {
+    s.parse::<U256>().map_err(|e| BaselineError::Config(format!("invalid {field} '{s}': {e}")))
+}
+
+fn validate_swap_amounts(min: U256, max: U256, tx_type: &str) -> Result<()> {
+    if min > max {
+        return Err(BaselineError::Config(format!(
+            "{tx_type} min_amount ({min}) exceeds max_amount ({max})"
+        )));
+    }
+    let u128_max = U256::from(u128::MAX);
+    if min > u128_max {
+        return Err(BaselineError::Config(format!(
+            "{tx_type} min_amount ({min}) exceeds u128::MAX — swap calls require u128 amounts"
+        )));
+    }
+    if max > u128_max {
+        return Err(BaselineError::Config(format!(
+            "{tx_type} max_amount ({max}) exceeds u128::MAX — swap calls require u128 amounts"
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -427,7 +597,7 @@ rpc: http://localhost:8545
 "#;
         let config = TestConfig::from_yaml(yaml).unwrap();
         assert_eq!(config.rpc.host_str(), Some("localhost"));
-        assert_eq!(config.sender_count, 10);
+        assert_eq!(config.sender_count, 100);
         assert!(config.mnemonic.is_none());
     }
 
@@ -562,46 +732,99 @@ transactions:
     }
 
     #[test]
-    fn rejects_http_scheme_for_ws_url() {
+    fn rejects_http_scheme_for_flashblocks_url() {
         let yaml = r#"
 rpc: http://localhost:8545
-rpc_ws_url: http://localhost:8546
+flashblocks_ws_url: http://localhost:7111
 "#;
         let err = TestConfig::from_yaml(yaml).unwrap_err();
-        assert!(err.to_string().contains("rpc_ws_url"));
+        assert!(err.to_string().contains("flashblocks_ws_url"));
         assert!(err.to_string().contains("ws://"));
     }
 
     #[test]
-    fn rejects_https_scheme_for_ws_url() {
+    fn block_watcher_url_accepts_http() {
         let yaml = r#"
 rpc: http://localhost:8545
-rpc_ws_url: https://localhost:8546
+block_watcher_url: http://localhost:8546
 "#;
-        let err = TestConfig::from_yaml(yaml).unwrap_err();
-        assert!(err.to_string().contains("rpc_ws_url"));
-        assert!(err.to_string().contains("wss://"));
+        let config = TestConfig::from_yaml(yaml).unwrap();
+        assert_eq!(config.block_watcher_url.as_ref().unwrap().scheme(), "http");
     }
 
     #[test]
-    fn accepts_wss_scheme_for_ws_url() {
+    fn block_watcher_url_accepts_wss() {
         let yaml = r#"
 rpc: http://localhost:8545
-rpc_ws_url: wss://localhost:8546
+block_watcher_url: wss://localhost:8546
 flashblocks_ws_url: wss://localhost:7111
 "#;
         let config = TestConfig::from_yaml(yaml).unwrap();
-        assert_eq!(config.rpc_ws_url.as_ref().unwrap().scheme(), "wss");
+        assert_eq!(config.block_watcher_url.as_ref().unwrap().scheme(), "wss");
         assert_eq!(config.flashblocks_ws_url.as_ref().unwrap().scheme(), "wss");
     }
 
     #[test]
-    fn accepts_omitted_ws_urls() {
+    fn block_watcher_url_alias_rpc_ws_url() {
+        let yaml = r#"
+rpc: http://localhost:8545
+rpc_ws_url: ws://localhost:8546
+"#;
+        let config = TestConfig::from_yaml(yaml).unwrap();
+        assert_eq!(config.block_watcher_url.as_ref().unwrap().scheme(), "ws");
+    }
+
+    #[test]
+    fn omitted_urls_are_none() {
         let yaml = r#"
 rpc: http://localhost:8545
 "#;
         let config = TestConfig::from_yaml(yaml).unwrap();
-        assert!(config.rpc_ws_url.is_none());
+        assert!(config.block_watcher_url.is_none());
         assert!(config.flashblocks_ws_url.is_none());
+    }
+
+    #[test]
+    fn parse_uniswap_v3_config() {
+        let yaml = r#"
+rpc: http://localhost:8545
+transactions:
+  - weight: 10
+    type: uniswap_v3
+    router: "0xE592427A0AEce92De3Edee1F18E0157C05861564"
+    token_in: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+    token_out: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+    fee: 500
+"#;
+        let config = TestConfig::from_yaml(yaml).unwrap();
+        assert_eq!(config.transactions.len(), 1);
+        match &config.transactions[0].tx_type {
+            TxTypeConfig::UniswapV3 { fee, .. } => {
+                assert_eq!(*fee, 500);
+            }
+            _ => panic!("expected UniswapV3"),
+        }
+    }
+
+    #[test]
+    fn parse_aerodrome_cl_config() {
+        let yaml = r#"
+rpc: http://localhost:8545
+transactions:
+  - weight: 10
+    type: aerodrome_cl
+    router: "0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5"
+    token_in: "0x4200000000000000000000000000000000000006"
+    token_out: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    tick_spacing: 200
+"#;
+        let config = TestConfig::from_yaml(yaml).unwrap();
+        assert_eq!(config.transactions.len(), 1);
+        match &config.transactions[0].tx_type {
+            TxTypeConfig::AerodromeCl { tick_spacing, .. } => {
+                assert_eq!(*tick_spacing, 200);
+            }
+            _ => panic!("expected AerodromeCl"),
+        }
     }
 }

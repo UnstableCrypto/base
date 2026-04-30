@@ -5,7 +5,7 @@ use alloy_primitives::{Address, B256, Bytes, keccak256, map::HashMap};
 use alloy_signer_local::PrivateKeySigner;
 use base_common_chains::ChainConfig;
 use base_common_evm::BaseEvmFactory;
-use base_consensus_genesis::RollupConfig;
+use base_common_genesis::RollupConfig;
 use base_proof::BootInfo;
 use base_proof_client::Prologue;
 use base_proof_preimage::PreimageKey;
@@ -254,7 +254,7 @@ impl Server {
 #[cfg(test)]
 mod tests {
     use alloy_primitives::b256;
-    use base_consensus_registry::Registry;
+    use base_common_chains::Registry;
 
     use super::*;
 
@@ -345,10 +345,6 @@ mod tests {
         assert_eq!(
             config_hash_for_chain(84532).unwrap(),
             b256!("12e9c45f19f9817c6d4385fad29e7a70c355502cf0883e76a9a7e478a85d1360"),
-        );
-        assert_eq!(
-            config_hash_for_chain(11763072).unwrap(),
-            b256!("4600cdaa81262bf5f124bd9276f605264e2ded951e34923bc838e81c442f0fa4"),
         );
         assert_eq!(
             config_hash_for_chain(1337).unwrap(),

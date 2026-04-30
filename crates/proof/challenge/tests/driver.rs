@@ -135,7 +135,7 @@ fn default_ready_proof(intent: DisputeIntent) -> PendingProof {
         start_block_number: 15,
         number_of_blocks_to_prove: 5,
         sequence_window: None,
-        proof_type: ProofType::GenericZkvmClusterSnarkGroth16.into(),
+        proof_type: ProofType::SnarkGroth16.into(),
         session_id: Some(session_id),
         prover_address: Some(format!("{:#x}", addr(0))),
         l1_head: Some(format!("{DEFAULT_L1_HEAD:#x}")),
@@ -1236,7 +1236,8 @@ async fn test_bond_manager_full_lifecycle() {
     // Verify 2 transactions were submitted (unlock + withdraw, no resolve).
     let calls = submitter.recorded_calls();
     assert_eq!(calls.len(), 2, "expected 2 bond transactions (unlock, withdraw)");
-    for (target, _) in &calls {
+    for (game, target, _) in &calls {
+        assert_eq!(*game, game_addr, "all transactions should reference the game address");
         assert_eq!(*target, game_addr, "all transactions should target the game address");
     }
 }
@@ -1360,7 +1361,9 @@ async fn test_bond_manager_keeps_defender_wins_when_recipient_is_claimable() {
     state.status = 2; // DEFENDER_WINS
     let verifier = single_game_verifier(state);
 
-    let submitter = MockBondTransactionSubmitter::with_responses(vec![]);
+    // One response for the anchor state update that is attempted after
+    // advance_game (DEFENDER_WINS triggers a setAnchorState call).
+    let submitter = MockBondTransactionSubmitter::with_responses(vec![Ok(DEFAULT_TX_HASH)]);
 
     let mut mgr = default_bond_manager(claim_addr);
     mgr.track_game(game_addr, claim_addr);
@@ -1387,7 +1390,10 @@ async fn test_bond_manager_removes_game_when_recipient_not_claimable() {
     state.bond_recipient = other_addr; // bond goes to someone else
     let verifier = single_game_verifier(state);
 
-    let submitter = MockBondTransactionSubmitter::with_responses(vec![]);
+    // One response for the anchor state update — even though the bond is
+    // not claimable, anchor updates are a public good and are still
+    // attempted for DEFENDER_WINS games before removal.
+    let submitter = MockBondTransactionSubmitter::with_responses(vec![Ok(DEFAULT_TX_HASH)]);
 
     let mut mgr = default_bond_manager(claim_addr);
     mgr.track_game(game_addr, claim_addr);
@@ -1401,10 +1407,9 @@ async fn test_bond_manager_removes_game_when_recipient_not_claimable() {
         "game should be removed when bondRecipient is not in claim addresses"
     );
 
-    assert!(
-        submitter.recorded_calls().is_empty(),
-        "no transactions should be submitted when bond is not claimable"
-    );
+    // The only transaction submitted should be the anchor state update.
+    let calls = submitter.recorded_calls();
+    assert_eq!(calls.len(), 1, "only the anchor update tx should be submitted");
 }
 
 #[tokio::test]

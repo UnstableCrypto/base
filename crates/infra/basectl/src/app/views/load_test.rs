@@ -51,12 +51,17 @@ const KEYBINDINGS_RUNNING: &[Keybinding] = &[
 // ---------------------------------------------------------------------------
 
 const EDIT_FIELDS: &[&str] = &[
+    "rpc",
     "duration",
     "sender_count",
     "in_flight_per_sender",
     "target_gps",
+    "batch_size",
+    "batch_timeout",
     "funding_amount",
     "funder_key",
+    "block_watcher_url",
+    "flashblocks_ws_url",
 ];
 
 // ---------------------------------------------------------------------------
@@ -71,6 +76,8 @@ enum RunPhase {
     Bootstrap,
     /// Distributing ETH from the funder wallet to each sender account.
     Funding,
+    /// Distributing swap tokens to each sender account.
+    TokenDistribution,
     Running,
     Draining,
 }
@@ -145,6 +152,8 @@ enum StrategyOption {
     OsakaClz,
     OsakaP256verify,
     OsakaModexp,
+    UniswapV3,
+    AerodromeCl,
 }
 
 const ALL_STRATEGIES: &[StrategyOption] = &[
@@ -163,6 +172,8 @@ const ALL_STRATEGIES: &[StrategyOption] = &[
     StrategyOption::OsakaClz,
     StrategyOption::OsakaP256verify,
     StrategyOption::OsakaModexp,
+    StrategyOption::UniswapV3,
+    StrategyOption::AerodromeCl,
 ];
 
 impl StrategyOption {
@@ -183,11 +194,13 @@ impl StrategyOption {
             Self::OsakaClz => "osaka  clz",
             Self::OsakaP256verify => "osaka  p256verify",
             Self::OsakaModexp => "osaka  modexp",
+            Self::UniswapV3 => "swap  uniswap_v3",
+            Self::AerodromeCl => "swap  aerodrome_cl",
         }
     }
 
-    const fn to_tx_type(self) -> TxTypeConfig {
-        match self {
+    fn to_tx_type(self, network: &str) -> Option<TxTypeConfig> {
+        let cfg = match self {
             Self::Transfer => TxTypeConfig::Transfer,
             Self::Calldata => TxTypeConfig::Calldata { max_size: 128, repeat_count: 1 },
             Self::Ecrecover => {
@@ -225,7 +238,31 @@ impl StrategyOption {
             Self::OsakaClz => TxTypeConfig::Osaka { target: OsakaTarget::Clz },
             Self::OsakaP256verify => TxTypeConfig::Osaka { target: OsakaTarget::P256verifyOsaka },
             Self::OsakaModexp => TxTypeConfig::Osaka { target: OsakaTarget::ModexpOsaka },
-        }
+            Self::UniswapV3 => {
+                let addrs = swap_addresses(network)?;
+                TxTypeConfig::UniswapV3 {
+                    router: addrs.uniswap_v3_router.to_string(),
+                    token_in: addrs.token_a.to_string(),
+                    token_out: addrs.token_b.to_string(),
+                    fee: 3000,
+                    min_amount: "1000000000000000".to_string(),
+                    max_amount: "10000000000000000".to_string(),
+                }
+            }
+            Self::AerodromeCl => {
+                let addrs = swap_addresses(network)?;
+                let router = addrs.aerodrome_cl_router?;
+                TxTypeConfig::AerodromeCl {
+                    router: router.to_string(),
+                    token_in: addrs.token_a.to_string(),
+                    token_out: addrs.token_b.to_string(),
+                    tick_spacing: 100,
+                    min_amount: "1000000000000000".to_string(),
+                    max_amount: "10000000000000000".to_string(),
+                }
+            }
+        };
+        Some(cfg)
     }
 
     const fn matches_tx_type(self, tx: &TxTypeConfig) -> bool {
@@ -273,7 +310,52 @@ impl StrategyOption {
                     TxTypeConfig::Osaka { target: OsakaTarget::P256verifyOsaka }
                 )
                 | (Self::OsakaModexp, TxTypeConfig::Osaka { target: OsakaTarget::ModexpOsaka })
+                | (Self::UniswapV3, TxTypeConfig::UniswapV3 { .. })
+                | (Self::AerodromeCl, TxTypeConfig::AerodromeCl { .. })
         )
+    }
+
+    /// Returns `true` if this strategy is available on the given network.
+    fn is_available(self, network: &str) -> bool {
+        match self {
+            Self::UniswapV3 => {
+                swap_addresses(network).is_some_and(|a| !a.uniswap_v3_router.is_empty())
+            }
+            Self::AerodromeCl => {
+                swap_addresses(network).is_some_and(|a| a.aerodrome_cl_router.is_some())
+            }
+            _ => true,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Per-network swap contract addresses
+// ---------------------------------------------------------------------------
+
+struct SwapAddresses {
+    uniswap_v3_router: &'static str,
+    aerodrome_cl_router: Option<&'static str>,
+    token_a: &'static str,
+    token_b: &'static str,
+}
+
+/// Returns hardcoded swap contract addresses for the given network, if available.
+fn swap_addresses(network: &str) -> Option<SwapAddresses> {
+    match network {
+        "sepolia" => Some(SwapAddresses {
+            uniswap_v3_router: "0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4",
+            aerodrome_cl_router: Some("0x6a786a4f9bc46fF861260545C490a7356c5ecbFe"),
+            token_a: "0x15948C3043A980A8d980d4D615A5E4c9514B0D64",
+            token_b: "0x4dc9ccF2C5A346c4032B648006B4774Ad2a021c4",
+        }),
+        "zeronet" => Some(SwapAddresses {
+            uniswap_v3_router: "0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4",
+            aerodrome_cl_router: None,
+            token_a: "0x27589a9836dd2150036829120f092ad38a0b3740",
+            token_b: "0xc411b5f78fadab5880a287f21bb7997a192975f3",
+        }),
+        _ => None,
     }
 }
 
@@ -283,10 +365,12 @@ struct StrategyModal {
     cursor: usize,
     /// Which strategies are currently enabled.
     enabled: Vec<bool>,
+    /// Current network name (for swap address lookups and availability checks).
+    network: String,
 }
 
 impl StrategyModal {
-    fn from_config(transactions: &[WeightedTxType]) -> Self {
+    fn from_config(transactions: &[WeightedTxType], network: &str) -> Self {
         let mut enabled = vec![false; ALL_STRATEGIES.len()];
         for (i, &strategy) in ALL_STRATEGIES.iter().enumerate() {
             enabled[i] = transactions.iter().any(|t| strategy.matches_tx_type(&t.tx_type));
@@ -295,15 +379,18 @@ impl StrategyModal {
         if !enabled.iter().any(|&e| e) {
             enabled[0] = true;
         }
-        Self { cursor: 0, enabled }
+        Self { cursor: 0, enabled, network: network.to_string() }
     }
 
     fn to_transactions(&self) -> Vec<WeightedTxType> {
         ALL_STRATEGIES
             .iter()
             .enumerate()
-            .filter(|(i, _)| self.enabled[*i])
-            .map(|(_, &strategy)| WeightedTxType { weight: 1, tx_type: strategy.to_tx_type() })
+            .filter(|&(i, _)| self.enabled[i])
+            .filter_map(|(_, &strategy)| {
+                let tx_type = strategy.to_tx_type(&self.network)?;
+                Some(WeightedTxType { weight: 1, tx_type })
+            })
             .collect()
     }
 }
@@ -398,10 +485,22 @@ impl LoadTestView {
 
         // Canonical list: active network first (using its actual RPC from resources),
         // then the other two known networks. Any on-disk YAML overrides the defaults.
-        let known: &[(&str, &str)] = &[
-            ("devnet", "http://localhost:7545"),
-            ("sepolia", "https://sepolia.base.org"),
-            ("mainnet", "https://mainnet.base.org"),
+        // Each entry carries HTTP RPC, WebSocket RPC, and flashblocks WS URLs so that
+        // synthesised configs work out-of-the-box without requiring a YAML file on disk.
+        let known: &[(&str, &str, &str, &str)] = &[
+            ("devnet", "http://localhost:7545", "ws://localhost:8546", "ws://localhost:7111"),
+            (
+                "sepolia",
+                "https://sepolia.base.org",
+                "https://sepolia.base.org",
+                "wss://sepolia.flashblocks.base.org/ws",
+            ),
+            (
+                "mainnet",
+                "https://mainnet.base.org",
+                "wss://mainnet.base.org",
+                "wss://mainnet.flashblocks.base.org/ws",
+            ),
         ];
 
         let mut configs: Vec<(String, TestConfig)> = Vec::new();
@@ -412,20 +511,40 @@ impl LoadTestView {
             .iter()
             .find(|(n, _)| n == &active_name)
             .map(|(_, c)| c.clone())
-            .unwrap_or_else(|| TestConfig { rpc: active_rpc, ..TestConfig::default() });
+            .unwrap_or_else(|| {
+                let mut cfg = TestConfig { rpc: active_rpc, ..TestConfig::default() };
+                if let Some(&(_, _, ws, fb)) = known.iter().find(|&&(n, _, _, _)| n == active_name)
+                {
+                    cfg.block_watcher_url =
+                        Some(Url::parse(ws).expect("hardcoded WS URL is valid"));
+                    cfg.flashblocks_ws_url =
+                        Some(Url::parse(fb).expect("hardcoded FB URL is valid"));
+                }
+                cfg
+            });
         configs.push((active_name.clone(), active_cfg));
 
         // Add the remaining known networks, skipping the already-added active one.
-        for &(name, rpc_str) in known {
+        for &(name, rpc_str, ws_str, fb_str) in known {
             if name == active_name {
                 continue;
             }
             let rpc = Url::parse(rpc_str).expect("hardcoded URL is valid");
-            let cfg = dir_configs
-                .iter()
-                .find(|(n, _)| n == name)
-                .map(|(_, c)| c.clone())
-                .unwrap_or_else(|| TestConfig { rpc, ..TestConfig::default() });
+            let cfg =
+                dir_configs.iter().find(|(n, _)| n == name).map(|(_, c)| c.clone()).unwrap_or_else(
+                    || {
+                        let block_watcher_url =
+                            Some(Url::parse(ws_str).expect("hardcoded WS URL is valid"));
+                        let flashblocks_ws_url =
+                            Some(Url::parse(fb_str).expect("hardcoded FB URL is valid"));
+                        TestConfig {
+                            rpc,
+                            block_watcher_url,
+                            flashblocks_ws_url,
+                            ..TestConfig::default()
+                        }
+                    },
+                );
             configs.push((name.to_string(), cfg));
         }
 
@@ -481,7 +600,7 @@ impl LoadTestView {
         let continuous_flag = Arc::new(AtomicBool::new(self.continuous));
         let continuous_for_task = Arc::clone(&continuous_flag);
 
-        let task_handle = tokio::spawn(async move {
+        let load_test_body = async move {
             // Fetch chain_id from the network's RPC — required for transaction signing.
             let client = RpcClient::new(cfg.rpc.clone());
             let chain_id = client.chain_id().await.ok();
@@ -502,7 +621,14 @@ impl LoadTestView {
                 }
             };
 
-            // Capture before load_config is consumed by LoadRunner::new.
+            let swap_token_amount = match cfg.parse_swap_token_amount() {
+                Ok(a) => a,
+                Err(e) => {
+                    let _ = done_tx.send(Err(e.to_string())).await;
+                    return;
+                }
+            };
+
             let chain_id_val = load_config.chain_id;
             let max_gas_price = load_config.max_gas_price;
             let sender_count = cfg.sender_count;
@@ -520,7 +646,6 @@ impl LoadTestView {
 
             let is_local = is_local_rpc(&cfg.rpc);
 
-            // Resolve funder: explicit override > $FUNDER_KEY env var > devnet auto-select.
             let funder =
                 if let Ok(f) = TestConfig::resolve_funder_key(funder_key_override.as_deref()) {
                     Some(f)
@@ -534,6 +659,7 @@ impl LoadTestView {
                 runner.set_funder_address(funder.address().to_string());
             }
 
+            let has_swap_tokens = !runner.collect_swap_tokens().is_empty();
             let mut current_run = run_count;
             let mut last_result: Result<MetricsSummary, String>;
 
@@ -541,9 +667,6 @@ impl LoadTestView {
                 let _ = run_count_tx.send(current_run);
 
                 if let Some(ref funder) = funder {
-                    // On local devnets, top up the funder from Hardhat reserve accounts if
-                    // needed. This runs each iteration so the funder stays topped up over long
-                    // continuous sessions.
                     if is_local {
                         let _ = phase_tx.send(RunPhase::Bootstrap);
                         if let Err(e) = ensure_funder_balance(
@@ -557,8 +680,6 @@ impl LoadTestView {
                         )
                         .await
                         {
-                            // Non-fatal: fund_accounts will surface a clearer error if truly
-                            // short.
                             let _ =
                                 done_tx.send(Err(format!("devnet bootstrap failed: {e}"))).await;
                             return;
@@ -572,15 +693,22 @@ impl LoadTestView {
                     }
                 }
 
+                if has_swap_tokens
+                    && current_run == run_count
+                    && let Some(funder) = funder.clone()
+                {
+                    let _ = phase_tx.send(RunPhase::TokenDistribution);
+                    let fut = runner.setup_swap_tokens(funder, swap_token_amount);
+                    if let Err(e) = Box::pin(fut).await {
+                        let _ = done_tx.send(Err(format!("token distribution failed: {e}"))).await;
+                        return;
+                    }
+                }
+
                 let _ = phase_tx.send(RunPhase::Running);
                 let result = runner.run().await;
-                // run() always sets stop_flag=true on exit to signal the confirmer.
-                // Reset it here so the next iteration's run() starts clean, and so
-                // the break condition below only fires on a user-initiated stop
-                // (which stores false into continuous_for_task via stop_run()).
                 stop_flag_for_runner.store(false, Ordering::SeqCst);
 
-                // Drain accounts back to funder regardless of run outcome.
                 if let Some(ref funder) = funder {
                     let _ = phase_tx.send(RunPhase::Draining);
                     runner.drain_accounts(funder.clone()).await.ok();
@@ -596,6 +724,20 @@ impl LoadTestView {
             }
 
             let _ = done_tx.send(last_result).await;
+        };
+        // Run the load test on its own dedicated tokio runtime so the
+        // async I/O (nonce RPC calls, batch submits, confirmer) is never
+        // starved by the TUI's blocking crossterm::event::poll() call,
+        // which parks a worker thread for up to EVENT_POLL_TIMEOUT on
+        // every iteration of the TUI event loop.
+        let task_handle = tokio::task::spawn_blocking(move || {
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
+                .enable_all()
+                .thread_name("load-test-worker")
+                .build()
+                .expect("failed to build load test runtime");
+            rt.block_on(load_test_body);
         });
 
         resources.load_test_task =
@@ -641,11 +783,20 @@ impl LoadTestView {
         }
         let Some(cfg) = self.effective_config() else { return String::new() };
         match field {
+            "rpc" => cfg.rpc.to_string(),
             "duration" => cfg.duration.clone().unwrap_or_else(|| "∞".into()),
             "sender_count" => cfg.sender_count.to_string(),
             "in_flight_per_sender" => cfg.in_flight_per_sender.to_string(),
             "target_gps" => cfg.target_gps.map_or_else(|| "default".into(), |v| v.to_string()),
-            "funding_amount" => cfg.funding_amount.clone(),
+            "batch_size" => cfg.batch_size.to_string(),
+            "batch_timeout" => cfg.batch_timeout.clone().unwrap_or_else(|| "100ms".into()),
+            "funding_amount" => format_wei_as_eth(&cfg.funding_amount),
+            "block_watcher_url" => {
+                cfg.block_watcher_url.as_ref().map_or_else(String::new, |u| u.to_string())
+            }
+            "flashblocks_ws_url" => {
+                cfg.flashblocks_ws_url.as_ref().map_or_else(String::new, |u| u.to_string())
+            }
             _ => String::new(),
         }
     }
@@ -662,6 +813,11 @@ impl LoadTestView {
         }
         let Some(cfg) = self.effective_config_mut() else { return };
         match field {
+            "rpc" => {
+                if let Ok(url) = Url::parse(value) {
+                    cfg.rpc = url;
+                }
+            }
             "duration" => {
                 if value == "∞" || value.is_empty() {
                     cfg.duration = None;
@@ -688,8 +844,36 @@ impl LoadTestView {
                     cfg.target_gps = Some(v);
                 }
             }
+            "batch_size" => {
+                if let Ok(v) = value.parse::<u32>()
+                    && v > 0
+                {
+                    cfg.batch_size = v;
+                }
+            }
+            "batch_timeout" => {
+                if !value.is_empty() {
+                    cfg.batch_timeout = Some(value.to_string());
+                }
+            }
             "funding_amount" => {
-                cfg.funding_amount = value.to_string();
+                if let Some(wei) = parse_eth_to_wei(value) {
+                    cfg.funding_amount = wei.to_string();
+                }
+            }
+            "block_watcher_url" => {
+                if value.is_empty() {
+                    cfg.block_watcher_url = None;
+                } else if let Ok(url) = Url::parse(value) {
+                    cfg.block_watcher_url = Some(url);
+                }
+            }
+            "flashblocks_ws_url" => {
+                if value.is_empty() {
+                    cfg.flashblocks_ws_url = None;
+                } else if let Ok(url) = Url::parse(value) {
+                    cfg.flashblocks_ws_url = Some(url);
+                }
             }
             _ => {}
         }
@@ -768,7 +952,10 @@ impl LoadTestView {
             KeyCode::Char(' ') => {
                 if let Some(ref mut modal) = self.strategy_modal {
                     let i = modal.cursor;
-                    modal.enabled[i] = !modal.enabled[i];
+                    let strategy = ALL_STRATEGIES[i];
+                    if strategy.is_available(&modal.network) {
+                        modal.enabled[i] = !modal.enabled[i];
+                    }
                 }
             }
             KeyCode::Enter => {
@@ -937,31 +1124,22 @@ impl View for LoadTestView {
         }
 
         match key.code {
-            // Network selection — only while idle.
+            // Network selection — only while not running.
             KeyCode::Left | KeyCode::Char('h')
-                if matches!(
-                    self.state,
-                    RunState::Idle | RunState::Complete { .. } | RunState::Error(_)
-                ) && !self.configs.is_empty() =>
+                if !matches!(self.state, RunState::Running { .. }) && !self.configs.is_empty() =>
             {
                 let n = self.configs.len();
                 self.selected = (self.selected + n - 1) % n;
             }
             KeyCode::Right | KeyCode::Char('l')
-                if matches!(
-                    self.state,
-                    RunState::Idle | RunState::Complete { .. } | RunState::Error(_)
-                ) && !self.configs.is_empty() =>
+                if !matches!(self.state, RunState::Running { .. }) && !self.configs.is_empty() =>
             {
                 self.selected = (self.selected + 1) % self.configs.len();
             }
 
             // Begin single run.
             KeyCode::Char('b')
-                if matches!(
-                    self.state,
-                    RunState::Idle | RunState::Complete { .. } | RunState::Error(_)
-                ) && !self.configs.is_empty() =>
+                if !matches!(self.state, RunState::Running { .. }) && !self.configs.is_empty() =>
             {
                 self.continuous = false;
                 self.state = RunState::Idle;
@@ -970,10 +1148,7 @@ impl View for LoadTestView {
 
             // Begin continuous run.
             KeyCode::Char('c')
-                if matches!(
-                    self.state,
-                    RunState::Idle | RunState::Complete { .. } | RunState::Error(_)
-                ) && !self.configs.is_empty() =>
+                if !matches!(self.state, RunState::Running { .. }) && !self.configs.is_empty() =>
             {
                 self.continuous = true;
                 self.state = RunState::Idle;
@@ -989,18 +1164,17 @@ impl View for LoadTestView {
 
             // Open strategy multiselect modal.
             KeyCode::Char('t')
-                if matches!(self.state, RunState::Idle | RunState::Complete { .. })
-                    && !self.configs.is_empty() =>
+                if !matches!(self.state, RunState::Running { .. }) && !self.configs.is_empty() =>
             {
                 let txs =
                     self.effective_config().map(|c| c.transactions.clone()).unwrap_or_default();
-                self.strategy_modal = Some(StrategyModal::from_config(&txs));
+                let network = self.selected_name().unwrap_or("").to_string();
+                self.strategy_modal = Some(StrategyModal::from_config(&txs, &network));
             }
 
             // Open edit modal.
             KeyCode::Char('e')
-                if matches!(self.state, RunState::Idle | RunState::Complete { .. })
-                    && !self.configs.is_empty() =>
+                if !matches!(self.state, RunState::Running { .. }) && !self.configs.is_empty() =>
             {
                 self.edit = Some(EditModal::default());
             }
@@ -1089,12 +1263,32 @@ impl LoadTestView {
 
         let mut lines: Vec<Line<'_>> = Vec::new();
 
-        // RPC endpoint (truncated).
-        let rpc = cfg.rpc.to_string();
-        let rpc_display = if rpc.len() > 40 { format!("{}…", &rpc[..39]) } else { rpc };
+        let truncate =
+            |s: String| -> String { if s.len() > 40 { format!("{}…", &s[..39]) } else { s } };
+
         lines.push(Line::from(vec![
             Span::styled("  RPC           ", label_style),
-            Span::styled(rpc_display, value_style),
+            Span::styled(truncate(cfg.rpc.to_string()), value_style),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::styled("  Block Watch   ", label_style),
+            Span::styled(
+                cfg.block_watcher_url
+                    .as_ref()
+                    .map_or_else(|| "—".into(), |u| truncate(u.to_string())),
+                dim_style,
+            ),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::styled("  Flashblocks   ", label_style),
+            Span::styled(
+                cfg.flashblocks_ws_url
+                    .as_ref()
+                    .map_or_else(|| "—".into(), |u| truncate(u.to_string())),
+                dim_style,
+            ),
         ]));
 
         lines.push(Line::from(""));
@@ -1116,6 +1310,13 @@ impl LoadTestView {
             Span::styled("  In-flight     ", label_style),
             Span::styled(cfg.in_flight_per_sender.to_string(), value_style),
             Span::styled(" per sender", dim_style),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::styled("  Batch Size    ", label_style),
+            Span::styled(cfg.batch_size.to_string(), value_style),
+            Span::styled("  Timeout  ", label_style),
+            Span::styled(cfg.batch_timeout.as_deref().unwrap_or("100ms"), value_style),
         ]));
 
         lines.push(Line::from(vec![
@@ -1206,17 +1407,18 @@ impl LoadTestView {
 
         match &self.state {
             RunState::Idle => render_idle_status(frame, inner, self.continuous),
-            RunState::Running {
-                start, run_start, run_count, current_snap, current_phase, ..
-            } => {
-                let run_duration = self
-                    .effective_config()
-                    .and_then(|c: &TestConfig| c.parse_duration().ok())
-                    .flatten();
-                // Use the actual test start time (after bootstrap/funding) for the
-                // progress bar so that funding time doesn't count against the duration.
-                // Fall back to task spawn time while still in bootstrap/funding phases.
-                let elapsed = run_start.map_or_else(|| start.elapsed(), |t| t.elapsed());
+            RunState::Running { start, run_count, current_snap, current_phase, .. } => {
+                let (elapsed, run_duration) = if matches!(current_phase, RunPhase::Running)
+                    && current_snap.elapsed > Duration::ZERO
+                {
+                    (current_snap.elapsed, current_snap.duration)
+                } else {
+                    let dur = self
+                        .effective_config()
+                        .and_then(|c: &TestConfig| c.parse_duration().ok())
+                        .flatten();
+                    (start.elapsed(), dur)
+                };
                 render_running_status(
                     frame,
                     inner,
@@ -1294,6 +1496,7 @@ fn render_running_status(
     let (phase_icon, phase_label, phase_color) = match phase {
         RunPhase::Bootstrap => ("⟳", " BOOTSTRAPPING", Color::Cyan),
         RunPhase::Funding => ("⟳", " FUNDING", Color::Yellow),
+        RunPhase::TokenDistribution => ("⟳", " DISTRIBUTING TOKENS", Color::Yellow),
         RunPhase::Running => ("▶", " RUNNING", Color::Green),
         RunPhase::Draining => ("⟳", " DRAINING", Color::Yellow),
     };
@@ -1338,6 +1541,7 @@ fn render_running_status(
         let msg = match phase {
             RunPhase::Bootstrap => "  Topping up funder from devnet reserves…",
             RunPhase::Funding => "  Funding sender accounts…",
+            RunPhase::TokenDistribution => "  Distributing swap tokens to senders…",
             RunPhase::Draining => "  Draining sender accounts…",
             RunPhase::Running => unreachable!(),
         };
@@ -1399,12 +1603,19 @@ fn render_live_metrics(frame: &mut Frame<'_>, area: Rect, snap: &DisplaySnapshot
 
     // Latency.
     lines.push(Line::from(Span::styled("  BLOCK LATENCY (rolling 30s)", label)));
-    lines.push(Line::from(vec![
-        Span::styled("    p50  ", label),
-        Span::styled(fmt_dur(snap.p50_latency), value),
-        Span::styled("    p99  ", label),
-        Span::styled(fmt_dur(snap.p99_latency), value),
-    ]));
+    if snap.confirmed == 0 && snap.submitted > 0 {
+        lines.push(Line::from(Span::styled(
+            "    waiting for first confirmation…",
+            Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+        )));
+    } else {
+        lines.push(Line::from(vec![
+            Span::styled("    p50  ", label),
+            Span::styled(fmt_dur(snap.p50_latency), value),
+            Span::styled("    p99  ", label),
+            Span::styled(fmt_dur(snap.p99_latency), value),
+        ]));
+    }
     if snap.flashblocks_p50_latency > Duration::ZERO
         || snap.flashblocks_p99_latency > Duration::ZERO
     {
@@ -1536,28 +1747,39 @@ fn render_complete_status(
             },
         ),
     ]));
+    if !summary.top_failure_reasons.is_empty() {
+        for (reason, count) in &summary.top_failure_reasons {
+            lines.push(Line::from(vec![
+                Span::styled("      ", label),
+                Span::styled(format!("{count:>5}x  "), Style::default().fg(Color::Red)),
+                Span::styled(reason.as_str(), Style::default().fg(Color::DarkGray)),
+            ]));
+        }
+    }
     lines.push(Line::from(""));
 
     lines.push(Line::from(vec![
-        Span::styled("    Latency p50  ", label),
+        Span::styled("    Block Latency  ", label),
+        Span::styled("p50 ", label),
         Span::styled(fmt_dur(summary.block_latency.p50), value),
-        Span::styled("  p95  ", label),
+        Span::styled("  p95 ", label),
         Span::styled(fmt_dur(summary.block_latency.p95), value),
-    ]));
-    lines.push(Line::from(vec![
-        Span::styled("    Latency p99  ", label),
+        Span::styled("  p99 ", label),
         Span::styled(fmt_dur(summary.block_latency.p99), value),
-        Span::styled("  max  ", label),
+        Span::styled("  max ", label),
         Span::styled(fmt_dur(summary.block_latency.max), value),
     ]));
     if summary.flashblocks_latency.count > 0 {
         lines.push(Line::from(vec![
-            Span::styled("    FB p50     ", label),
+            Span::styled("    FB Latency     ", label),
+            Span::styled("p50 ", label),
             Span::styled(fmt_dur(summary.flashblocks_latency.p50), value),
-            Span::styled("  p90  ", label),
-            Span::styled(fmt_dur(summary.flashblocks_latency.p90), value),
-            Span::styled("  p99  ", label),
+            Span::styled("  p95 ", label),
+            Span::styled(fmt_dur(summary.flashblocks_latency.p95), value),
+            Span::styled("  p99 ", label),
             Span::styled(fmt_dur(summary.flashblocks_latency.p99), value),
+            Span::styled("  max ", label),
+            Span::styled(fmt_dur(summary.flashblocks_latency.max), value),
         ]));
     }
     lines.push(Line::from(""));
@@ -1811,22 +2033,35 @@ fn render_strategy_modal(frame: &mut Frame<'_>, parent: Rect, modal: &StrategyMo
 
     let mut lines: Vec<Line<'_>> = vec![Line::from("")];
 
+    let unavailable_style = Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM);
+
     let end = (scroll + visible_rows).min(n);
     for (i, &strategy) in ALL_STRATEGIES.iter().enumerate().take(end).skip(scroll) {
         let is_selected = i == modal.cursor;
         let is_enabled = modal.enabled[i];
+        let available = strategy.is_available(&modal.network);
 
         let selector = if is_selected { "▸ " } else { "  " };
-        let selector_style = if is_selected { selected_style } else { dim_style };
-        let checkbox = if is_enabled { "[x] " } else { "[ ] " };
-        let check_style = if is_enabled { check_on_style } else { dim_style };
-        let label_sty = if is_selected { selected_style } else { label_style };
 
-        lines.push(Line::from(vec![
-            Span::styled(selector, selector_style),
-            Span::styled(checkbox, check_style),
-            Span::styled(strategy.label(), label_sty),
-        ]));
+        if !available {
+            let checkbox = "[-] ";
+            lines.push(Line::from(vec![
+                Span::styled(selector, unavailable_style),
+                Span::styled(checkbox, unavailable_style),
+                Span::styled(strategy.label(), unavailable_style),
+            ]));
+        } else {
+            let selector_style = if is_selected { selected_style } else { dim_style };
+            let checkbox = if is_enabled { "[x] " } else { "[ ] " };
+            let check_style = if is_enabled { check_on_style } else { dim_style };
+            let label_sty = if is_selected { selected_style } else { label_style };
+
+            lines.push(Line::from(vec![
+                Span::styled(selector, selector_style),
+                Span::styled(checkbox, check_style),
+                Span::styled(strategy.label(), label_sty),
+            ]));
+        }
     }
 
     lines.push(Line::from(""));
@@ -1877,6 +2112,12 @@ fn format_wei_as_eth(wei_str: &str) -> String {
     )
 }
 
+fn parse_eth_to_wei(input: &str) -> Option<u128> {
+    let s = input.trim().trim_end_matches("ETH").trim_end_matches("eth").trim();
+    let wei = alloy_primitives::utils::parse_ether(s).ok()?;
+    wei.try_into().ok()
+}
+
 fn format_tx_type(tx_type: &TxTypeConfig) -> String {
     match tx_type {
         TxTypeConfig::Transfer => "transfer".into(),
@@ -1905,6 +2146,10 @@ fn format_tx_type(tx_type: &TxTypeConfig) -> String {
                 OsakaTarget::ModexpOsaka => "modexp",
             };
             format!("osaka {t}")
+        }
+        TxTypeConfig::UniswapV3 { fee, .. } => format!("uniswap_v3 (fee {fee})"),
+        TxTypeConfig::AerodromeCl { tick_spacing, .. } => {
+            format!("aerodrome_cl (tick {tick_spacing})")
         }
     }
 }

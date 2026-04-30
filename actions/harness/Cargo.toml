@@ -39,9 +39,8 @@ alloy-rpc-types-engine = { workspace = true, features = ["std"] }
 
 # base-common
 base-common-network.workspace = true
-base-common-provider.workspace = true
 base-common-rpc-types.workspace = true
-base-common-rpc-types-engine.workspace = true
+base-common-rpc-types-engine = { workspace = true, features = ["std"] }
 base-common-consensus = { workspace = true, features = ["std", "evm"] }
 
 # base
@@ -51,6 +50,7 @@ base-node-core.workspace = true
 base-test-utils.workspace = true
 base-tx-manager.workspace = true
 base-batcher-core.workspace = true
+base-common-chains.workspace = true
 base-execution-evm.workspace = true
 base-consensus-node.workspace = true
 base-batcher-source.workspace = true
@@ -59,11 +59,10 @@ base-consensus-safedb.workspace = true
 base-consensus-gossip.workspace = true
 base-consensus-engine.workspace = true
 base-execution-txpool.workspace = true
-base-consensus-registry.workspace = true
 base-execution-chainspec.workspace = true
 base-execution-payload-builder.workspace = true
 base-protocol = { workspace = true, features = ["std"] }
-base-consensus-genesis = { workspace = true, features = ["std"] }
+base-common-genesis = { workspace = true, features = ["std"] }
 base-consensus-derive = { workspace = true, features = ["test-utils"] }
 
 # tokio

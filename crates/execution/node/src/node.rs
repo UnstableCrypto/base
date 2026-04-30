@@ -24,10 +24,11 @@ use base_execution_rpc::{
 };
 use base_execution_storage::BaseStorage;
 use base_execution_txpool::{
-    BaseOrdering, BasePooledTransaction, BaseTransactionPool, OpPooledTx, OpTransactionValidator,
-    TimestampedTransaction,
+    BaseOrdering, BasePooledTransaction, BasePooledTx, BaseTransactionPool,
+    BaseTransactionValidator, TimestampedTransaction,
 };
 use reth_chainspec::{BaseFeeParams, ChainSpecProvider, EthChainSpec, Hardforks};
+use reth_discv5::NetworkStackId;
 use reth_evm::ConfigureEvm;
 use reth_network::{
     NetworkConfig, NetworkHandle, NetworkManager, NetworkPrimitives, PeersInfo,
@@ -547,7 +548,7 @@ where
             Evm: ConfigureEvm<
                 NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, BaseChainSpec>,
             >,
-            Pool: TransactionPool<Transaction: OpPooledTx>,
+            Pool: TransactionPool<Transaction: BasePooledTx>,
         >,
     EthB: EthApiBuilder<N>,
     PVB: Send,
@@ -624,7 +625,7 @@ where
                 NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, BaseChainSpec>,
             >,
         >,
-    <<N as FullNodeComponents>::Pool as TransactionPool>::Transaction: OpPooledTx,
+    <<N as FullNodeComponents>::Pool as TransactionPool>::Transaction: BasePooledTx,
     EthB: EthApiBuilder<N>,
     PVB: PayloadValidatorBuilder<N>,
     EB: EngineApiBuilder<N>,
@@ -878,7 +879,7 @@ impl<T> BasePoolBuilder<T> {
 impl<Node, T, Evm> PoolBuilder<Node, Evm> for BasePoolBuilder<T>
 where
     Node: FullNodeTypes<Types: BaseNodeTypes>,
-    T: EthPoolTransaction<Consensus = TxTy<Node::Types>> + OpPooledTx + TimestampedTransaction,
+    T: EthPoolTransaction<Consensus = TxTy<Node::Types>> + BasePooledTx + TimestampedTransaction,
     Evm: ConfigureEvm<Primitives = PrimitivesTy<Node::Types>> + Clone + 'static,
 {
     type Pool = BaseTransactionPool<Node::Provider, DiskFileBlobStore, Evm, T, BaseOrdering<T>>;
@@ -906,7 +907,7 @@ where
                 )
                 .build_with_tasks(ctx.task_executor().clone(), blob_store.clone())
                 .map(|validator| {
-                    OpTransactionValidator::new(validator)
+                    BaseTransactionValidator::new(validator)
                         // In --dev mode we can't require gas fees because we're unable to decode
                         // the L1 block info
                         .require_l1_data_gas_fee(!ctx.config().dev.dev)
@@ -1006,7 +1007,8 @@ where
                 <Node::Types as NodeTypes>::ChainSpec,
             >,
         > + 'static,
-    Pool: TransactionPool<Transaction: OpPooledTx<Consensus = TxTy<Node::Types>>> + Unpin + 'static,
+    Pool:
+        TransactionPool<Transaction: BasePooledTx<Consensus = TxTy<Node::Types>>> + Unpin + 'static,
     Txs: BasePayloadTransactions<Pool::Transaction>,
     Attrs: Attributes<Transaction = TxTy<Node::Types>>,
 {
@@ -1082,14 +1084,16 @@ impl BaseNetworkBuilder {
                 }
                 if !args.discovery.disable_discovery {
                     builder = builder.discovery_v5(
-                        args.discovery.discovery_v5_builder(
-                            rlpx_socket,
-                            ctx.config()
-                                .network
-                                .resolved_bootnodes()
-                                .or_else(|| ctx.chain_spec().bootnodes())
-                                .unwrap_or_default(),
-                        ),
+                        args.discovery
+                            .discovery_v5_builder(
+                                rlpx_socket,
+                                ctx.config()
+                                    .network
+                                    .resolved_bootnodes()
+                                    .or_else(|| ctx.chain_spec().bootnodes())
+                                    .unwrap_or_default(),
+                            )
+                            .must_not_include_keys(&[NetworkStackId::ETH, NetworkStackId::ETH2]),
                     );
                 }
 

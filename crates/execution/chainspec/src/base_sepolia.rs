@@ -5,12 +5,11 @@ use alloc::{sync::Arc, vec};
 use alloy_chains::Chain;
 use alloy_primitives::{U256, b256};
 use base_common_chains::{BaseUpgrade, ChainConfig};
-use base_execution_upgrades::BASE_SEPOLIA_UPGRADES;
 use reth_chainspec::{BaseFeeParams, BaseFeeParamsKind, ChainSpec, Hardfork};
 use reth_ethereum_forks::EthereumHardfork;
 use reth_primitives_traits::{SealedHeader, sync::LazyLock};
 
-use crate::BaseChainSpec;
+use crate::{BASE_SEPOLIA_UPGRADES, BaseChainSpec};
 
 /// The Base Sepolia spec
 pub static BASE_SEPOLIA: LazyLock<Arc<BaseChainSpec>> = LazyLock::new(|| {

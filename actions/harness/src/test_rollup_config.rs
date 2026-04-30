@@ -1,6 +1,6 @@
 use alloy_primitives::Address;
-use base_consensus_genesis::{HardForkConfig, RollupConfig};
-use base_consensus_registry::Registry;
+use base_common_chains::Registry;
+use base_common_genesis::{HardForkConfig, RollupConfig};
 
 use crate::BatcherConfig;
 

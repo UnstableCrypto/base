@@ -38,7 +38,7 @@ hardfork!(
 );
 ```
 
-Then update all four chain config array methods from `[(Self, ForkCondition); N]` to `N+1` and append the new entry. Mainnet and sepolia use `ForkCondition::Never` until the upgrade is scheduled; the generic devnet uses `ForkCondition::ZERO_TIMESTAMP`:
+Then update each chain config array method from `[(Self, ForkCondition); N]` to `N+1` and append the new entry. Mainnet and sepolia use `ForkCondition::Never` until the upgrade is scheduled; the generic devnet uses `ForkCondition::ZERO_TIMESTAMP`:
 
 ```rust
 pub const fn mainnet() -> [(Self, ForkCondition); 10] {
@@ -52,18 +52,6 @@ pub const fn devnet() -> [(Self, ForkCondition); 10] {
     [
         // ... existing entries ...
         (Self::Azul, ForkCondition::ZERO_TIMESTAMP),
-    ]
-}
-```
-
-For named devnets like `base_devnet_0_sepolia_dev_0`, use the same timestamp as the previous upgrade rather than `ZERO_TIMESTAMP`, so the new upgrade does not activate before the one it follows:
-
-```rust
-pub const fn base_devnet_0_sepolia_dev_0() -> [(Self, ForkCondition); 10] {
-    [
-        // ... existing entries ...
-        (Self::Jovian, ForkCondition::Timestamp(BASE_DEVNET_0_SEPOLIA_DEV_0_JOVIAN_TIMESTAMP)),
-        (Self::Azul, ForkCondition::Timestamp(BASE_DEVNET_0_SEPOLIA_DEV_0_JOVIAN_TIMESTAMP)),
     ]
 }
 ```
@@ -98,7 +86,7 @@ impl Index<BaseUpgrade> for BaseChainUpgrades {
 
 ### 3. Add the config field and nested struct
 
-**File:** [`crates/consensus/genesis/src/chain/hardfork.rs`](https://github.com/base/base/blob/main/crates/consensus/genesis/src/chain/hardfork.rs)
+**File:** [`crates/common/genesis/src/chain/hardfork.rs`](https://github.com/base/base/blob/main/crates/common/genesis/src/chain/hardfork.rs)
 
 For standard upgrades (flat timestamp field), add directly to `HardForkConfig`:
 
@@ -128,13 +116,13 @@ pub struct HardForkConfig {
 }
 ```
 
-Also update `HardForkConfig::iter()` to include the new entry, and re-export any new public types from `crates/consensus/genesis/src/chain/mod.rs` and `crates/consensus/genesis/src/lib.rs`.
+Also update `HardForkConfig::iter()` to include the new entry, and re-export any new public types from `crates/common/genesis/src/chain/mod.rs` and `crates/common/genesis/src/lib.rs`.
 
 ---
 
 ### 4. Add activation methods to `RollupConfig`
 
-**File:** [`crates/consensus/genesis/src/rollup.rs`](https://github.com/base/base/blob/main/crates/consensus/genesis/src/rollup.rs)
+**File:** [`crates/common/genesis/src/rollup.rs`](https://github.com/base/base/blob/main/crates/common/genesis/src/rollup.rs)
 
 Add `is_X_active` and `is_first_X_block` after the previous upgrade's methods.
 
@@ -212,7 +200,7 @@ fn is_base_azul_active_at_timestamp(&self, timestamp: u64) -> bool {
 **Files:**
 - [`crates/common/chains/src/upgrade.rs`](../../crates/common/chains/src/upgrade.rs) (mainnet, sepolia, devnet constants)
 - [`crates/common/chains/src/lib.rs`](../../crates/common/chains/src/lib.rs)
-- [`crates/consensus/registry/src/test_utils/mod.rs`](https://github.com/base/base/blob/main/crates/consensus/registry/src/test_utils/mod.rs)
+- [`crates/common/chains/src/test_utils.rs`](https://github.com/base/base/blob/main/crates/common/chains/src/test_utils.rs)
 
 Add named constants once an activation timestamp is confirmed:
 
@@ -244,7 +232,7 @@ Until an activation timestamp is confirmed, leave `base: None` and the chain arr
 
 ### 7. Update the default rollup config
 
-**File:** [`crates/consensus/registry/src/test_utils/mod.rs`](https://github.com/base/base/blob/main/crates/consensus/registry/src/test_utils/mod.rs)
+**File:** [`crates/common/chains/src/test_utils.rs`](https://github.com/base/base/blob/main/crates/common/chains/src/test_utils.rs)
 
 The `default_rollup_config()` function sets all upgrades active at genesis for dev use. Add the new upgrade:
 
@@ -260,7 +248,7 @@ hardforks: HardForkConfig {
 
 ### 8. Verify the upgrade consistency tests
 
-**File:** [`crates/consensus/registry/tests/hardfork_consistency.rs`](https://github.com/base/base/blob/main/crates/consensus/registry/tests/hardfork_consistency.rs)
+**File:** [`crates/common/chains/tests/hardfork_consistency.rs`](https://github.com/base/base/blob/main/crates/common/chains/tests/hardfork_consistency.rs)
 
 These tests assert that `BaseChainConfig::mainnet().upgrade_activation(fork)` matches `BaseChainUpgrades::mainnet().upgrade_activation(fork)` for every `BaseUpgrade` variant. They should pass without changes as long as both sides consistently return `ForkCondition::Never` for an unscheduled upgrade or the same timestamp once scheduled.
 
@@ -341,7 +329,7 @@ pub fn spec_by_timestamp_after_bedrock(chain_spec: impl BaseUpgrades, timestamp:
 }
 ```
 
-**File:** [`crates/consensus/genesis/src/rollup.rs`](https://github.com/base/base/blob/main/crates/consensus/genesis/src/rollup.rs)
+**File:** [`crates/common/genesis/src/rollup.rs`](https://github.com/base/base/blob/main/crates/common/genesis/src/rollup.rs)
 
 Same pattern in the `#[cfg(feature = "revm")] impl RollupConfig` block:
 
@@ -359,7 +347,7 @@ pub fn spec_id(&self, timestamp: u64) -> base_revm::OpSpecId {
 
 ### 12. Update the reth `ChainHardforks` builder
 
-**File:** [`crates/execution/upgrades/src/chain.rs`](https://github.com/base/base/blob/main/crates/execution/upgrades/src/chain.rs)
+**File:** [`crates/common/chains/src/chain.rs`](https://github.com/base/base/blob/main/crates/common/chains/src/chain.rs)
 
 Append the new upgrade in `to_chain_hardforks()`. If it pairs with a new Ethereum upgrade (like Canyon→Shanghai), push both; if not, push only the Base upgrade entry:
 
@@ -380,7 +368,7 @@ forks.push((BaseUpgrade::Azul.boxed(), self[BaseUpgrade::Azul]));  // <-- add
 - [ ] Config field (flat or nested struct) added to `HardForkConfig` in `upgrade.rs`; `iter()` updated; new types re-exported
 - [ ] `is_X_active` + `is_first_X_block` added to `RollupConfig`; `upgrade_activation` arm added; previous terminal upgrade cascades to new one (unless standalone)
 - [ ] `is_X_active_at_timestamp` added to `BaseUpgrades` trait
-- [ ] Timestamp constants added to `mainnet.rs`, `sepolia.rs`, `devnet_0_sepolia_dev_0.rs`; re-exported from `lib.rs`
+- [ ] Timestamp constants added to chain config modules and re-exported from `lib.rs`
 - [ ] Registry fixtures (`test_utils/mod.rs`) updated
 - [ ] Default rollup config updated (`defaults.rs`)
 - [ ] Upgrade consistency tests pass
@@ -390,5 +378,5 @@ forks.push((BaseUpgrade::Azul.boxed(), self[BaseUpgrade::Azul]));  // <-- add
 - [ ] `OpSpecId` variant added with `into_eth_spec` mapping and `#[strum(serialize = "...")]` attribute
 - [ ] Precompile match arm updated (or new precompile set added)
 - [ ] `spec_by_timestamp_after_bedrock` updated (`common/evm/src/spec.rs`)
-- [ ] `RollupConfig::spec_id` updated (`consensus/genesis/src/rollup.rs`)
-- [ ] `to_chain_hardforks` updated (`execution/upgrades/src/chain.rs`)
+- [ ] `RollupConfig::spec_id` updated (`common/genesis/src/rollup.rs`)
+- [ ] `to_chain_hardforks` updated (`execution/chainspec/src/hardforks.rs`)

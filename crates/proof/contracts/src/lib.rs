@@ -17,7 +17,8 @@ pub use delayed_weth::{DelayedWETHClient, DelayedWETHContractClient};
 
 mod anchor_state_registry;
 pub use anchor_state_registry::{
-    AnchorRoot, AnchorStateRegistryClient, AnchorStateRegistryContractClient,
+    AnchorPreflight, AnchorRoot, AnchorStateRegistryClient, AnchorStateRegistryContractClient,
+    encode_set_anchor_state_calldata,
 };
 
 mod dispute_game_factory;

@@ -3,9 +3,9 @@
 //! Provides the anchor state (latest finalized output root) used as the starting
 //! point when no pending dispute games exist.
 
-use alloy_primitives::{Address, B256};
+use alloy_primitives::{Address, B256, Bytes};
 use alloy_provider::RootProvider;
-use alloy_sol_types::sol;
+use alloy_sol_types::{SolCall, sol};
 use async_trait::async_trait;
 
 use crate::ContractError;
@@ -37,7 +37,23 @@ sol! {
 
         /// Returns whether the system is paused.
         function paused() external view returns (bool);
+
+        /// Updates the anchor game to the given dispute game.
+        ///
+        /// Permissionless — anyone can call. The contract validates that the
+        /// game is proper, respected, finalized, resolved as `DEFENDER_WINS`,
+        /// and newer than the current anchor.
+        function setAnchorState(address game) external;
     }
+}
+
+/// Encodes the calldata for `IAnchorStateRegistry.setAnchorState(game)`.
+///
+/// The transaction should be sent to the `AnchorStateRegistry` contract
+/// address, passing the dispute game proxy address as the argument.
+pub fn encode_set_anchor_state_calldata(game: Address) -> Bytes {
+    let call = IAnchorStateRegistry::setAnchorStateCall { game };
+    Bytes::from(call.abi_encode())
 }
 
 /// Anchor root returned by `AnchorStateRegistry.getAnchorRoot()`.
@@ -47,6 +63,30 @@ pub struct AnchorRoot {
     pub root: B256,
     /// The L2 block number (sequence number).
     pub l2_block_number: u64,
+}
+
+/// Snapshot of `AnchorStateRegistry` state read in a single batch when
+/// preparing a `setAnchorState()` call. Callers must already know the game
+/// is finalized; this batch only covers the eligibility flags and the
+/// current anchor root.
+#[derive(Debug, Clone, Copy)]
+pub struct AnchorPreflight {
+    /// Whether the game is blacklisted (permanent failure).
+    pub blacklisted: bool,
+    /// Whether the game is retired (permanent failure).
+    pub retired: bool,
+    /// Whether the game currently matches the registry's respected game type.
+    pub respected: bool,
+    /// The current anchor root in the registry.
+    pub anchor_root: AnchorRoot,
+}
+
+impl AnchorPreflight {
+    /// Returns `true` if the game can never become a valid anchor and the
+    /// caller should stop retrying `setAnchorState()` for it.
+    pub const fn permanently_ineligible(&self) -> bool {
+        self.blacklisted || self.retired
+    }
 }
 
 /// Async trait for reading anchor state.

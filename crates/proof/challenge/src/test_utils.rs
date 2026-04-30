@@ -17,7 +17,8 @@ use alloy_trie::{HashBuilder, Nibbles, TrieAccount, proof::ProofRetainer};
 use async_trait::async_trait;
 use base_common_consensus::Predeploys;
 use base_proof_contracts::{
-    AggregateVerifierClient, ContractError, DisputeGameFactoryClient, GameAtIndex, GameInfo,
+    AggregateVerifierClient, AnchorPreflight, AnchorRoot, ContractError, DisputeGameFactoryClient,
+    GameAtIndex, GameInfo,
 };
 use base_proof_primitives::{ProofRequest, ProofResult, ProverClient};
 use base_proof_rpc::{L2Provider, RpcError, RpcResult};
@@ -69,6 +70,18 @@ pub struct MockGameState {
     pub created_at: u64,
     /// Address of the `DelayedWETH` contract.
     pub delayed_weth: Address,
+    /// Address of the `AnchorStateRegistry` contract.
+    pub anchor_state_registry: Address,
+    /// Whether the game is blacklisted in the `AnchorStateRegistry`.
+    pub is_blacklisted: bool,
+    /// Whether the game is finalized in the `AnchorStateRegistry`.
+    pub is_finalized: bool,
+    /// Whether the game is respected in the `AnchorStateRegistry`.
+    pub is_respected: bool,
+    /// Whether the game is retired in the `AnchorStateRegistry`.
+    pub is_retired: bool,
+    /// Current anchor root returned by the `AnchorStateRegistry`.
+    pub anchor_root: AnchorRoot,
 }
 
 impl Default for MockGameState {
@@ -95,6 +108,12 @@ impl Default for MockGameState {
             proof_count: 0,
             created_at: 0,
             delayed_weth: Address::ZERO,
+            anchor_state_registry: Address::ZERO,
+            is_blacklisted: false,
+            is_finalized: true,
+            is_respected: true,
+            is_retired: false,
+            anchor_root: AnchorRoot { root: B256::ZERO, l2_block_number: 0 },
         }
     }
 }
@@ -147,12 +166,15 @@ pub struct MockAggregateVerifier {
     /// Per-address game state lookup, wrapped in a `Mutex` for interior
     /// mutability in multi-step tests.
     pub games: Mutex<HashMap<Address, MockGameState>>,
+    /// Addresses passed to `bond_recipient`, used by tests that assert polling
+    /// avoids redundant lifecycle reads.
+    pub bond_recipient_reads: Mutex<Vec<Address>>,
 }
 
 impl MockAggregateVerifier {
     /// Creates a new mock verifier from a pre-built game state map.
     pub const fn new(games: HashMap<Address, MockGameState>) -> Self {
-        Self { games: Mutex::new(games) }
+        Self { games: Mutex::new(games), bond_recipient_reads: Mutex::new(Vec::new()) }
     }
 
     /// Updates the state for a specific game address.
@@ -161,6 +183,16 @@ impl MockAggregateVerifier {
     /// state changes (e.g. marking a game as resolved after proof submission).
     pub fn update_game(&self, address: Address, state: MockGameState) {
         self.games.lock().unwrap().insert(address, state);
+    }
+
+    /// Returns how many times `bond_recipient` was read for a game.
+    pub fn bond_recipient_read_count(&self, game_address: Address) -> usize {
+        self.bond_recipient_reads
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|&&read_address| read_address == game_address)
+            .count()
     }
 
     fn get<T>(
@@ -248,6 +280,7 @@ impl AggregateVerifierClient for MockAggregateVerifier {
     }
 
     async fn bond_recipient(&self, game_address: Address) -> Result<Address, ContractError> {
+        self.bond_recipient_reads.lock().unwrap().push(game_address);
         self.get(game_address, |s| s.bond_recipient)
     }
 
@@ -273,6 +306,51 @@ impl AggregateVerifierClient for MockAggregateVerifier {
 
     async fn delayed_weth(&self, game_address: Address) -> Result<Address, ContractError> {
         self.get(game_address, |s| s.delayed_weth)
+    }
+
+    async fn anchor_state_registry(&self, game_address: Address) -> Result<Address, ContractError> {
+        self.get(game_address, |s| s.anchor_state_registry)
+    }
+
+    async fn is_game_finalized(
+        &self,
+        asr_address: Address,
+        game_address: Address,
+    ) -> Result<bool, ContractError> {
+        let games = self.games.lock().unwrap();
+        let state = games.get(&game_address).ok_or_else(|| {
+            ContractError::Validation(format!("mock: no state for game {game_address}"))
+        })?;
+        if state.anchor_state_registry != asr_address {
+            return Err(ContractError::Validation(format!(
+                "mock: game {game_address} has ASR {} but caller passed {asr_address}",
+                state.anchor_state_registry
+            )));
+        }
+        Ok(state.is_finalized)
+    }
+
+    async fn anchor_preflight(
+        &self,
+        asr_address: Address,
+        game_address: Address,
+    ) -> Result<AnchorPreflight, ContractError> {
+        let games = self.games.lock().unwrap();
+        let state = games.get(&game_address).ok_or_else(|| {
+            ContractError::Validation(format!("mock: no state for game {game_address}"))
+        })?;
+        if state.anchor_state_registry != asr_address {
+            return Err(ContractError::Validation(format!(
+                "mock: game {game_address} has ASR {} but caller passed {asr_address}",
+                state.anchor_state_registry
+            )));
+        }
+        Ok(AnchorPreflight {
+            blacklisted: state.is_blacklisted,
+            retired: state.is_retired,
+            respected: state.is_respected,
+            anchor_root: state.anchor_root,
+        })
     }
 }
 
@@ -340,6 +418,12 @@ pub const fn mock_state_with_tee(
         proof_count: 0,
         created_at: 0,
         delayed_weth: Address::ZERO,
+        anchor_state_registry: Address::ZERO,
+        is_blacklisted: false,
+        is_finalized: true,
+        is_respected: true,
+        is_retired: false,
+        anchor_root: AnchorRoot { root: B256::ZERO, l2_block_number: 0 },
     }
 }
 
@@ -680,8 +764,8 @@ pub fn build_test_header_and_account(
 pub struct MockBondTransactionSubmitter {
     /// Queue of results returned by [`send_bond_tx`](crate::BondTransactionSubmitter::send_bond_tx).
     pub responses: Mutex<VecDeque<Result<B256, crate::ChallengeSubmitError>>>,
-    /// Recorded `(game_address, calldata)` pairs for each submitted transaction.
-    pub calls: Mutex<Vec<(Address, Bytes)>>,
+    /// Recorded `(game_address, to, calldata)` tuples for each submitted transaction.
+    pub calls: Mutex<Vec<(Address, Address, Bytes)>>,
 }
 
 impl MockBondTransactionSubmitter {
@@ -695,8 +779,8 @@ impl MockBondTransactionSubmitter {
         Self { responses: Mutex::new(VecDeque::from(responses)), calls: Mutex::new(Vec::new()) }
     }
 
-    /// Returns the recorded calls.
-    pub fn recorded_calls(&self) -> Vec<(Address, Bytes)> {
+    /// Returns the recorded calls as `(game_address, to, calldata)` tuples.
+    pub fn recorded_calls(&self) -> Vec<(Address, Address, Bytes)> {
         self.calls.lock().unwrap().clone()
     }
 }
@@ -706,9 +790,10 @@ impl crate::BondTransactionSubmitter for MockBondTransactionSubmitter {
     async fn send_bond_tx(
         &self,
         game_address: Address,
+        to: Address,
         calldata: Bytes,
     ) -> Result<B256, crate::ChallengeSubmitError> {
-        self.calls.lock().unwrap().push((game_address, calldata));
+        self.calls.lock().unwrap().push((game_address, to, calldata));
         self.responses
             .lock()
             .unwrap()

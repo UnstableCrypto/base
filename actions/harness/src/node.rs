@@ -5,14 +5,14 @@ use alloy_primitives::{B256, Bytes};
 use alloy_rlp::Decodable;
 use alloy_rpc_types_engine::ForkchoiceState;
 use base_common_consensus::{BaseBlock, BaseTxEnvelope, TxDeposit};
-use base_common_provider::BaseEngineApi;
+use base_common_genesis::RollupConfig;
+use base_common_network::BaseEngineApi;
 use base_consensus_derive::{
     ActivationSignal, DerivationPipeline, Pipeline, PipelineError, PipelineErrorKind,
     PolledAttributesQueueStage, ResetError, ResetSignal, SignalReceiver, StatefulAttributesBuilder,
     StepResult,
 };
 use base_consensus_engine::EngineForkchoiceVersion;
-use base_consensus_genesis::RollupConfig;
 use base_consensus_safedb::{
     SafeDB, SafeDBError, SafeDBReader, SafeHeadListener, SafeHeadResponse,
 };

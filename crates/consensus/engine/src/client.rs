@@ -18,14 +18,13 @@ use alloy_transport_http::{
     hyper_util::{client::legacy::Client, rt::TokioExecutor},
 };
 use async_trait::async_trait;
-use base_common_network::Base;
-use base_common_provider::BaseEngineApi;
+use base_common_genesis::RollupConfig;
+use base_common_network::{Base, BaseEngineApi};
 use base_common_rpc_types::Transaction;
 use base_common_rpc_types_engine::{
     BaseExecutionPayloadEnvelopeV3, BaseExecutionPayloadEnvelopeV4, BaseExecutionPayloadEnvelopeV5,
     BaseExecutionPayloadV4, BasePayloadAttributes,
 };
-use base_consensus_genesis::RollupConfig;
 use base_protocol::{FromBlockError, L2BlockInfo};
 use http_body_util::Full;
 use thiserror::Error;
@@ -487,7 +486,7 @@ mod tests {
     async fn engine_client_builder_http_builds() {
         use std::sync::Arc;
 
-        use base_consensus_genesis::RollupConfig;
+        use base_common_genesis::RollupConfig;
 
         let builder = EngineClientBuilder {
             l2: "http://127.0.0.1:8551".parse().unwrap(),
@@ -504,7 +503,7 @@ mod tests {
     async fn engine_client_builder_ws_connects() {
         use std::sync::Arc;
 
-        use base_consensus_genesis::RollupConfig;
+        use base_common_genesis::RollupConfig;
 
         let (listener, port) = free_port_listener().await;
         tokio::spawn(accept_one_ws(listener));

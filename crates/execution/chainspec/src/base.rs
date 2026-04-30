@@ -5,12 +5,11 @@ use alloc::{sync::Arc, vec};
 use alloy_chains::Chain;
 use alloy_primitives::{U256, b256};
 use base_common_chains::{BaseUpgrade, ChainConfig};
-use base_execution_upgrades::BASE_MAINNET_UPGRADES;
 use reth_chainspec::{BaseFeeParams, BaseFeeParamsKind, ChainSpec};
 use reth_ethereum_forks::{EthereumHardfork, Hardfork};
 use reth_primitives_traits::{SealedHeader, sync::LazyLock};
 
-use crate::BaseChainSpec;
+use crate::{BASE_MAINNET_UPGRADES, BaseChainSpec};
 
 /// The Base mainnet spec
 pub static BASE_MAINNET: LazyLock<Arc<BaseChainSpec>> = LazyLock::new(|| {
