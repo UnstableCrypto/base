@@ -92,6 +92,7 @@ server {
     # Static UI (HTML/JS/CSS mounted from apps/vibenet-ui/public).
     location / {
         limit_req zone=ui_ip burst=30 nodelay;
+        add_header Cache-Control "no-store";
         root /srv/ui;
         index index.html;
         try_files $uri $uri/ /index.html;
@@ -217,6 +218,7 @@ server {
     # client-side if we ever add routes.
     location / {
         limit_req zone=ui_ip burst=30 nodelay;
+        add_header Cache-Control "no-store";
         root /srv/ui;
         index faucet.html;
         try_files $uri $uri/ /faucet.html;

@@ -63,6 +63,7 @@ server {
 
     location / {
         limit_req zone=ui_ip burst=30 nodelay;
+        add_header Cache-Control "no-store";
         root /srv/ui;
         index index.html;
         try_files $uri $uri/ /index.html;
@@ -157,6 +158,7 @@ server {
 
     location / {
         limit_req zone=ui_ip burst=30 nodelay;
+        add_header Cache-Control "no-store";
         root /srv/ui;
         index faucet.html;
         try_files $uri $uri/ /faucet.html;

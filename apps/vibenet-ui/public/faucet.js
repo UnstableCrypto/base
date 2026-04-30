@@ -80,6 +80,7 @@ function statusPill(label, value) {
 
 async function loadStatus() {
   const el = document.getElementById("faucet-status");
+  if (!el) return;
   try {
     const res = await fetch("/status", { cache: "no-store" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -114,12 +115,14 @@ async function loadStatus() {
       );
     }
 
-    const ethButton = form.querySelector('button[value="eth"]');
-    if (ethButton) ethButton.textContent = `Request ${formatEth(s.drip_wei)} ETH`;
-    const usdvButton = form.querySelector('button[value="usdv"]');
-    if (usdvButton && s.usdv_drip_units) {
-      usdvButton.textContent = `Request ${formatUsdv(s.usdv_drip_units)} USDV`;
-      usdvButton.disabled = !s.usdv_address;
+    if (form) {
+      const ethButton = form.querySelector('button[value="eth"]');
+      if (ethButton) ethButton.textContent = `Request ${formatEth(s.drip_wei)} ETH`;
+      const usdvButton = form.querySelector('button[value="usdv"]');
+      if (usdvButton && s.usdv_drip_units) {
+        usdvButton.textContent = `Request ${formatUsdv(s.usdv_drip_units)} USDV`;
+        usdvButton.disabled = !s.usdv_address;
+      }
     }
   } catch (err) {
     el.textContent = `Could not load faucet status: ${err.message}`;
@@ -128,12 +131,14 @@ async function loadStatus() {
 
 function setResultPending(token) {
   const resultEl = document.getElementById("drip-result");
+  if (!resultEl) return;
   resultEl.className = "drip-result pending";
   resultEl.textContent = token === "usdv" ? "Minting USDV..." : "Requesting ETH...";
 }
 
 function setResultSuccess(token, body) {
   const resultEl = document.getElementById("drip-result");
+  if (!resultEl) return;
   const asset = token === "usdv" ? "USDV" : "ETH";
   resultEl.className = "drip-result success";
   resultEl.innerHTML = "";
@@ -158,45 +163,48 @@ function setResultSuccess(token, body) {
 
 function setResultError(token, message) {
   const resultEl = document.getElementById("drip-result");
+  if (!resultEl) return;
   resultEl.className = "drip-result error";
   resultEl.textContent = `${token === "usdv" ? "USDV request" : "ETH request"} failed: ${message}`;
 }
 
 const form = document.getElementById("drip-form");
-form.addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  const addr = document.getElementById("addr").value.trim();
-  // submitter is set when a named submit button is clicked; default to ETH.
-  const token = (ev.submitter && ev.submitter.value) || "eth";
-  const buttons = form.querySelectorAll("button");
-  buttons.forEach((b) => (b.disabled = true));
-  setResultPending(token);
-  try {
-    const endpoint = token === "usdv" ? "/drip-usdv" : "/drip";
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address: addr }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      // nginx-level 429s return an HTML body (not JSON), so `body.error`
-      // is empty - fall back to a friendly message for that case.
-      const reason =
-        body.error ||
-        (res.status === 429
-          ? "rate limited - wait a minute and try again"
-          : `HTTP ${res.status}`);
-      throw new Error(reason);
+if (form) {
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const addr = document.getElementById("addr")?.value.trim() || "";
+    // submitter is set when a named submit button is clicked; default to ETH.
+    const token = (ev.submitter && ev.submitter.value) || "eth";
+    const buttons = form.querySelectorAll("button");
+    buttons.forEach((b) => (b.disabled = true));
+    setResultPending(token);
+    try {
+      const endpoint = token === "usdv" ? "/drip-usdv" : "/drip";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: addr }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // nginx-level 429s return an HTML body (not JSON), so `body.error`
+        // is empty - fall back to a friendly message for that case.
+        const reason =
+          body.error ||
+          (res.status === 429
+            ? "rate limited - wait a minute and try again"
+            : `HTTP ${res.status}`);
+        throw new Error(reason);
+      }
+      setResultSuccess(token, body);
+    } catch (err) {
+      setResultError(token, err.message);
+    } finally {
+      buttons.forEach((b) => (b.disabled = false));
+      loadStatus();
     }
-    setResultSuccess(token, body);
-  } catch (err) {
-    setResultError(token, err.message);
-  } finally {
-    buttons.forEach((b) => (b.disabled = false));
-    loadStatus();
-  }
-});
+  });
+}
 
 const explorerNav = document.getElementById("explorer-nav");
 if (explorerNav) explorerNav.href = buildExplorerUrl();

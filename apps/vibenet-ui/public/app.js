@@ -20,6 +20,12 @@ async function loadJson(url) {
   return res.json();
 }
 
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+  return el;
+}
+
 function isLocalHost(host) {
   return host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0";
 }
@@ -74,21 +80,23 @@ async function main() {
     loadJson("/contracts.json").catch(() => null),
   ]);
 
-  document.getElementById("title").textContent = config.title || "base vibenet";
-  document.getElementById("subtitle").textContent = config.subtitle || "";
-  document.getElementById("branch").textContent = config.branch || "unknown";
-  document.getElementById("commit").textContent = (config.commit || "unknown").slice(0, 12);
+  setText("title", config.title || "base vibenet");
+  setText("subtitle", config.subtitle || "");
+  setText("branch", config.branch || "unknown");
+  setText("commit", (config.commit || "unknown").slice(0, 12));
 
   const rpcUrl = buildRpcUrl();
   const explorerUrl = buildExplorerUrl();
   const faucetUrl = buildFaucetUrl();
 
-  document.getElementById("chain-id").textContent = String(VIBENET_CHAIN_ID);
-  document.getElementById("rpc-display").textContent = rpcUrl;
+  setText("chain-id", String(VIBENET_CHAIN_ID));
+  setText("rpc-display", rpcUrl);
 
   const explorerEl = document.getElementById("explorer-link");
-  explorerEl.href = explorerUrl;
-  explorerEl.textContent = explorerUrl;
+  if (explorerEl) {
+    explorerEl.href = explorerUrl;
+    explorerEl.textContent = explorerUrl;
+  }
 
   const explorerNav = document.getElementById("explorer-nav");
   if (explorerNav) explorerNav.href = explorerUrl;
@@ -105,6 +113,7 @@ async function main() {
 
 function renderFeatures(features) {
   const host = document.getElementById("features");
+  if (!host) return;
   host.innerHTML = "";
   if (!features.length) {
     host.innerHTML = `<p class="muted">No branch-specific features declared for this vibe.</p>`;
@@ -156,6 +165,7 @@ const WATCHABLE_TOKENS = {
 
 function renderContracts(contracts, explorerBase) {
   const host = document.getElementById("contracts-list");
+  if (!host) return;
   if (!contracts) {
     host.innerHTML = `<p class="muted" style="padding: 0.75rem 1rem; margin: 0;">No contracts deployed on this vibe.</p>`;
     return;
@@ -245,21 +255,23 @@ function vibenetChain(rpcUrl, explorerUrl) {
 
 function wireAddToWallet(rpcUrl, explorerUrl) {
   const btn = document.getElementById("add-to-wallet");
-  const status = document.getElementById("wallet-status");
   if (!btn) return;
   btn.addEventListener("click", async () => {
     const provider = window.ethereum;
     if (!provider) {
-      status.textContent = "No browser wallet detected on this page.";
+      setText("wallet-status", "No browser wallet detected on this page.");
       return;
     }
     try {
       const wallet = createWalletClient({ transport: custom(provider) });
       await wallet.addChain({ chain: vibenetChain(rpcUrl, explorerUrl) });
-      status.textContent = "Network added. Your wallet should now be on base vibenet.";
+      setText("wallet-status", "Network added. Your wallet should now be on base vibenet.");
     } catch (err) {
       // User rejection is code 4001; surface everything else verbatim.
-      status.textContent = `Wallet did not add the network: ${err?.shortMessage || err?.message || err}`;
+      setText(
+        "wallet-status",
+        `Wallet did not add the network: ${err?.shortMessage || err?.message || err}`,
+      );
     }
   });
 }
