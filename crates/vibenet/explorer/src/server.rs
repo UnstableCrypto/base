@@ -84,6 +84,7 @@ impl Explorer {
             .route("/static/style.css", get(serve_css))
             .route("/static/favicon.png", get(serve_favicon))
             .route("/favicon.ico", get(serve_favicon))
+            .route("/api/stats", get(api_stats))
             .route("/api/latest-blocks", get(api_latest_blocks))
             .route("/api/latest-txs", get(api_latest_txs))
             .route("/api/address/{addr}/activity", get(api_address_activity))
@@ -421,6 +422,16 @@ async fn search(State(state): State<Arc<AppState>>, Query(q): Query<SearchQ>) ->
 
 // --- JSON API ------------------------------------------------------------
 
+async fn api_stats(State(state): State<Arc<AppState>>) -> Response {
+    match state.storage.stats().await {
+        Ok(stats) => {
+            let head = state.rpc.block_number().await.unwrap_or(0);
+            Json(stats_to_json(&StatsBlock::new(stats, head))).into_response()
+        }
+        Err(err) => error_json(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()),
+    }
+}
+
 async fn api_latest_blocks(State(state): State<Arc<AppState>>) -> Response {
     match state.storage.latest_blocks(25).await {
         Ok(rows) => {
@@ -462,6 +473,15 @@ async fn api_address_activity(
         }
         Err(err) => error_json(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()),
     }
+}
+
+fn stats_to_json(s: &StatsBlock) -> serde_json::Value {
+    serde_json::json!({
+        "head": s.head,
+        "blocks": s.blocks,
+        "txs": s.txs,
+        "addresses": s.addresses,
+    })
 }
 
 fn block_to_json(b: &BlockListItem) -> serde_json::Value {
