@@ -266,7 +266,16 @@ impl Storage {
         before: Option<(u64, u64, i64)>,
         limit: i64,
     ) -> Result<Vec<ActivityRow>> {
-        let (bn, ti, li) = before.unwrap_or((i64::MAX as u64, i64::MAX as u64, i64::MAX));
+        let (bn, ti, li) = before
+            .map(|(bn, ti, li)| {
+                Ok::<_, eyre::Report>((
+                    i64::try_from(bn).wrap_err("cursor block number exceeds sqlite i64")?,
+                    i64::try_from(ti).wrap_err("cursor tx index exceeds sqlite i64")?,
+                    li,
+                ))
+            })
+            .transpose()?
+            .unwrap_or((i64::MAX, i64::MAX, i64::MAX));
         let rows: Vec<ActivityDbRow> = sqlx::query_as(
             "SELECT block_num, tx_index, log_index, tx_hash, role, token \
              FROM address_activity \
@@ -276,8 +285,8 @@ impl Storage {
              LIMIT ?",
         )
         .bind(address.as_slice())
-        .bind(bn as i64)
-        .bind(ti as i64)
+        .bind(bn)
+        .bind(ti)
         .bind(li)
         .bind(limit)
         .fetch_all(&self.pool)

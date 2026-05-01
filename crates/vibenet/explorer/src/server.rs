@@ -256,13 +256,16 @@ async fn tx_raw(State(state): State<Arc<AppState>>, Path(hash): Path<String>) ->
         Err(err) => return render_error(&state.ctx, 400, err),
     };
     match state.rpc.tx_by_hash(h).await {
-        Ok(Some(tx)) => render_raw(
-            &state.ctx,
-            "Raw transaction".to_string(),
-            hash.clone(),
-            format!("/tx/{hash}"),
-            serde_json::to_value(&tx).unwrap_or(serde_json::Value::Null),
-        ),
+        Ok(Some(tx)) => match serde_json::to_value(&tx) {
+            Ok(value) => render_raw(
+                &state.ctx,
+                "Raw transaction".to_string(),
+                hash.clone(),
+                format!("/tx/{hash}"),
+                value,
+            ),
+            Err(err) => render_error(&state.ctx, 500, format!("failed to serialize tx: {err}")),
+        },
         Ok(None) => render_error(&state.ctx, 404, format!("tx {hash} not found")),
         Err(err) => render_error(&state.ctx, 502, err.to_string()),
     }
@@ -274,13 +277,18 @@ async fn tx_receipt_raw(State(state): State<Arc<AppState>>, Path(hash): Path<Str
         Err(err) => return render_error(&state.ctx, 400, err),
     };
     match state.rpc.receipt(h).await {
-        Ok(Some(r)) => render_raw(
-            &state.ctx,
-            "Raw receipt".to_string(),
-            hash.clone(),
-            format!("/tx/{hash}"),
-            serde_json::to_value(&r).unwrap_or(serde_json::Value::Null),
-        ),
+        Ok(Some(r)) => match serde_json::to_value(&r) {
+            Ok(value) => render_raw(
+                &state.ctx,
+                "Raw receipt".to_string(),
+                hash.clone(),
+                format!("/tx/{hash}"),
+                value,
+            ),
+            Err(err) => {
+                render_error(&state.ctx, 500, format!("failed to serialize receipt: {err}"))
+            }
+        },
         Ok(None) => render_error(&state.ctx, 404, format!("receipt for {hash} not found")),
         Err(err) => render_error(&state.ctx, 502, err.to_string()),
     }
@@ -401,18 +409,21 @@ async fn search(State(state): State<Arc<AppState>>, Query(q): Query<SearchQ>) ->
     }
     // All-digits -> block number. 0x{40 hex} -> address. 0x{64 hex} -> hash.
     if trimmed.chars().all(|c: char| c.is_ascii_digit()) {
-        return Redirect::to(&format!("/block/{trimmed}")).into_response();
+        return match trimmed.parse::<u64>() {
+            Ok(n) => Redirect::to(&format!("/block/{n}")).into_response(),
+            Err(err) => render_error(&state.ctx, 400, format!("invalid block number: {err}")),
+        };
     }
     let normalized = trimmed.strip_prefix("0x").unwrap_or(trimmed);
     match normalized.len() {
         40 => Redirect::to(&format!("/address/0x{normalized}")).into_response(),
         64 => {
             // Could be a block hash or a tx hash; try tx first, fall through.
-            if let Ok(Some(_)) = state
-                .rpc
-                .tx_by_hash(parse_hash(&format!("0x{normalized}")).unwrap_or_default())
-                .await
-            {
+            let hash = match parse_hash(&format!("0x{normalized}")) {
+                Ok(h) => h,
+                Err(err) => return render_error(&state.ctx, 400, err),
+            };
+            if let Ok(Some(_)) = state.rpc.tx_by_hash(hash).await {
                 return Redirect::to(&format!("/tx/0x{normalized}")).into_response();
             }
             Redirect::to(&format!("/block/0x{normalized}")).into_response()

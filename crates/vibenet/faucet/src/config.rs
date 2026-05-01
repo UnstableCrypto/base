@@ -59,6 +59,7 @@ impl FaucetConfig {
             .trim_start_matches("0x")
             .parse()
             .map_err(|e| eyre!("invalid VIBENET_FAUCET_PRIVATE_KEY: {e}"))?;
+        drop(key_hex);
         let derived = signer.address();
 
         if let Ok(declared) = std::env::var("VIBENET_FAUCET_ADDR") {

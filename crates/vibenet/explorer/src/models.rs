@@ -2,7 +2,7 @@
 //! so we keep all the formatting logic in one place and avoid pushing any
 //! storage types into the presentation layer.
 
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 use alloy_consensus::Typed2718 as _;
 use alloy_network_primitives::{ReceiptResponse as _, TransactionResponse as _};
@@ -146,9 +146,11 @@ pub struct BlockDetail {
 impl BlockDetail {
     pub(crate) fn from_rpc(block: &BaseBlock, receipts: Option<&[BaseReceipt]>) -> Self {
         let mut txs = Vec::with_capacity(block.transactions.len());
+        let receipts_by_hash: Option<HashMap<B256, &BaseReceipt>> =
+            receipts.map(|rs| rs.iter().map(|r| (r.transaction_hash(), r)).collect());
         for t in block.transactions.txns() {
             let hash = t.tx_hash();
-            let rcpt = receipts.and_then(|rs| rs.iter().find(|r| r.transaction_hash() == hash));
+            let rcpt = receipts_by_hash.as_ref().and_then(|rs| rs.get(&hash).copied());
             let status = rcpt.map(|r| u8::from(r.status())).unwrap_or(0);
             let to_addr = t.to();
             let created =
@@ -505,10 +507,8 @@ fn decode_erc20_transfer(
         return None;
     }
 
-    let from_topic: &[u8] = topics.get(1)?.as_ref();
-    let to_topic: &[u8] = topics.get(2)?.as_ref();
-    let from = Address::from_slice(&from_topic[12..]);
-    let to = Address::from_slice(&to_topic[12..]);
+    let from = Address::from_word(*topics.get(1)?);
+    let to = Address::from_word(*topics.get(2)?);
     let amount = U256::from_be_slice(data);
     Some(Erc20TransferDetail {
         token: AddrLabel::from_addr(&token),

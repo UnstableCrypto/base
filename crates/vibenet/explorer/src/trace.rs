@@ -17,6 +17,8 @@ use serde_json::Value;
 
 use crate::models::{AddrLabel, format_eth};
 
+const MAX_TRACE_DEPTH: usize = 128;
+
 /// One call frame in the trace tree.
 #[derive(Debug)]
 pub struct TraceNode {
@@ -45,6 +47,10 @@ impl TraceNode {
     /// Parse a callTracer JSON node. Returns `None` if required fields
     /// are missing — the caller should treat that as "trace not available".
     pub(crate) fn from_json(v: &Value) -> Option<Self> {
+        Self::from_json_at_depth(v, 0)
+    }
+
+    fn from_json_at_depth(v: &Value, depth: usize) -> Option<Self> {
         let obj = v.as_object()?;
         let call_type = obj.get("type").and_then(Value::as_str).unwrap_or("CALL").to_string();
         let from_str = obj.get("from").and_then(Value::as_str).unwrap_or("");
@@ -74,11 +80,18 @@ impl TraceNode {
         let error = obj.get("error").and_then(Value::as_str).map(String::from);
         let revert_reason = obj.get("revertReason").and_then(Value::as_str).map(String::from);
 
-        let children = obj
-            .get("calls")
-            .and_then(Value::as_array)
-            .map(|arr| arr.iter().filter_map(Self::from_json).collect())
-            .unwrap_or_default();
+        let children = if depth >= MAX_TRACE_DEPTH {
+            Vec::new()
+        } else {
+            obj.get("calls")
+                .and_then(Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|child| Self::from_json_at_depth(child, depth + 1))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
 
         Some(Self {
             call_type,
@@ -109,11 +122,11 @@ impl TraceNode {
     /// pages.
     pub(crate) fn render_html(&self) -> String {
         let mut out = String::with_capacity(1024);
-        self.write_html(&mut out, true);
+        self.write_html(&mut out, true, 0);
         out
     }
 
-    fn write_html(&self, out: &mut String, is_root: bool) {
+    fn write_html(&self, out: &mut String, is_root: bool, depth: usize) {
         let open = if is_root { " open" } else { "" };
         let cls = format!("call-{}", self.call_type.to_lowercase());
         let has_error = self.error.is_some() || self.revert_reason.is_some();
@@ -227,8 +240,14 @@ impl TraceNode {
 
         if !self.children.is_empty() {
             out.push_str(r#"<div class="trace-children">"#);
-            for c in &self.children {
-                c.write_html(out, false);
+            if depth >= MAX_TRACE_DEPTH {
+                out.push_str(
+                    r#"<div class="trace-row"><span class="trace-label">truncated</span>maximum trace depth reached</div>"#,
+                );
+            } else {
+                for c in &self.children {
+                    c.write_html(out, false, depth + 1);
+                }
             }
             out.push_str("</div>");
         }
