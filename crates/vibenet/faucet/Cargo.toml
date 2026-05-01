@@ -21,7 +21,7 @@ tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true, features = ["std"] }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time", "fs"] }
 axum = { workspace = true, features = ["http1", "tokio", "json"] }
 alloy-primitives = { workspace = true, features = ["serde", "std"] }
 alloy-provider = { workspace = true }
