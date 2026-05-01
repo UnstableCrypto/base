@@ -38,4 +38,7 @@ mod traits;
 pub use traits::{InstanceDiscovery, SignerClient};
 
 mod types;
-pub use types::{InstanceHealthStatus, ProverInstance, RegisteredSigner};
+pub use types::{
+    InstanceHealthStatus, NITRO_ATTESTATION_KIND, ProverInstance, RegisteredSigner,
+    SignerAttestationKind, TDX_ATTESTATION_KIND,
+};

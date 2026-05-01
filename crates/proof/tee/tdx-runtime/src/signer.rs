@@ -1,6 +1,7 @@
 use std::fmt;
 
 use alloy_primitives::{Address, Bytes, keccak256};
+use alloy_signer::SignerSync;
 use alloy_signer_local::PrivateKeySigner;
 use k256::ecdsa::SigningKey;
 use rand_08::CryptoRng;
@@ -58,6 +59,17 @@ impl TdxSigner {
     /// Returns the Ethereum address derived the same way as Nitro.
     pub const fn address(&self) -> Address {
         self.signer.address()
+    }
+
+    /// Signs arbitrary bytes using the Nitro-compatible proof-journal scheme.
+    pub fn sign(&self, data: &[u8]) -> Result<Bytes> {
+        let hash = keccak256(data);
+        let signature = self
+            .signer
+            .sign_hash_sync(&hash)
+            .map_err(|error| TdxRuntimeError::Signing(error.to_string()))?;
+
+        Ok(Bytes::from(signature.as_rsy().to_vec()))
     }
 
     /// Derives the Ethereum address from an uncompressed public key.
@@ -118,5 +130,13 @@ mod tests {
         assert!(
             !debug.contains("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
         );
+    }
+
+    #[test]
+    fn signer_produces_65_byte_signature() {
+        let signer = TdxSigner::from_hex(TEST_KEY).unwrap();
+        let signature = signer.sign(b"proof journal bytes").unwrap();
+
+        assert_eq!(signature.len(), 65);
     }
 }

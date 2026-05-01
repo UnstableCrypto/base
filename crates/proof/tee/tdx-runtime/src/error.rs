@@ -14,6 +14,9 @@ pub enum TdxRuntimeError {
     /// The signer public key is not an uncompressed 65-byte secp256k1 key.
     #[error("invalid signer public key")]
     InvalidPublicKey,
+    /// Failed to sign a proof journal.
+    #[error("TDX signer failed to sign data: {0}")]
+    Signing(String),
     /// TDX report data must be exactly 64 bytes.
     #[error("TDX report data must be exactly 64 bytes, got {0}")]
     InvalidReportDataLength(usize),

@@ -37,6 +37,9 @@ pub use metrics::{Metrics, NoopProofGuard};
 mod service;
 pub use service::{ProverError, ProverService};
 
+mod rpc;
+pub use rpc::{ProverRequestHandler, ProverRpc, ProverRpcError};
+
 #[cfg(feature = "precompiles")]
 mod precompiles;
 #[cfg(feature = "precompiles")]

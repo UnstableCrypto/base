@@ -14,6 +14,7 @@ members = [
   "bin/*",
   "bin/prover/nitro-host",
   "bin/prover/nitro-enclave",
+  "bin/prover/tdx",
   "bin/prover/zk",
   "crates/client/*",
   "crates/consensus/*",
@@ -66,6 +67,7 @@ default-members = [
   "bin/*",
   "bin/prover/nitro-host",
   "bin/prover/nitro-enclave",
+  "bin/prover/tdx",
   "bin/prover/zk",
   "bin/prover-registrar",
 ]
@@ -237,6 +239,7 @@ base-proof-tee-attestation = { path = "crates/proof/tee/attestation" }
 base-proof-tee-registrar = { path = "crates/proof/tee/registrar" }
 base-proof-tee-nitro-host = { path = "crates/proof/tee/nitro-host" }
 base-proof = { path = "crates/proof/proof", default-features = false }
+base-proof-tee-tdx-prover = { path = "crates/proof/tee/tdx-prover" }
 base-proof-tee-tdx-runtime = { path = "crates/proof/tee/tdx-runtime" }
 base-proof-mpt = { path = "crates/proof/mpt", default-features = false }
 base-proof-tee-tdx-verifier = { path = "crates/proof/tee/tdx-verifier" }

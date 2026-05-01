@@ -1,6 +1,8 @@
-use base_proof_tee_attestation::BoxError;
+use base_proof_tee_attestation::{BoxError, TeeAttestationKind};
 use base_tx_manager::TxManagerError;
 use thiserror::Error;
+
+use crate::SignerAttestationKind;
 
 /// Errors that can occur in the prover registrar.
 #[derive(Debug, Error)]
@@ -26,6 +28,19 @@ pub enum RegistrarError {
     /// ZK proof generation failed.
     #[error("proof generation failed")]
     ProofGeneration(#[source] Box<dyn std::error::Error + Send + Sync>),
+
+    /// The generated proof kind did not match the prover's advertised endpoint kind.
+    #[error(
+        "attestation kind mismatch for instance {instance}: expected {expected:?}, got {actual:?}"
+    )]
+    AttestationKindMismatch {
+        /// The instance ID or IP whose proof kind did not match its RPC kind.
+        instance: String,
+        /// The attestation kind advertised by the prover endpoint.
+        expected: SignerAttestationKind,
+        /// The attestation kind produced by the proof provider.
+        actual: TeeAttestationKind,
+    },
 
     /// On-chain registry operation failed.
     #[error("registry error")]

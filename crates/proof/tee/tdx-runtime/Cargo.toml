@@ -17,6 +17,7 @@ rand_08.workspace = true
 k256 = { workspace = true, features = ["ecdsa", "arithmetic"] }
 
 # Types
+alloy-signer.workspace = true
 alloy-signer-local.workspace = true
 alloy-primitives = { workspace = true, default-features = false }
 

@@ -48,6 +48,11 @@ impl<P> TdxRuntime<P> {
         self.signer.public_key()
     }
 
+    /// Signs arbitrary bytes using the TDX signer.
+    pub fn sign(&self, data: &[u8]) -> Result<Bytes> {
+        self.signer.sign(data)
+    }
+
     /// Returns the signer's Ethereum address.
     pub const fn signer_address(&self) -> Address {
         self.signer.address()

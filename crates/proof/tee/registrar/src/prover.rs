@@ -6,12 +6,16 @@ use alloy_primitives::Address;
 use alloy_signer::utils::public_key_to_address;
 use async_trait::async_trait;
 use base_proof_primitives::EnclaveApiClient;
-use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
+use jsonrpsee::{
+    core::ClientError,
+    http_client::{HttpClient, HttpClientBuilder},
+    types::ErrorCode,
+};
 use k256::ecdsa::VerifyingKey;
 use tracing::debug;
 use url::Url;
 
-use crate::{RegistrarError, Result, SignerClient};
+use crate::{RegistrarError, Result, SignerAttestationKind, SignerClient};
 
 /// JSON-RPC client for prover instance signer endpoints.
 ///
@@ -79,10 +83,40 @@ impl ProverClient {
             .map_err(|e| RegistrarError::InvalidPublicKey(e.to_string()))?;
         Ok(public_key_to_address(&verifying_key))
     }
+
+    /// Returns `true` when a JSON-RPC call failed because the method is absent.
+    pub fn is_rpc_method_not_found(error: &ClientError) -> bool {
+        matches!(error, ClientError::Call(call) if call.code() == ErrorCode::MethodNotFound.code())
+    }
 }
 
 #[async_trait]
 impl SignerClient for ProverClient {
+    async fn attestation_kind(&self, endpoint: &Url) -> Result<SignerAttestationKind> {
+        debug!(endpoint = %endpoint, "fetching attestation kind");
+        let client = self.get_or_build_client(endpoint)?;
+        let kind = match client.attestation_kind().await {
+            Ok(kind) => kind,
+            Err(e) if Self::is_rpc_method_not_found(&e) => {
+                debug!(
+                    endpoint = %endpoint,
+                    "attestation kind RPC is unavailable, assuming legacy Nitro prover"
+                );
+                return Ok(SignerAttestationKind::Nitro);
+            }
+            Err(e) => {
+                return Err(RegistrarError::ProverClient {
+                    instance: endpoint.to_string(),
+                    source: Box::new(e),
+                });
+            }
+        };
+        SignerAttestationKind::from_rpc_name(&kind).map_err(|e| RegistrarError::ProverClient {
+            instance: endpoint.to_string(),
+            source: e.into(),
+        })
+    }
+
     async fn signer_public_key(&self, endpoint: &Url) -> Result<Vec<Vec<u8>>> {
         debug!(endpoint = %endpoint, "fetching signer public keys");
         let client = self.get_or_build_client(endpoint)?;
@@ -108,8 +142,11 @@ impl SignerClient for ProverClient {
 
 #[cfg(test)]
 mod tests {
+    use std::net::SocketAddr;
+
     use alloy_primitives::address;
     use hex_literal::hex;
+    use jsonrpsee::{RpcModule, server::Server};
     use k256::ecdsa::SigningKey;
     use rstest::rstest;
 
@@ -168,5 +205,20 @@ mod tests {
         let addr_compressed = ProverClient::derive_address(&compressed).unwrap();
         let addr_uncompressed = ProverClient::derive_address(&uncompressed).unwrap();
         assert_eq!(addr_compressed, addr_uncompressed);
+    }
+
+    #[tokio::test]
+    async fn attestation_kind_method_not_found_defaults_to_nitro() {
+        let server =
+            Server::builder().build("127.0.0.1:0".parse::<SocketAddr>().unwrap()).await.unwrap();
+        let addr = server.local_addr().unwrap();
+        let handle = server.start(RpcModule::new(()));
+        let endpoint = Url::parse(&format!("http://{addr}")).unwrap();
+        let client = ProverClient::new(Duration::from_secs(1));
+
+        let kind = client.attestation_kind(&endpoint).await.unwrap();
+
+        handle.stop().unwrap();
+        assert_eq!(kind, SignerAttestationKind::Nitro);
     }
 }

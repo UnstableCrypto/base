@@ -9,7 +9,7 @@ use std::{collections::HashSet, error::Error, fmt, time::Duration};
 
 use alloy_primitives::{Address, Bytes, FixedBytes, hex};
 use alloy_sol_types::SolCall;
-use base_proof_contracts::{INitroEnclaveVerifier, ITEEProverRegistry};
+use base_proof_contracts::{INitroEnclaveVerifier, ITDXTEEProverRegistry, ITEEProverRegistry};
 use base_proof_tee_attestation::{TeeAttestationKind, TeeAttestationProofProvider};
 use base_proof_tee_nitro_verifier::AttestationReport;
 use base_tx_manager::{TxCandidate, TxManager, TxManagerError};
@@ -20,7 +20,8 @@ use tracing::{Instrument, debug, error, info, info_span, warn};
 
 use crate::{
     CrlConfig, InstanceDiscovery, InstanceHealthStatus, ProverClient, ProverInstance,
-    RegistrarError, RegistrarMetrics, RegistryClient, Result, SignerClient, crl,
+    RegistrarError, RegistrarMetrics, RegistryClient, Result, SignerAttestationKind, SignerClient,
+    crl,
 };
 
 /// Default maximum number of instances processed concurrently.
@@ -375,19 +376,33 @@ where
         }
 
         // Fetch attestations once for all enclaves before the registration
-        // loop. Each signer_attestation RPC hits NSM hardware on the enclave
-        // side, so fetching per-enclave would generate N×N attestation documents
-        // for N enclaves. A single nonce binds the entire batch for freshness.
-        let nonce: [u8; 32] = random();
-        info!(
-            nonce = %hex::encode(nonce),
-            instance = %instance.instance_id,
-            "requesting attestations with nonce"
-        );
-        let all_attestations = self
-            .signer_client
-            .signer_attestation(&instance.endpoint, None, Some(nonce.to_vec()))
-            .await?;
+        // loop. Each signer_attestation RPC may hit hardware on the prover
+        // side, so fetching per-enclave would generate N×N attestations for N
+        // enclaves. Nitro binds freshness with a registrar nonce; TDX binds
+        // freshness through the quote timestamp committed in TDREPORT.REPORTDATA.
+        let attestation_kind = self.signer_client.attestation_kind(&instance.endpoint).await?;
+        let all_attestations = match attestation_kind {
+            SignerAttestationKind::Nitro => {
+                let nonce: [u8; 32] = random();
+                info!(
+                    nonce = %hex::encode(nonce),
+                    kind = attestation_kind.rpc_name(),
+                    instance = %instance.instance_id,
+                    "requesting attestations with nonce"
+                );
+                self.signer_client
+                    .signer_attestation(&instance.endpoint, None, Some(nonce.to_vec()))
+                    .await?
+            }
+            SignerAttestationKind::Tdx => {
+                info!(
+                    kind = attestation_kind.rpc_name(),
+                    instance = %instance.instance_id,
+                    "requesting timestamp-bound attestations"
+                );
+                self.signer_client.signer_attestation(&instance.endpoint, None, None).await?
+            }
+        };
 
         if all_attestations.len() < addresses.len() {
             return Err(RegistrarError::ProverClient {
@@ -409,7 +424,7 @@ where
         // on-chain. This is a known inefficiency — the CRL check could be
         // skipped in that case, but would add complexity for minimal benefit
         // since CRL fetches are fast relative to proof generation.
-        if self.config.crl.enabled {
+        if self.config.crl.enabled && attestation_kind == SignerAttestationKind::Nitro {
             match self.check_and_revoke_crls(&all_attestations[0], instance).await {
                 Ok(true) => {
                     // Confirmed revocation — block registration for this instance.
@@ -435,8 +450,15 @@ where
         }
 
         for (idx, &signer_address) in addresses.iter().enumerate() {
-            if let Err(e) =
-                self.try_register(instance, signer_address, idx, &all_attestations[idx]).await
+            if let Err(e) = self
+                .try_register(
+                    instance,
+                    signer_address,
+                    idx,
+                    &all_attestations[idx],
+                    attestation_kind,
+                )
+                .await
             {
                 error!(
                     error = %e,
@@ -473,6 +495,7 @@ where
         signer_address: Address,
         enclave_index: usize,
         attestation_bytes: &[u8],
+        expected_attestation_kind: SignerAttestationKind,
     ) -> Result<()> {
         if self.registry.is_registered(signer_address).await? {
             debug!(signer = %signer_address, "already registered, skipping");
@@ -498,6 +521,14 @@ where
             .generate_proof_for_signer(attestation_bytes, signer_address)
             .await?;
 
+        if !expected_attestation_kind.matches_proof_kind(&proof.kind) {
+            return Err(RegistrarError::AttestationKindMismatch {
+                instance: instance.endpoint.to_string(),
+                expected: expected_attestation_kind,
+                actual: proof.kind,
+            });
+        }
+
         // Check cancellation before submitting the transaction — avoid starting
         // new on-chain work if shutdown is in progress.
         if self.config.cancel.is_cancelled() {
@@ -513,12 +544,14 @@ where
                 }
                 .abi_encode(),
             ),
-            TeeAttestationKind::Tdx { zk_coprocessor } => {
-                return Err(RegistrarError::Config(format!(
-                    "TDX registration is not wired yet (zk_coprocessor: {})",
-                    zk_coprocessor as u8
-                )));
-            }
+            TeeAttestationKind::Tdx { zk_coprocessor } => Bytes::from(
+                ITDXTEEProverRegistry::registerTDXSignerCall {
+                    output: proof.output,
+                    zkCoprocessor: zk_coprocessor,
+                    proofBytes: proof.proof_bytes,
+                }
+                .abi_encode(),
+            ),
         };
 
         info!(
@@ -911,6 +944,7 @@ mod tests {
     use alloy_rpc_types_eth::TransactionReceipt;
     use alloy_sol_types::SolCall;
     use async_trait::async_trait;
+    use base_proof_contracts::ZkCoProcessorType;
     use base_proof_tee_attestation::{Result as TeeAttestationResult, TeeAttestationProof};
     use base_tx_manager::{SendHandle, TxCandidate, TxManager, TxManagerError};
     use hex_literal::hex;
@@ -1070,6 +1104,25 @@ mod tests {
         }
     }
 
+    /// Mock proof provider that returns a dummy TDX proof.
+    #[derive(Debug)]
+    struct TdxProofProvider;
+
+    #[async_trait]
+    impl TeeAttestationProofProvider for TdxProofProvider {
+        async fn generate_proof_for_signer(
+            &self,
+            _attestation_bytes: &[u8],
+            _signer_address: Address,
+        ) -> TeeAttestationResult<TeeAttestationProof> {
+            Ok(TeeAttestationProof {
+                kind: TeeAttestationKind::Tdx { zk_coprocessor: ZkCoProcessorType::RiscZero },
+                output: Bytes::from_static(b"tdx-output"),
+                proof_bytes: Bytes::from_static(b"tdx-proof"),
+            })
+        }
+    }
+
     /// Mock proof provider that always fails, simulating Boundless errors.
     #[derive(Debug)]
     struct FailingProofProvider;
@@ -1085,6 +1138,9 @@ mod tests {
         }
     }
 
+    /// Recorded signer attestation RPC request parameters.
+    type RecordedAttestationRequest = (Url, Option<Vec<u8>>, Option<Vec<u8>>);
+
     /// Mock signer client that returns pre-configured public keys and attestations
     /// per endpoint.
     ///
@@ -1097,6 +1153,11 @@ mod tests {
         /// Maps endpoint URL → list of attestation blobs (one per enclave).
         /// Falls back to `b"mock-attestation"` if not configured.
         attestations: HashMap<Url, Vec<Vec<u8>>>,
+        /// Maps endpoint URL → attestation kind.
+        /// Falls back to Nitro if not configured.
+        attestation_kinds: HashMap<Url, SignerAttestationKind>,
+        /// Records attestation request challenge parameters for assertions.
+        attestation_requests: Arc<Mutex<Vec<RecordedAttestationRequest>>>,
     }
 
     impl MockSignerClient {
@@ -1112,7 +1173,12 @@ mod tests {
                     (url, vec![public_key_from_private(pk)])
                 })
                 .collect();
-            Self { keys, attestations: HashMap::new() }
+            Self {
+                keys,
+                attestations: HashMap::new(),
+                attestation_kinds: HashMap::new(),
+                attestation_requests: Arc::new(Mutex::new(vec![])),
+            }
         }
 
         /// Creates a mock that returns multiple public keys for a single endpoint,
@@ -1120,7 +1186,12 @@ mod tests {
         fn multi_enclave(host_port: &str, private_keys: &[&[u8; 32]]) -> Self {
             let url = Url::parse(&format!("http://{host_port}")).unwrap();
             let pubs = private_keys.iter().map(|pk| public_key_from_private(pk)).collect();
-            Self { keys: HashMap::from([(url, pubs)]), attestations: HashMap::new() }
+            Self {
+                keys: HashMap::from([(url, pubs)]),
+                attestations: HashMap::new(),
+                attestation_kinds: HashMap::new(),
+                attestation_requests: Arc::new(Mutex::new(vec![])),
+            }
         }
 
         /// Configures attestation blobs for a given endpoint.
@@ -1129,10 +1200,36 @@ mod tests {
             self.attestations.insert(url, attestations);
             self
         }
+
+        /// Configures the attestation kind for a given endpoint.
+        fn with_attestation_kind(mut self, host_port: &str, kind: SignerAttestationKind) -> Self {
+            let url = Url::parse(&format!("http://{host_port}")).unwrap();
+            self.attestation_kinds.insert(url, kind);
+            self
+        }
+
+        /// Returns the attestation challenge parameters requested so far.
+        fn attestation_requests(&self) -> Vec<RecordedAttestationRequest> {
+            self.attestation_requests.lock().unwrap().clone()
+        }
     }
 
     #[async_trait]
     impl SignerClient for MockSignerClient {
+        async fn attestation_kind(&self, endpoint: &Url) -> Result<SignerAttestationKind> {
+            if !self.keys.contains_key(endpoint) {
+                return Err(RegistrarError::ProverClient {
+                    instance: endpoint.to_string(),
+                    source: "unreachable".into(),
+                });
+            }
+            Ok(self
+                .attestation_kinds
+                .get(endpoint)
+                .copied()
+                .unwrap_or(SignerAttestationKind::Nitro))
+        }
+
         async fn signer_public_key(&self, endpoint: &Url) -> Result<Vec<Vec<u8>>> {
             self.keys.get(endpoint).cloned().ok_or_else(|| RegistrarError::ProverClient {
                 instance: endpoint.to_string(),
@@ -1143,9 +1240,10 @@ mod tests {
         async fn signer_attestation(
             &self,
             endpoint: &Url,
-            _user_data: Option<Vec<u8>>,
-            _nonce: Option<Vec<u8>>,
+            user_data: Option<Vec<u8>>,
+            nonce: Option<Vec<u8>>,
         ) -> Result<Vec<Vec<u8>>> {
+            self.attestation_requests.lock().unwrap().push((endpoint.clone(), user_data, nonce));
             if let Some(atts) = self.attestations.get(endpoint) {
                 return Ok(atts.clone());
             }
@@ -1231,6 +1329,10 @@ mod tests {
 
     #[async_trait]
     impl SignerClient for StubSignerClient {
+        async fn attestation_kind(&self, _endpoint: &Url) -> Result<SignerAttestationKind> {
+            unimplemented!("not used in deregister_orphans tests")
+        }
+
         async fn signer_public_key(&self, _endpoint: &Url) -> Result<Vec<Vec<u8>>> {
             unimplemented!("not used in deregister_orphans tests")
         }
@@ -1655,6 +1757,124 @@ mod tests {
 
         assert_eq!(addrs, vec![HARDHAT_ACCOUNT]);
         assert_eq!(tx.sent_calldata().len(), expected_txs);
+    }
+
+    #[tokio::test]
+    async fn process_instance_nitro_requests_nonce_bound_attestation() {
+        let signer_client = MockSignerClient::from_keys(&[(EP1, &HARDHAT_KEY_0)]);
+        let tx = SharedTxManager::new();
+        let driver = step_driver(
+            vec![],
+            signer_client,
+            MockRegistry::all_registered(vec![]),
+            tx,
+            CancellationToken::new(),
+        );
+
+        let inst = instance(EP1, InstanceHealthStatus::Healthy);
+        driver.process_instance(&inst).await.unwrap();
+
+        let requests = driver.signer_client.attestation_requests();
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].1.is_none(), "Nitro registration should not send user_data");
+        assert_eq!(
+            requests[0].2.as_deref().map(<[u8]>::len),
+            Some(32),
+            "Nitro registration should bind a 32-byte nonce"
+        );
+    }
+
+    #[tokio::test]
+    async fn process_instance_tdx_requests_timestamp_bound_attestation_without_nonce() {
+        let signer_client = MockSignerClient::from_keys(&[(EP1, &HARDHAT_KEY_0)])
+            .with_attestation_kind(EP1, SignerAttestationKind::Tdx);
+        let tx = SharedTxManager::new();
+        let driver = step_driver(
+            vec![],
+            signer_client,
+            MockRegistry::all_registered(vec![]),
+            tx,
+            CancellationToken::new(),
+        );
+
+        let inst = instance(EP1, InstanceHealthStatus::Healthy);
+        driver.process_instance(&inst).await.unwrap();
+
+        let requests = driver.signer_client.attestation_requests();
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].1.is_none(), "TDX registration should not send user_data");
+        assert!(requests[0].2.is_none(), "TDX registration should not send a nonce");
+    }
+
+    #[tokio::test]
+    async fn process_instance_tdx_registers_with_tdx_registry_selector() {
+        let signer_client = MockSignerClient::from_keys(&[(EP1, &HARDHAT_KEY_0)])
+            .with_attestation_kind(EP1, SignerAttestationKind::Tdx);
+        let tx = SharedTxManager::new();
+        let driver = RegistrationDriver::new(
+            MockDiscovery { instances: vec![] },
+            TdxProofProvider,
+            MockRegistry::with_signers(vec![]),
+            tx.clone(),
+            signer_client,
+            default_config(CancellationToken::new()),
+        );
+
+        let inst = instance(EP1, InstanceHealthStatus::Healthy);
+        driver.process_instance(&inst).await.unwrap();
+
+        let sent = tx.sent_calldata();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(
+            &sent[0][..4],
+            ITDXTEEProverRegistry::registerTDXSignerCall::SELECTOR,
+            "TDX proofs should use registerTDXSigner"
+        );
+    }
+
+    #[tokio::test]
+    async fn process_instance_rejects_tdx_endpoint_with_nitro_proof() {
+        let signer_client = MockSignerClient::from_keys(&[(EP1, &HARDHAT_KEY_0)])
+            .with_attestation_kind(EP1, SignerAttestationKind::Tdx);
+        let tx = SharedTxManager::new();
+        let driver = RegistrationDriver::new(
+            MockDiscovery { instances: vec![] },
+            StubProofProvider,
+            MockRegistry::with_signers(vec![]),
+            tx.clone(),
+            signer_client,
+            default_config(CancellationToken::new()),
+        );
+
+        let inst = instance(EP1, InstanceHealthStatus::Healthy);
+        driver.process_instance(&inst).await.unwrap();
+
+        assert!(
+            tx.sent_calldata().is_empty(),
+            "attestation kind mismatch should block registration"
+        );
+    }
+
+    #[tokio::test]
+    async fn process_instance_rejects_nitro_endpoint_with_tdx_proof() {
+        let signer_client = MockSignerClient::from_keys(&[(EP1, &HARDHAT_KEY_0)]);
+        let tx = SharedTxManager::new();
+        let driver = RegistrationDriver::new(
+            MockDiscovery { instances: vec![] },
+            TdxProofProvider,
+            MockRegistry::with_signers(vec![]),
+            tx.clone(),
+            signer_client,
+            default_config(CancellationToken::new()),
+        );
+
+        let inst = instance(EP1, InstanceHealthStatus::Healthy);
+        driver.process_instance(&inst).await.unwrap();
+
+        assert!(
+            tx.sent_calldata().is_empty(),
+            "attestation kind mismatch should block registration"
+        );
     }
 
     // ── Unhealthy registration window tests ────────────────────────────
@@ -2101,6 +2321,10 @@ mod tests {
 
     #[async_trait]
     impl SignerClient for CancellingSignerClient {
+        async fn attestation_kind(&self, endpoint: &Url) -> Result<SignerAttestationKind> {
+            self.inner.attestation_kind(endpoint).await
+        }
+
         async fn signer_public_key(&self, endpoint: &Url) -> Result<Vec<Vec<u8>>> {
             let result = self.inner.signer_public_key(endpoint).await;
             if result.is_ok() {
@@ -2438,6 +2662,10 @@ mod tests {
 
     #[async_trait]
     impl SignerClient for BlockingSignerClient {
+        async fn attestation_kind(&self, endpoint: &Url) -> Result<SignerAttestationKind> {
+            self.inner.attestation_kind(endpoint).await
+        }
+
         async fn signer_public_key(&self, endpoint: &Url) -> Result<Vec<Vec<u8>>> {
             self.gate.notified().await;
             self.inner.signer_public_key(endpoint).await
@@ -2535,6 +2763,10 @@ mod tests {
 
     #[async_trait]
     impl SignerClient for ConcurrencyTrackingSignerClient {
+        async fn attestation_kind(&self, endpoint: &Url) -> Result<SignerAttestationKind> {
+            self.inner.attestation_kind(endpoint).await
+        }
+
         async fn signer_public_key(&self, endpoint: &Url) -> Result<Vec<Vec<u8>>> {
             let current = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
             self.peak.fetch_max(current, Ordering::SeqCst);

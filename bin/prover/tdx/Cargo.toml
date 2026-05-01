@@ -1,0 +1,29 @@
+[package]
+name = "base-prover-tdx"
+description = "TEE prover server (Intel TDX)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "base-prover-tdx"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+eyre.workspace = true
+serde.workspace = true
+tracing.workspace = true
+rand_08.workspace = true
+base-cli-utils.workspace = true
+base-common-chains.workspace = true
+base-proof-tee-tdx-prover.workspace = true
+base-proof-tee-tdx-runtime.workspace = true
+tokio = { workspace = true, features = ["full"] }
+clap = { workspace = true, features = ["derive", "env"] }
+base-proof-host = { workspace = true, features = ["metrics"] }
