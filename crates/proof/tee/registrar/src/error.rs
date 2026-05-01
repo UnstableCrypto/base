@@ -29,6 +29,10 @@ pub enum RegistrarError {
     #[error("proof generation failed")]
     ProofGeneration(#[source] Box<dyn std::error::Error + Send + Sync>),
 
+    /// TDX attestation hydration failed before proof generation.
+    #[error("TDX attestation hydration failed")]
+    TdxAttestation(#[source] Box<dyn std::error::Error + Send + Sync>),
+
     /// The generated proof kind did not match the prover's advertised endpoint kind.
     #[error(
         "attestation kind mismatch for instance {instance}: expected {expected:?}, got {actual:?}"
@@ -40,6 +44,19 @@ pub enum RegistrarError {
         expected: SignerAttestationKind,
         /// The attestation kind produced by the proof provider.
         actual: TeeAttestationKind,
+    },
+
+    /// The endpoint's advertised attestation kind did not match its configured fleet.
+    #[error(
+        "endpoint attestation kind mismatch for instance {instance}: expected {expected:?}, got {actual:?}"
+    )]
+    EndpointAttestationKindMismatch {
+        /// The instance ID or IP whose RPC kind did not match its configured fleet.
+        instance: String,
+        /// The attestation kind configured for the fleet.
+        expected: SignerAttestationKind,
+        /// The attestation kind advertised by the prover endpoint.
+        actual: SignerAttestationKind,
     },
 
     /// On-chain registry operation failed.

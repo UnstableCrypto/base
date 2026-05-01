@@ -5,7 +5,7 @@
 //! to L1 via the [`TxManager`]. Also detects orphaned on-chain signers (those
 //! no longer backed by a healthy instance) and deregisters them.
 
-use std::{collections::HashSet, error::Error, fmt, time::Duration};
+use std::{borrow::Cow, collections::HashSet, error::Error, fmt, time::Duration};
 
 use alloy_primitives::{Address, Bytes, FixedBytes, hex};
 use alloy_sol_types::SolCall;
@@ -21,7 +21,7 @@ use tracing::{Instrument, debug, error, info, info_span, warn};
 use crate::{
     CrlConfig, InstanceDiscovery, InstanceHealthStatus, ProverClient, ProverInstance,
     RegistrarError, RegistrarMetrics, RegistryClient, Result, SignerAttestationKind, SignerClient,
-    crl,
+    TdxAttestationConfig, TdxAttestationHydrator, crl,
 };
 
 /// Default maximum number of instances processed concurrently.
@@ -79,6 +79,41 @@ pub struct DriverConfig {
     /// CRL checking configuration. When enabled, intermediate certificates
     /// are checked against CRL distribution points before registration.
     pub crl: CrlConfig,
+    /// TDX attestation hydration and verifier policy configuration.
+    pub tdx_attestation: TdxAttestationConfig,
+}
+
+/// A platform-specific prover fleet handled by the registrar.
+///
+/// Each fleet owns its discovery source and attestation proof provider. The
+/// expected attestation kind is checked against `enclave_attestationKind`
+/// before an attestation is proven or submitted on-chain.
+pub struct ProverFleet<D, P> {
+    /// TEE platform expected for every endpoint discovered by this fleet.
+    pub expected_attestation_kind: SignerAttestationKind,
+    /// Platform-specific instance discovery.
+    pub discovery: D,
+    /// Platform-specific attestation proof provider.
+    pub proof_provider: P,
+}
+
+impl<D, P> fmt::Debug for ProverFleet<D, P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProverFleet")
+            .field("expected_attestation_kind", &self.expected_attestation_kind)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<D, P> ProverFleet<D, P> {
+    /// Creates a new platform fleet.
+    pub const fn new(
+        expected_attestation_kind: SignerAttestationKind,
+        discovery: D,
+        proof_provider: P,
+    ) -> Self {
+        Self { expected_attestation_kind, discovery, proof_provider }
+    }
 }
 
 /// Core registration loop tying together discovery, attestation polling,
@@ -88,8 +123,7 @@ pub struct DriverConfig {
 /// manager, and signer client backends so each can be mocked independently
 /// in tests.
 pub struct RegistrationDriver<D, P, R, T, S> {
-    discovery: D,
-    proof_provider: P,
+    fleets: Vec<ProverFleet<D, P>>,
     registry: R,
     tx_manager: T,
     signer_client: S,
@@ -101,7 +135,10 @@ pub struct RegistrationDriver<D, P, R, T, S> {
 
 impl<D, P, R, T, S> fmt::Debug for RegistrationDriver<D, P, R, T, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RegistrationDriver").field("config", &self.config).finish_non_exhaustive()
+        f.debug_struct("RegistrationDriver")
+            .field("config", &self.config)
+            .field("fleets", &self.fleets.len())
+            .finish_non_exhaustive()
     }
 }
 
@@ -125,6 +162,29 @@ where
         signer_client: S,
         config: DriverConfig,
     ) -> Self {
+        Self::new_with_fleets(
+            vec![ProverFleet::new(SignerAttestationKind::Nitro, discovery, proof_provider)],
+            registry,
+            tx_manager,
+            signer_client,
+            config,
+        )
+    }
+
+    /// Creates a new multi-fleet registration driver.
+    ///
+    /// The registrar processes every configured fleet in each poll cycle and
+    /// computes orphan deregistration from the union of reachable signers across
+    /// all fleets.
+    pub fn new_with_fleets(
+        fleets: Vec<ProverFleet<D, P>>,
+        registry: R,
+        tx_manager: T,
+        signer_client: S,
+        config: DriverConfig,
+    ) -> Self {
+        assert!(!fleets.is_empty(), "registration driver requires at least one prover fleet");
+
         let crl_http_client = if config.crl.enabled {
             match crl::build_crl_http_client(config.crl.fetch_timeout) {
                 Ok(client) => Some(client),
@@ -136,15 +196,7 @@ where
         } else {
             None
         };
-        Self {
-            discovery,
-            proof_provider,
-            registry,
-            tx_manager,
-            signer_client,
-            config,
-            crl_http_client,
-        }
+        Self { fleets, registry, tx_manager, signer_client, config, crl_http_client }
     }
 
     /// Runs the registration loop until cancelled.
@@ -181,90 +233,51 @@ where
     /// Single registration cycle: discover → resolve addresses → register →
     /// deregister orphans.
     async fn step(&self) -> Result<()> {
-        let instances = self.discovery.discover_instances().await?;
-        RegistrarMetrics::discovery_success_total().increment(1);
+        let mut active_signers = HashSet::new();
+        let mut orphan_cleanup_allowed = true;
 
-        if !instances.is_empty() {
-            let registerable =
-                instances.iter().filter(|i| i.health_status.should_register()).count();
-            info!(
-                total = instances.len(),
-                registerable = registerable,
-                "discovered prover instances"
-            );
+        for fleet in &self.fleets {
+            let (fleet_active_signers, fleet_reachable_instances, fleet_total_instances) =
+                match self.process_fleet(fleet).await {
+                    Ok(result) => result,
+                    Err(e) => {
+                        warn!(
+                            error = %e,
+                            platform = fleet.expected_attestation_kind.rpc_name(),
+                            "fleet discovery failed, continuing with remaining fleets"
+                        );
+                        RegistrarMetrics::processing_errors_total().increment(1);
+                        orphan_cleanup_allowed = false;
+                        continue;
+                    }
+                };
+
+            // Guard against mass deregistration from platform-specific transient
+            // failures: require a strict majority (>50%) of each non-empty fleet
+            // to be reachable before global orphan cleanup. A healthy large fleet
+            // must not mask a complete outage in another fleet.
+            //
+            // The comparison uses instance counts (not signer counts) so
+            // multi-enclave instances don't inflate the ratio. When discovery
+            // returns zero instances for a fleet (e.g. after ASG scale-down removes
+            // them from the target group), that fleet does not block deregistration.
+            if fleet_total_instances != 0
+                && fleet_reachable_instances.saturating_mul(2) <= fleet_total_instances
+            {
+                warn!(
+                    reachable = fleet_reachable_instances,
+                    total = fleet_total_instances,
+                    platform = fleet.expected_attestation_kind.rpc_name(),
+                    "majority of fleet instances unreachable, skipping orphan deregistration"
+                );
+                orphan_cleanup_allowed = false;
+            }
+
+            active_signers.extend(fleet_active_signers);
         }
 
-        // Process all instances concurrently. Proof generation (~20 min via
-        // Boundless) is the bottleneck — running instances in parallel overlaps
-        // these waits and dramatically reduces total cycle time.
-        //
-        // Resolve signer addresses for ALL reachable instances (regardless of
-        // health status) to build a complete active set. This protects draining
-        // instances (still running, usually reachable) from premature
-        // deregistration. Truly unreachable instances will fail the RPC and be
-        // excluded — the majority guard below is the safeguard for that case.
-        // A signer-address cache across cycles would strengthen this but adds
-        // state management complexity; deferred for now.
-        // Registration is only attempted for instances that pass should_register().
-        let mut active_signers = HashSet::new();
-        let mut reachable_instances = 0usize;
-
-        let concurrency = self.config.max_concurrency.max(1);
-        let mut futs = futures::stream::iter(instances.iter().map(|instance| {
-            let span = info_span!(
-                "process_instance",
-                instance_id = %instance.instance_id,
-                endpoint = %instance.endpoint,
-                health = ?instance.health_status,
-            );
-            async move { (instance, self.process_instance(instance).await) }.instrument(span)
-        }))
-        .buffer_unordered(concurrency);
-
-        // Use `tokio::select!` so cancellation is observed immediately, even
-        // when all futures are blocked on long-running proof generation (~20 min).
-        // Without this, shutdown would hang until at least one future completes.
-        //
-        // NOTE: When the cancellation branch fires, `futs` is dropped, which
-        // cancels any in-flight futures — including those awaiting
-        // `tx_manager.send()` inside `try_register`. Dropping `send()` after
-        // nonce acquisition but before signing can leave a nonce gap. This is
-        // benign during shutdown because the next startup fetches a fresh nonce
-        // from chain. If the service ever needs cancel-and-restart within the
-        // same process (e.g. hot reconfiguration), a `NonceManager::reset()`
-        // would be needed.
-        loop {
-            tokio::select! {
-                biased;
-                () = self.config.cancel.cancelled() => {
-                    debug!("shutdown requested during instance processing");
-                    break;
-                }
-                maybe_result = futs.next() => {
-                    match maybe_result {
-                        None => break, // all futures completed
-                        Some((instance, result)) => {
-                            match result {
-                                Ok(addresses) => {
-                                    reachable_instances += 1;
-                                    for addr in addresses {
-                                        active_signers.insert(addr);
-                                    }
-                                }
-                                Err(e) => {
-                                    warn!(
-                                        error = %e,
-                                        instance = %instance.instance_id,
-                                        endpoint = %instance.endpoint,
-                                        "failed to resolve signer addresses"
-                                    );
-                                    RegistrarMetrics::processing_errors_total().increment(1);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        if !orphan_cleanup_allowed {
+            return Ok(());
         }
 
         // Skip orphan cleanup if the loop was interrupted by cancellation,
@@ -272,23 +285,6 @@ where
         // CancellationToken is monotonic — once cancelled, it stays cancelled.
         if self.config.cancel.is_cancelled() {
             debug!("shutdown requested, skipping orphan deregistration");
-            return Ok(());
-        }
-
-        // Guard against mass deregistration from transient failures: require a
-        // strict majority (>50%) of discovered instances to be reachable before
-        // proceeding with orphan cleanup. The comparison uses instance counts
-        // (not signer counts) so multi-enclave instances don't inflate the ratio.
-        // When discovery returns zero instances (e.g. after ASG scale-down removes
-        // them from the target group), deregistration proceeds normally — scaled-down
-        // instances leave the target group entirely, so they don't inflate
-        // `instances.len()`.
-        if !instances.is_empty() && reachable_instances.saturating_mul(2) <= instances.len() {
-            warn!(
-                reachable = reachable_instances,
-                total = instances.len(),
-                "majority of instances unreachable, skipping orphan deregistration"
-            );
             return Ok(());
         }
 
@@ -300,6 +296,112 @@ where
         }
 
         Ok(())
+    }
+
+    /// Processes one platform fleet and returns the reachable signer set plus
+    /// reachability counts used by the per-fleet orphan cleanup guard.
+    async fn process_fleet(
+        &self,
+        fleet: &ProverFleet<D, P>,
+    ) -> Result<(HashSet<Address>, usize, usize)> {
+        let instances = fleet.discovery.discover_instances().await?;
+        RegistrarMetrics::discovery_success_total().increment(1);
+        RegistrarMetrics::fleet_discovered_instances_total(
+            fleet.expected_attestation_kind.rpc_name(),
+        )
+        .increment(instances.len() as u64);
+
+        if !instances.is_empty() {
+            let registerable =
+                instances.iter().filter(|i| i.health_status.should_register()).count();
+            info!(
+                total = instances.len(),
+                registerable = registerable,
+                platform = fleet.expected_attestation_kind.rpc_name(),
+                "discovered prover instances"
+            );
+        }
+
+        // Process all instances concurrently. Proof generation (~20 min via
+        // Boundless) is the bottleneck — running instances in parallel overlaps
+        // these waits and dramatically reduces total cycle time.
+        //
+        // Resolve signer addresses for ALL reachable instances (regardless of
+        // health status) to build a complete active set. This protects draining
+        // instances (still running, usually reachable) from premature
+        // deregistration. Truly unreachable instances will fail and be excluded
+        // — the majority guard below is the safeguard for broad transient
+        // failures. Platform mismatches are enforced before registration, after
+        // non-registerable but reachable signers have been preserved.
+        let mut active_signers = HashSet::new();
+        let mut reachable_instances = 0usize;
+        let total_instances = instances.len();
+        let concurrency = self.config.max_concurrency.max(1);
+        let mut futs = futures::stream::iter(instances.iter().map(|instance| {
+            let span = info_span!(
+                "process_instance",
+                platform = fleet.expected_attestation_kind.rpc_name(),
+                instance_id = %instance.instance_id,
+                endpoint = %instance.endpoint,
+                health = ?instance.health_status,
+            );
+            async move {
+                (
+                    instance,
+                    self.process_instance_with_provider(
+                        instance,
+                        Some(fleet.expected_attestation_kind),
+                        &fleet.proof_provider,
+                    )
+                    .await,
+                )
+            }
+            .instrument(span)
+        }))
+        .buffer_unordered(concurrency);
+
+        // Use `tokio::select!` so cancellation is observed immediately, even
+        // when all futures are blocked on long-running proof generation (~20 min).
+        loop {
+            tokio::select! {
+                biased;
+                () = self.config.cancel.cancelled() => {
+                    debug!("shutdown requested during instance processing");
+                    break;
+                }
+                maybe_result = futs.next() => {
+                    match maybe_result {
+                        None => break,
+                        Some((instance, result)) => {
+                            match result {
+                                Ok(addresses) => {
+                                    reachable_instances += 1;
+                                    RegistrarMetrics::fleet_reachable_instances_total(
+                                        fleet.expected_attestation_kind.rpc_name(),
+                                    )
+                                    .increment(1);
+                                    for addr in addresses {
+                                        active_signers.insert(addr);
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        error = %e,
+                                        instance = %instance.instance_id,
+                                        endpoint = %instance.endpoint,
+                                        platform = fleet.expected_attestation_kind.rpc_name(),
+                                        "failed to resolve signer addresses"
+                                    );
+                                    RegistrarMetrics::processing_errors_total().increment(1);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok((active_signers, reachable_instances, total_instances))
     }
 
     /// Returns `true` if the instance is [`InstanceHealthStatus::Unhealthy`]
@@ -334,7 +436,22 @@ where
     /// was needed or succeeded, so the caller can build the active signer set.
     /// Registration failures are logged but do not prevent the addresses from
     /// being returned.
+    #[cfg(test)]
     async fn process_instance(&self, instance: &ProverInstance) -> Result<Vec<Address>> {
+        let proof_provider = &self
+            .fleets
+            .first()
+            .expect("registration driver must have at least one fleet")
+            .proof_provider;
+        self.process_instance_with_provider(instance, None, proof_provider).await
+    }
+
+    async fn process_instance_with_provider(
+        &self,
+        instance: &ProverInstance,
+        configured_attestation_kind: Option<SignerAttestationKind>,
+        proof_provider: &P,
+    ) -> Result<Vec<Address>> {
         let public_keys = self.signer_client.signer_public_key(&instance.endpoint).await?;
         let mut addresses = Vec::with_capacity(public_keys.len());
 
@@ -375,12 +492,31 @@ where
             );
         }
 
+        let attestation_kind = match configured_attestation_kind {
+            Some(expected) => {
+                let attestation_kind =
+                    self.signer_client.attestation_kind(&instance.endpoint).await?;
+                if attestation_kind != expected {
+                    return Err(RegistrarError::EndpointAttestationKindMismatch {
+                        instance: instance.endpoint.to_string(),
+                        expected,
+                        actual: attestation_kind,
+                    });
+                }
+                Some(attestation_kind)
+            }
+            None => None,
+        };
+
         // Fetch attestations once for all enclaves before the registration
         // loop. Each signer_attestation RPC may hit hardware on the prover
         // side, so fetching per-enclave would generate N×N attestations for N
         // enclaves. Nitro binds freshness with a registrar nonce; TDX binds
         // freshness through the quote timestamp committed in TDREPORT.REPORTDATA.
-        let attestation_kind = self.signer_client.attestation_kind(&instance.endpoint).await?;
+        let attestation_kind = match attestation_kind {
+            Some(attestation_kind) => attestation_kind,
+            None => self.signer_client.attestation_kind(&instance.endpoint).await?,
+        };
         let all_attestations = match attestation_kind {
             SignerAttestationKind::Nitro => {
                 let nonce: [u8; 32] = random();
@@ -457,6 +593,7 @@ where
                     idx,
                     &all_attestations[idx],
                     attestation_kind,
+                    proof_provider,
                 )
                 .await
             {
@@ -496,6 +633,7 @@ where
         enclave_index: usize,
         attestation_bytes: &[u8],
         expected_attestation_kind: SignerAttestationKind,
+        proof_provider: &P,
     ) -> Result<()> {
         if self.registry.is_registered(signer_address).await? {
             debug!(signer = %signer_address, "already registered, skipping");
@@ -517,8 +655,12 @@ where
         );
 
         let proof = self
-            .proof_provider
-            .generate_proof_for_signer(attestation_bytes, signer_address)
+            .generate_attestation_proof(
+                proof_provider,
+                attestation_bytes,
+                signer_address,
+                expected_attestation_kind,
+            )
             .await?;
 
         if !expected_attestation_kind.matches_proof_kind(&proof.kind) {
@@ -633,7 +775,7 @@ where
                                 signer = %signer_address,
                                 "execution reverted, blocking proof recovery for signer"
                             );
-                            self.proof_provider.block_recovery_for_signer(signer_address);
+                            proof_provider.block_recovery_for_signer(signer_address);
                         }
                         return Err(RegistrarError::from(e));
                     }
@@ -683,6 +825,51 @@ where
         RegistrarMetrics::registrations_total().increment(1);
 
         Ok(())
+    }
+
+    async fn generate_attestation_proof(
+        &self,
+        proof_provider: &P,
+        attestation_bytes: &[u8],
+        signer_address: Address,
+        expected_attestation_kind: SignerAttestationKind,
+    ) -> Result<base_proof_tee_attestation::TeeAttestationProof> {
+        let prover_input = self
+            .prepare_attestation_for_proving(
+                attestation_bytes,
+                signer_address,
+                expected_attestation_kind,
+            )
+            .await?;
+        proof_provider
+            .generate_proof_for_signer(&prover_input, signer_address)
+            .await
+            .map_err(RegistrarError::from)
+    }
+
+    async fn prepare_attestation_for_proving<'a>(
+        &self,
+        attestation_bytes: &'a [u8],
+        signer_address: Address,
+        expected_attestation_kind: SignerAttestationKind,
+    ) -> Result<Cow<'a, [u8]>> {
+        match expected_attestation_kind {
+            SignerAttestationKind::Nitro => Ok(Cow::Borrowed(attestation_bytes)),
+            // Synthetic TDX tests use pre-encoded verifier input fixtures with
+            // fake quotes that cannot be hydrated through Intel PCS. This arm is
+            // compiled out of non-test builds so endpoints cannot supply policy.
+            #[cfg(test)]
+            SignerAttestationKind::Tdx
+                if TdxAttestationHydrator::is_encoded_prover_input(attestation_bytes) =>
+            {
+                Ok(Cow::Borrowed(attestation_bytes))
+            }
+            SignerAttestationKind::Tdx => {
+                let hydrator = TdxAttestationHydrator::new(self.config.tdx_attestation.clone())?;
+                let input = hydrator.hydrate_for_signer(attestation_bytes, signer_address).await?;
+                Ok(Cow::Owned(input))
+            }
+        }
     }
 
     /// Checks the attestation's intermediate certificates against CRLs and
@@ -944,8 +1131,13 @@ mod tests {
     use alloy_rpc_types_eth::TransactionReceipt;
     use alloy_sol_types::SolCall;
     use async_trait::async_trait;
-    use base_proof_contracts::ZkCoProcessorType;
+    use base_proof_contracts::{TDXTcbStatus, ZkCoProcessorType};
     use base_proof_tee_attestation::{Result as TeeAttestationResult, TeeAttestationProof};
+    use base_proof_tee_tdx_attestation_prover::TdxAttestationProverInput;
+    use base_proof_tee_tdx_verifier::{
+        IntelTcbStatus, TdxCollateral, TdxQuotePolicy, TdxRevocationEvidence, TdxSignedCollateral,
+        TdxVerifierInput,
+    };
     use base_tx_manager::{SendHandle, TxCandidate, TxManager, TxManagerError};
     use hex_literal::hex;
     use k256::ecdsa::SigningKey;
@@ -1012,6 +1204,39 @@ mod tests {
     fn public_key_from_private(private_key: &[u8; 32]) -> Vec<u8> {
         let signing_key = SigningKey::from_slice(private_key).unwrap();
         signing_key.verifying_key().to_encoded_point(false).as_bytes().to_vec()
+    }
+
+    fn tdx_signed_collateral(byte: u8) -> TdxSignedCollateral {
+        TdxSignedCollateral {
+            raw: Bytes::from(vec![byte]),
+            signing_chain: vec![],
+            signature: Bytes::from(vec![byte]),
+            issue_time: 1_711_111_000,
+            next_update: 1_711_222_000,
+        }
+    }
+
+    fn encoded_tdx_prover_input(private_key: &[u8; 32]) -> Vec<u8> {
+        let public_key = public_key_from_private(private_key);
+        let signer = ProverClient::derive_address(&public_key).unwrap();
+        TdxAttestationProverInput::new(TdxVerifierInput {
+            quote: Bytes::from_static(b"quote"),
+            pck_certificate_chain: vec![],
+            collateral: TdxCollateral {
+                tcb_info: tdx_signed_collateral(0x33),
+                qe_identity: tdx_signed_collateral(0x44),
+                tcb_status: IntelTcbStatus::UpToDate,
+            },
+            revocation: TdxRevocationEvidence::default(),
+            trusted_root_ca_hash: B256::repeat_byte(0x55),
+            expected_public_key: Bytes::from(public_key),
+            expected_signer: signer,
+            quote_timestamp_millis: 1_711_111_111_000,
+            verification_time: 1_711_111_111,
+            policy: TdxQuotePolicy { max_quote_age_seconds: 300 },
+            allowed_tcb_statuses: vec![TDXTcbStatus::UpToDate],
+        })
+        .encode()
     }
 
     /// Builds a minimal `TransactionReceipt` for mock tx managers.
@@ -1082,6 +1307,17 @@ mod tests {
     impl InstanceDiscovery for MockDiscovery {
         async fn discover_instances(&self) -> Result<Vec<ProverInstance>> {
             Ok(self.instances.clone())
+        }
+    }
+
+    /// Mock discovery that always fails.
+    #[derive(Debug)]
+    struct FailingDiscovery;
+
+    #[async_trait]
+    impl InstanceDiscovery for FailingDiscovery {
+        async fn discover_instances(&self) -> Result<Vec<ProverInstance>> {
+            Err(RegistrarError::Discovery("simulated discovery failure".into()))
         }
     }
 
@@ -1156,6 +1392,8 @@ mod tests {
         /// Maps endpoint URL → attestation kind.
         /// Falls back to Nitro if not configured.
         attestation_kinds: HashMap<Url, SignerAttestationKind>,
+        /// Endpoint URLs whose attestation-kind RPC should fail.
+        failing_attestation_kinds: HashSet<Url>,
         /// Records attestation request challenge parameters for assertions.
         attestation_requests: Arc<Mutex<Vec<RecordedAttestationRequest>>>,
     }
@@ -1177,6 +1415,7 @@ mod tests {
                 keys,
                 attestations: HashMap::new(),
                 attestation_kinds: HashMap::new(),
+                failing_attestation_kinds: HashSet::new(),
                 attestation_requests: Arc::new(Mutex::new(vec![])),
             }
         }
@@ -1190,6 +1429,7 @@ mod tests {
                 keys: HashMap::from([(url, pubs)]),
                 attestations: HashMap::new(),
                 attestation_kinds: HashMap::new(),
+                failing_attestation_kinds: HashSet::new(),
                 attestation_requests: Arc::new(Mutex::new(vec![])),
             }
         }
@@ -1208,6 +1448,13 @@ mod tests {
             self
         }
 
+        /// Configures the attestation-kind RPC to fail for a given endpoint.
+        fn with_failing_attestation_kind(mut self, host_port: &str) -> Self {
+            let url = Url::parse(&format!("http://{host_port}")).unwrap();
+            self.failing_attestation_kinds.insert(url);
+            self
+        }
+
         /// Returns the attestation challenge parameters requested so far.
         fn attestation_requests(&self) -> Vec<RecordedAttestationRequest> {
             self.attestation_requests.lock().unwrap().clone()
@@ -1221,6 +1468,12 @@ mod tests {
                 return Err(RegistrarError::ProverClient {
                     instance: endpoint.to_string(),
                     source: "unreachable".into(),
+                });
+            }
+            if self.failing_attestation_kinds.contains(endpoint) {
+                return Err(RegistrarError::ProverClient {
+                    instance: endpoint.to_string(),
+                    source: "attestation kind unavailable".into(),
                 });
             }
             Ok(self
@@ -1365,6 +1618,7 @@ mod tests {
                 nitro_verifier_address: None,
                 fetch_timeout: Duration::from_secs(crate::DEFAULT_CRL_FETCH_TIMEOUT_SECS),
             },
+            tdx_attestation: TdxAttestationConfig::intel_pcs(),
         }
     }
 
@@ -1424,14 +1678,14 @@ mod tests {
     /// Returns the same stub proof as [`StubProofProvider`] but tracks
     /// how many times it was called, allowing tests to assert that the
     /// expensive proof generation is not repeated across retries.
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     struct CountingProofProvider {
-        call_count: AtomicU32,
+        call_count: Arc<AtomicU32>,
     }
 
     impl CountingProofProvider {
         fn new() -> Self {
-            Self { call_count: AtomicU32::new(0) }
+            Self { call_count: Arc::new(AtomicU32::new(0)) }
         }
 
         fn call_count(&self) -> u32 {
@@ -1809,7 +2063,8 @@ mod tests {
     #[tokio::test]
     async fn process_instance_tdx_registers_with_tdx_registry_selector() {
         let signer_client = MockSignerClient::from_keys(&[(EP1, &HARDHAT_KEY_0)])
-            .with_attestation_kind(EP1, SignerAttestationKind::Tdx);
+            .with_attestation_kind(EP1, SignerAttestationKind::Tdx)
+            .with_attestations(EP1, vec![encoded_tdx_prover_input(&HARDHAT_KEY_0)]);
         let tx = SharedTxManager::new();
         let driver = RegistrationDriver::new(
             MockDiscovery { instances: vec![] },
@@ -1875,6 +2130,240 @@ mod tests {
             tx.sent_calldata().is_empty(),
             "attestation kind mismatch should block registration"
         );
+    }
+
+    #[tokio::test]
+    async fn step_rejects_endpoint_kind_that_does_not_match_configured_fleet() {
+        let instances = vec![instance(EP1, InstanceHealthStatus::Healthy)];
+        let signer_client = MockSignerClient::from_keys(&[(EP1, &HARDHAT_KEY_0)])
+            .with_attestation_kind(EP1, SignerAttestationKind::Tdx);
+        let tx = SharedTxManager::new();
+        let fleets = vec![ProverFleet::new(
+            SignerAttestationKind::Nitro,
+            Box::new(MockDiscovery { instances }) as Box<dyn InstanceDiscovery>,
+            Box::new(StubProofProvider) as Box<dyn TeeAttestationProofProvider>,
+        )];
+        let driver = RegistrationDriver::new_with_fleets(
+            fleets,
+            MockRegistry::with_signers(vec![]),
+            tx.clone(),
+            signer_client,
+            default_config(CancellationToken::new()),
+        );
+
+        driver.step().await.unwrap();
+
+        assert!(tx.sent_calldata().is_empty(), "endpoint kind mismatch should block registration");
+    }
+
+    #[tokio::test]
+    async fn step_preserves_inactive_endpoint_when_kind_check_fails() {
+        let instances = vec![
+            instance(EP1, InstanceHealthStatus::Draining),
+            instance(EP2, InstanceHealthStatus::Healthy),
+            instance(EP3, InstanceHealthStatus::Healthy),
+        ];
+        let signer_client = MockSignerClient::from_keys(&[
+            (EP1, &HARDHAT_KEY_0),
+            (EP2, &HARDHAT_KEY_1),
+            (EP3, &HARDHAT_KEY_2),
+        ])
+        .with_failing_attestation_kind(EP1);
+
+        let draining_signer =
+            ProverClient::derive_address(&public_key_from_private(&HARDHAT_KEY_0)).unwrap();
+        let nitro_signer_a =
+            ProverClient::derive_address(&public_key_from_private(&HARDHAT_KEY_1)).unwrap();
+        let nitro_signer_b =
+            ProverClient::derive_address(&public_key_from_private(&HARDHAT_KEY_2)).unwrap();
+        let tx = SharedTxManager::new();
+        let fleets = vec![ProverFleet::new(
+            SignerAttestationKind::Nitro,
+            Box::new(MockDiscovery { instances }) as Box<dyn InstanceDiscovery>,
+            Box::new(StubProofProvider) as Box<dyn TeeAttestationProofProvider>,
+        )];
+        let driver = RegistrationDriver::new_with_fleets(
+            fleets,
+            MockRegistry::all_registered(vec![draining_signer, nitro_signer_a, nitro_signer_b]),
+            tx.clone(),
+            signer_client,
+            default_config(CancellationToken::new()),
+        );
+
+        driver.step().await.unwrap();
+
+        assert!(
+            tx.sent_calldata().is_empty(),
+            "reachable non-registerable signer should remain active when attestation kind is unavailable"
+        );
+    }
+
+    #[tokio::test]
+    async fn step_dual_fleet_orphan_cleanup_uses_union_of_active_signers() {
+        let nitro_instance = instance(EP1, InstanceHealthStatus::Healthy);
+        let tdx_instance = instance(EP2, InstanceHealthStatus::Healthy);
+        let signer_client =
+            MockSignerClient::from_keys(&[(EP1, &HARDHAT_KEY_0), (EP2, &HARDHAT_KEY_1)])
+                .with_attestation_kind(EP2, SignerAttestationKind::Tdx);
+
+        let nitro_signer =
+            ProverClient::derive_address(&public_key_from_private(&HARDHAT_KEY_0)).unwrap();
+        let tdx_signer =
+            ProverClient::derive_address(&public_key_from_private(&HARDHAT_KEY_1)).unwrap();
+        let tx = SharedTxManager::new();
+        let fleets = vec![
+            ProverFleet::new(
+                SignerAttestationKind::Nitro,
+                Box::new(MockDiscovery { instances: vec![nitro_instance] })
+                    as Box<dyn InstanceDiscovery>,
+                Box::new(StubProofProvider) as Box<dyn TeeAttestationProofProvider>,
+            ),
+            ProverFleet::new(
+                SignerAttestationKind::Tdx,
+                Box::new(MockDiscovery { instances: vec![tdx_instance] })
+                    as Box<dyn InstanceDiscovery>,
+                Box::new(TdxProofProvider) as Box<dyn TeeAttestationProofProvider>,
+            ),
+        ];
+        let driver = RegistrationDriver::new_with_fleets(
+            fleets,
+            MockRegistry::all_registered(vec![nitro_signer, tdx_signer, ORPHAN_A]),
+            tx.clone(),
+            signer_client,
+            default_config(CancellationToken::new()),
+        );
+
+        driver.step().await.unwrap();
+
+        let sent = tx.sent_calldata();
+        assert_eq!(sent.len(), 1);
+        let expected = ITEEProverRegistry::deregisterSignerCall { signer: ORPHAN_A }.abi_encode();
+        assert_eq!(sent[0], Bytes::from(expected));
+    }
+
+    #[test]
+    #[should_panic(expected = "registration driver requires at least one prover fleet")]
+    fn new_with_fleets_rejects_empty_fleet_list() {
+        let _driver = RegistrationDriver::new_with_fleets(
+            Vec::<ProverFleet<MockDiscovery, StubProofProvider>>::new(),
+            MockRegistry::with_signers(vec![ORPHAN_A]),
+            SharedTxManager::new(),
+            MockSignerClient::from_keys(&[]),
+            default_config(CancellationToken::new()),
+        );
+    }
+
+    #[tokio::test]
+    async fn step_dual_fleet_skips_orphan_cleanup_when_one_fleet_loses_majority() {
+        let nitro_signer =
+            ProverClient::derive_address(&public_key_from_private(&HARDHAT_KEY_0)).unwrap();
+        let signer_client = MockSignerClient::from_keys(&[
+            (EP2, &HARDHAT_KEY_1),
+            (EP3, &HARDHAT_KEY_2),
+            (EP4, &HARDHAT_KEY_3),
+        ])
+        .with_attestation_kind(EP2, SignerAttestationKind::Tdx)
+        .with_attestation_kind(EP3, SignerAttestationKind::Tdx)
+        .with_attestation_kind(EP4, SignerAttestationKind::Tdx)
+        .with_attestations(EP2, vec![encoded_tdx_prover_input(&HARDHAT_KEY_1)])
+        .with_attestations(EP3, vec![encoded_tdx_prover_input(&HARDHAT_KEY_2)])
+        .with_attestations(EP4, vec![encoded_tdx_prover_input(&HARDHAT_KEY_3)]);
+
+        let tx = SharedTxManager::new();
+        let fleets = vec![
+            ProverFleet::new(
+                SignerAttestationKind::Nitro,
+                Box::new(MockDiscovery {
+                    instances: vec![instance(EP1, InstanceHealthStatus::Healthy)],
+                }) as Box<dyn InstanceDiscovery>,
+                Box::new(StubProofProvider) as Box<dyn TeeAttestationProofProvider>,
+            ),
+            ProverFleet::new(
+                SignerAttestationKind::Tdx,
+                Box::new(MockDiscovery {
+                    instances: vec![
+                        instance(EP2, InstanceHealthStatus::Healthy),
+                        instance(EP3, InstanceHealthStatus::Healthy),
+                        instance(EP4, InstanceHealthStatus::Healthy),
+                    ],
+                }) as Box<dyn InstanceDiscovery>,
+                Box::new(TdxProofProvider) as Box<dyn TeeAttestationProofProvider>,
+            ),
+        ];
+        let driver = RegistrationDriver::new_with_fleets(
+            fleets,
+            MockRegistry::with_signers(vec![nitro_signer]),
+            tx.clone(),
+            signer_client,
+            default_config(CancellationToken::new()),
+        );
+
+        driver.step().await.unwrap();
+
+        let sent = tx.sent_calldata();
+        assert_eq!(sent.len(), 3, "healthy TDX fleet should still register signers");
+        assert!(sent.iter().all(|calldata| {
+            calldata[..4] == ITDXTEEProverRegistry::registerTDXSignerCall::SELECTOR
+        }));
+    }
+
+    #[tokio::test]
+    async fn step_continues_later_fleets_after_discovery_failure() {
+        let signer_client = MockSignerClient::from_keys(&[(EP2, &HARDHAT_KEY_1)])
+            .with_attestation_kind(EP2, SignerAttestationKind::Tdx)
+            .with_attestations(EP2, vec![encoded_tdx_prover_input(&HARDHAT_KEY_1)]);
+        let tx = SharedTxManager::new();
+        let fleets = vec![
+            ProverFleet::new(
+                SignerAttestationKind::Nitro,
+                Box::new(FailingDiscovery) as Box<dyn InstanceDiscovery>,
+                Box::new(StubProofProvider) as Box<dyn TeeAttestationProofProvider>,
+            ),
+            ProverFleet::new(
+                SignerAttestationKind::Tdx,
+                Box::new(MockDiscovery {
+                    instances: vec![instance(EP2, InstanceHealthStatus::Healthy)],
+                }) as Box<dyn InstanceDiscovery>,
+                Box::new(TdxProofProvider) as Box<dyn TeeAttestationProofProvider>,
+            ),
+        ];
+        let driver = RegistrationDriver::new_with_fleets(
+            fleets,
+            MockRegistry::with_signers(vec![ORPHAN_A]),
+            tx.clone(),
+            signer_client,
+            default_config(CancellationToken::new()),
+        );
+
+        driver.step().await.unwrap();
+
+        let sent = tx.sent_calldata();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(&sent[0][..4], ITDXTEEProverRegistry::registerTDXSignerCall::SELECTOR);
+    }
+
+    #[tokio::test]
+    async fn step_tdx_orphan_cleanup_uses_shared_deregister_selector() {
+        let fleets = vec![ProverFleet::new(
+            SignerAttestationKind::Tdx,
+            MockDiscovery { instances: vec![] },
+            TdxProofProvider,
+        )];
+        let signer_client = MockSignerClient::from_keys(&[]);
+        let tx = SharedTxManager::new();
+        let driver = RegistrationDriver::new_with_fleets(
+            fleets,
+            MockRegistry::all_registered(vec![ORPHAN_B]),
+            tx.clone(),
+            signer_client,
+            default_config(CancellationToken::new()),
+        );
+
+        driver.step().await.unwrap();
+
+        let sent = tx.sent_calldata();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(&sent[0][..4], &ITEEProverRegistry::deregisterSignerCall::SELECTOR);
     }
 
     // ── Unhealthy registration window tests ────────────────────────────
@@ -2871,7 +3360,7 @@ mod tests {
             signer_client,
             registry,
             tx.clone(),
-            proof_provider,
+            proof_provider.clone(),
             CancellationToken::new(),
         );
 
@@ -2882,7 +3371,7 @@ mod tests {
         // 2 failed attempts + 1 success = 3 total sends.
         assert_eq!(tx.send_count(), 3);
         assert_all_calldata_identical(&tx.sent_calldata());
-        assert_eq!(driver.proof_provider.call_count(), 1, "proof should be generated once");
+        assert_eq!(proof_provider.call_count(), 1, "proof should be generated once");
     }
 
     /// Transient error but on-chain check shows signer is already
@@ -2958,7 +3447,7 @@ mod tests {
             signer_client,
             registry,
             tx.clone(),
-            proof_provider,
+            proof_provider.clone(),
             CancellationToken::new(),
         );
 
@@ -2974,7 +3463,7 @@ mod tests {
             "should attempt exactly MAX_TX_RETRIES + 1 sends",
         );
         assert_all_calldata_identical(&tx.sent_calldata());
-        assert_eq!(driver.proof_provider.call_count(), 1, "proof should be generated once");
+        assert_eq!(proof_provider.call_count(), 1, "proof should be generated once");
     }
 
     /// Cancellation during the retry sleep aborts the retry loop without
@@ -3072,7 +3561,7 @@ mod tests {
             signer_client,
             registry,
             tx.clone(),
-            proof_provider,
+            proof_provider.clone(),
             CancellationToken::new(),
         );
 
@@ -3081,6 +3570,6 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(tx.send_count(), 1, "should succeed on first attempt");
-        assert_eq!(driver.proof_provider.call_count(), 1, "proof should be generated once");
+        assert_eq!(proof_provider.call_count(), 1, "proof should be generated once");
     }
 }

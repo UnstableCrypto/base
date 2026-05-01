@@ -1,4 +1,4 @@
-//! AWS ALB target group instance discovery.
+//! Prover instance discovery implementations.
 
 use std::{
     collections::HashMap,
@@ -12,6 +12,36 @@ use tracing::{debug, warn};
 use url::Url;
 
 use crate::{InstanceDiscovery, InstanceHealthStatus, ProverInstance, RegistrarError, Result};
+
+/// Discovers prover instances from a static endpoint list.
+#[derive(Debug, Clone)]
+pub struct StaticEndpointDiscovery {
+    endpoints: Vec<Url>,
+}
+
+impl StaticEndpointDiscovery {
+    /// Creates a new static endpoint discovery source.
+    pub const fn new(endpoints: Vec<Url>) -> Self {
+        Self { endpoints }
+    }
+}
+
+#[async_trait]
+impl InstanceDiscovery for StaticEndpointDiscovery {
+    async fn discover_instances(&self) -> Result<Vec<ProverInstance>> {
+        Ok(self
+            .endpoints
+            .iter()
+            .enumerate()
+            .map(|(idx, endpoint)| ProverInstance {
+                instance_id: format!("static-{idx}"),
+                endpoint: endpoint.clone(),
+                health_status: InstanceHealthStatus::Healthy,
+                launch_time: None,
+            })
+            .collect())
+    }
+}
 
 /// Discovers prover instances via AWS Elastic Load Balancing target groups.
 ///

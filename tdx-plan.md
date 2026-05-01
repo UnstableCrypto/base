@@ -166,7 +166,7 @@ Actions:
   - `prover_prove` for proof requests.
   - `enclave_signerPublicKey` for signer public key.
   - `enclave_signerAttestation` for raw TDX quote bytes when the binary is configured for TDX.
-- Add an explicit `enclave_attestationKind` or equivalent version method so operators and the registrar can fail fast if a TDX registrar points at a Nitro prover or vice versa.
+- Add an explicit `enclave_attestationKind` or equivalent version method so operators and the registrar can fail fast when an endpoint in the TDX prover set serves Nitro attestations, or an endpoint in the Nitro prover set serves TDX attestations.
 - Reuse the existing proof pipeline and signature format.
 - Set `ProofJournal.tee_image_hash` to the TDX image hash computed from the current quote measurements.
 - Keep proposal proof bytes unchanged: `proposer(20) || signature(65)`.
@@ -204,36 +204,44 @@ Success criteria:
 - Recovered in-flight proofs are skipped if their quote timestamp is too old for the verifier's `maxTimeDiff`.
 - `cargo test -p base-proof-tee-tdx-attestation-prover` passes without requiring TDX hardware.
 
-### 7. Update the Registrar for TDX
+### 7. Update the Registrar for Dual TEE Registration
 
-Make the registrar platform-aware while preserving Nitro behavior.
+Make the registrar depend on both AWS Nitro Enclave and Intel TDX prover fleets. TDX is not an alternative registrar mode; the registrar should discover/poll both platforms, generate the matching attestation proof for each signer, and keep the registry populated with the union of healthy Nitro and TDX signers.
 
 Actions:
 
-- Add `--tee-platform nitro|tdx`.
-- Add `--tdx-zk-coprocessor risc-zero|succinct`.
-- Add TDX-specific proving config:
-  - TDX verifier guest ELF/program URL.
-  - Verifier image ID/program ID.
-  - Collateral fetch/config source.
-  - Maximum recovered quote age.
-- Rename generic prover-program arguments only if the old Nitro names can remain backwards-compatible.
-- Add static endpoint discovery in addition to AWS target group discovery:
-  - `--discovery-mode aws-target-group|static`.
-  - `--prover-endpoint` repeatable for static mode.
-- Keep AWS target group discovery for current Nitro deployments.
+- Replace the single prover discovery config with a dual-fleet config:
+  - Nitro discovery config for the existing AWS Nitro prover fleet.
+  - TDX discovery config for the Intel TDX prover fleet.
+  - Each fleet has its own discovery mode, endpoint list or target group, port, timeout, health labels, and expected `SignerAttestationKind`.
+- Keep AWS target group discovery for current Nitro deployments, and allow either platform to use static endpoint discovery when needed:
+  - `--nitro-discovery-mode aws-target-group|static`.
+  - `--nitro-target-group-arn`, `--nitro-aws-region`, `--nitro-prover-port`.
+  - `--nitro-prover-endpoint` repeatable for static mode.
+  - `--tdx-discovery-mode aws-target-group|static`.
+  - `--tdx-target-group-arn`, `--tdx-aws-region`, `--tdx-prover-port`.
+  - `--tdx-prover-endpoint` repeatable for static mode.
+- Build separate attestation proof providers keyed by `SignerAttestationKind`:
+  - Nitro provider uses the existing Nitro verifier guest and current Boundless/direct settings.
+  - TDX provider uses the TDX verifier guest, `--tdx-zk-coprocessor risc-zero|succinct`, verifier image ID/program ID, collateral fetch/config source, and maximum recovered quote age.
+- Rename generic prover-program arguments only if the old Nitro names can remain backwards-compatible; otherwise add platform-prefixed arguments and treat the old names as Nitro aliases.
+- Refactor the registrar driver to process a list of `ProverFleet`/`PlatformRegistrationConfig` values in each poll cycle instead of a single discovery/proof-provider pair.
+- Validate `enclave_attestationKind` against the configured fleet before proving. A Nitro endpoint discovered through TDX config, or a TDX endpoint discovered through Nitro config, is a configuration error for that endpoint and must not be registered.
 - When `TeeAttestationKind::Nitro`, submit `registerSigner(output, proofBytes)`.
 - When `TeeAttestationKind::Tdx`, submit `registerTDXSigner(output, zkCoprocessor, proofBytes)`.
-- Disable Nitro CRL revocation transactions for TDX. TDX collateral and revocation checks must be proven in the TDX verifier guest and represented in `TDXVerifierJournal`.
-- Fail fast when `enclave_attestationKind` does not match `--tee-platform`.
+- Run Nitro CRL revocation checks only for the Nitro fleet. TDX collateral and revocation checks must be proven in the TDX verifier guest and represented in `TDXVerifierJournal`.
+- Compute orphan deregistration from the union of reachable Nitro and TDX signers, not from each fleet independently, so a signer is only deregistered when it is absent from every configured healthy prover fleet.
+- Track health and metrics per platform, and expose an aggregate readiness signal that fails when either required fleet is missing or unreachable beyond the configured threshold.
 
 Success criteria:
 
-- Registrar CLI parsing tests cover Nitro, TDX/RISC Zero, TDX/SP1, AWS discovery, and static discovery.
+- Registrar CLI parsing tests cover dual Nitro+TDX configuration, TDX/RISC Zero, TDX/SP1, AWS discovery, static discovery, and backwards-compatible Nitro aliases.
 - Registrar driver tests assert the exact calldata selector for Nitro and TDX registration.
 - Registrar driver tests prove TDX deregistration still uses the shared `deregisterSigner(address)` path.
+- Registrar driver tests prove orphan cleanup uses the union of Nitro and TDX active signer sets.
+- Registrar driver tests reject a prover endpoint whose `enclave_attestationKind` does not match the fleet it was configured under.
 - Existing Nitro registrar tests pass unchanged or with only expected constructor/config updates.
-- Running `base-proof-tee-registrar --tee-platform tdx --help` shows all required TDX configuration.
+- Running `base-proof-tee-registrar --help` shows separate Nitro and TDX discovery/proving configuration without presenting TDX as a mutually exclusive replacement for Nitro.
 
 ### 8. Add TDX Collateral Retrieval and Caching
 
@@ -334,8 +342,8 @@ Ship TDX support without changing default Nitro behavior.
 
 Actions:
 
-- Keep Nitro as the default platform where a default is required.
-- Require `--tee-platform tdx` for all TDX-specific behavior.
+- Keep existing Nitro flags as backwards-compatible aliases for Nitro fleet configuration where possible.
+- Require explicit TDX fleet configuration before enabling TDX registration, but do not make TDX mutually exclusive with Nitro.
 - Gate new TDX crates and heavy proving dependencies behind features where possible.
 - Add deployment docs for:
   - TDX prover runtime.

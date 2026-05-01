@@ -15,14 +15,24 @@ use alloy_signer_local::PrivateKeySigner;
 use base_balance_monitor::BalanceMonitorLayer;
 use base_cli_utils::RuntimeManager;
 use base_health::HealthServer;
+use base_proof_contracts::ZkCoProcessorType;
 use base_proof_tee_attestation::TeeAttestationProofProvider;
-use base_proof_tee_nitro_attestation_prover::{BoundlessProver, DirectProver};
+use base_proof_tee_nitro_attestation_prover::{
+    BoundlessProver as NitroBoundlessProver, DirectProver as NitroDirectProver,
+};
 use base_proof_tee_registrar::{
     AwsDiscoveryConfig, AwsTargetGroupDiscovery, BoundlessConfig, CrlConfig,
     DEFAULT_CRL_FETCH_TIMEOUT_SECS, DEFAULT_MAX_ATTESTATION_AGE_SECS, DEFAULT_MAX_CONCURRENCY,
-    DEFAULT_MAX_RECOVERY_ATTEMPTS, DEFAULT_MAX_TX_RETRIES, DEFAULT_TX_RETRY_DELAY_SECS,
-    DEFAULT_UNHEALTHY_REGISTRATION_WINDOW_SECS, DriverConfig, ProverClient, ProvingConfig,
-    RegistrarConfig, RegistrarError, RegistrarMetrics, RegistrationDriver, RegistryContractClient,
+    DEFAULT_MAX_RECOVERY_ATTEMPTS, DEFAULT_MAX_TX_RETRIES, DEFAULT_TDX_MAX_QUOTE_AGE_SECS,
+    DEFAULT_TX_RETRY_DELAY_SECS, DEFAULT_UNHEALTHY_REGISTRATION_WINDOW_SECS, DiscoveryConfig,
+    DriverConfig, InstanceDiscovery, PlatformProvingConfig, PlatformRegistrationConfig,
+    ProverClient, ProverFleet, ProvingConfig, RegistrarConfig, RegistrarError, RegistrarMetrics,
+    RegistrationDriver, RegistryContractClient, SignerAttestationKind, StaticDiscoveryConfig,
+    StaticEndpointDiscovery, TdxAttestationConfig, TdxBoundlessConfig, TdxProvingConfig,
+};
+use base_proof_tee_tdx_attestation_prover::{
+    BoundlessProver as TdxBoundlessProver, DirectProver as TdxDirectProver, RecoveredProofPolicy,
+    RiscZeroProver as TdxRiscZeroProver,
 };
 use base_tx_manager::{BaseTxMetrics, SignerConfig, SimpleTxManager, TxManagerConfig};
 use clap::{Args, Parser, ValueEnum};
@@ -59,18 +69,63 @@ pub(crate) struct Cli {
     #[arg(long, env = cli_env!("L1_CHAIN_ID"))]
     l1_chain_id: u64,
 
-    // ── Discovery ─────────────────────────────────────────────────────────────
-    /// AWS ALB target group ARN for prover instance discovery.
+    // ── Nitro Discovery ──────────────────────────────────────────────────────
+    /// Nitro prover discovery mode.
+    #[arg(
+        long,
+        env = cli_env!("NITRO_DISCOVERY_MODE"),
+        default_value = "aws-target-group"
+    )]
+    nitro_discovery_mode: DiscoveryMode,
+
+    /// Nitro AWS ALB target group ARN.
+    #[arg(long, env = cli_env!("NITRO_TARGET_GROUP_ARN"))]
+    nitro_target_group_arn: Option<String>,
+
+    /// Nitro AWS region.
+    #[arg(long, env = cli_env!("NITRO_AWS_REGION"))]
+    nitro_aws_region: Option<String>,
+
+    /// Nitro JSON-RPC port for AWS target group discovery.
+    #[arg(long, env = cli_env!("NITRO_PROVER_PORT"))]
+    nitro_prover_port: Option<u16>,
+
+    /// Nitro prover endpoint for static discovery. Repeat for multiple endpoints.
+    #[arg(long, env = cli_env!("NITRO_PROVER_ENDPOINT"))]
+    nitro_prover_endpoint: Vec<Url>,
+
+    /// Backwards-compatible Nitro alias for `--nitro-target-group-arn`.
     #[arg(long, env = cli_env!("TARGET_GROUP_ARN"))]
-    target_group_arn: String,
+    target_group_arn: Option<String>,
 
-    /// AWS region (e.g. `us-east-1`).
+    /// Backwards-compatible Nitro alias for `--nitro-aws-region`.
     #[arg(long, env = cli_env!("AWS_REGION"))]
-    aws_region: String,
+    aws_region: Option<String>,
 
-    /// JSON-RPC port to poll on each prover instance.
-    #[arg(long, env = cli_env!("PROVER_PORT"), default_value_t = 8000)]
-    prover_port: u16,
+    /// Backwards-compatible Nitro alias for `--nitro-prover-port`.
+    #[arg(long, env = cli_env!("PROVER_PORT"))]
+    prover_port: Option<u16>,
+
+    // ── TDX Discovery ────────────────────────────────────────────────────────
+    /// TDX prover discovery mode. TDX is enabled when this or another TDX fleet flag is present.
+    #[arg(long, env = cli_env!("TDX_DISCOVERY_MODE"))]
+    tdx_discovery_mode: Option<DiscoveryMode>,
+
+    /// TDX AWS ALB target group ARN.
+    #[arg(long, env = cli_env!("TDX_TARGET_GROUP_ARN"))]
+    tdx_target_group_arn: Option<String>,
+
+    /// TDX AWS region.
+    #[arg(long, env = cli_env!("TDX_AWS_REGION"))]
+    tdx_aws_region: Option<String>,
+
+    /// TDX JSON-RPC port for AWS target group discovery.
+    #[arg(long, env = cli_env!("TDX_PROVER_PORT"), default_value_t = 8000)]
+    tdx_prover_port: u16,
+
+    /// TDX prover endpoint for static discovery. Repeat for multiple endpoints.
+    #[arg(long, env = cli_env!("TDX_PROVER_ENDPOINT"))]
+    tdx_prover_endpoint: Vec<Url>,
 
     // ── Signing ───────────────────────────────────────────────────────────────
     /// Signer configuration (local private key or remote sidecar).
@@ -82,22 +137,38 @@ pub(crate) struct Cli {
     #[command(flatten)]
     tx_manager: TxManagerCli,
 
-    // ── Proving ───────────────────────────────────────────────────────────────
-    /// ZK proving backend.
-    #[arg(long, env = cli_env!("PROVING_MODE"))]
-    proving_mode: ProvingMode,
+    // ── Nitro Proving ────────────────────────────────────────────────────────
+    /// Nitro ZK proving backend.
+    #[arg(long, env = cli_env!("NITRO_PROVING_MODE"))]
+    nitro_proving_mode: Option<ProvingMode>,
 
-    /// Hex-encoded guest program image ID (required for Boundless mode).
-    #[arg(long, env = cli_env!("IMAGE_ID"), required_if_eq("proving_mode", "boundless"))]
+    /// Backwards-compatible Nitro alias for `--nitro-proving-mode`.
+    #[arg(long, env = cli_env!("PROVING_MODE"))]
+    proving_mode: Option<ProvingMode>,
+
+    /// Nitro guest program image ID for Boundless mode.
+    #[arg(long, env = cli_env!("NITRO_IMAGE_ID"))]
+    nitro_image_id: Option<String>,
+
+    /// Backwards-compatible Nitro alias for `--nitro-image-id`.
+    #[arg(long, env = cli_env!("IMAGE_ID"))]
     image_id: Option<String>,
 
-    /// Path to the guest ELF binary on disk (required for Direct mode).
-    #[arg(long, env = cli_env!("ELF_PATH"), required_if_eq("proving_mode", "direct"))]
+    /// Nitro guest ELF path for direct mode.
+    #[arg(long, env = cli_env!("NITRO_ELF_PATH"))]
+    nitro_elf_path: Option<PathBuf>,
+
+    /// Backwards-compatible Nitro alias for `--nitro-elf-path`.
+    #[arg(long, env = cli_env!("ELF_PATH"))]
     elf_path: Option<PathBuf>,
 
     // ── Boundless ─────────────────────────────────────────────────────────────
     #[command(flatten)]
     boundless: BoundlessArgs,
+
+    // ── TDX Proving ──────────────────────────────────────────────────────────
+    #[command(flatten)]
+    tdx: TdxArgs,
 
     // ── Polling / Server ──────────────────────────────────────────────────────
     /// Interval between discovery and registration poll cycles, in seconds.
@@ -156,31 +227,28 @@ pub(crate) enum ProvingMode {
     Direct,
 }
 
+/// Prover fleet discovery backend selector.
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub(crate) enum DiscoveryMode {
+    /// Discover instances from an AWS ALB target group.
+    AwsTargetGroup,
+    /// Poll a configured static endpoint list.
+    Static,
+}
+
 /// Boundless Network CLI arguments.
 #[derive(Args)]
 struct BoundlessArgs {
     /// Boundless Network RPC URL.
-    #[arg(
-        long,
-        env = cli_env!("BOUNDLESS_RPC_URL"),
-        required_if_eq("proving_mode", "boundless")
-    )]
+    #[arg(long, env = cli_env!("BOUNDLESS_RPC_URL"))]
     boundless_rpc_url: Option<Url>,
 
     /// Hex-encoded private key for Boundless Network proving fees.
-    #[arg(
-        long,
-        env = cli_env!("BOUNDLESS_PRIVATE_KEY"),
-        required_if_eq("proving_mode", "boundless")
-    )]
+    #[arg(long, env = cli_env!("BOUNDLESS_PRIVATE_KEY"))]
     boundless_private_key: Option<String>,
 
     /// HTTP(S) URL of the Nitro attestation verifier ELF (e.g. Pinata IPFS gateway URL).
-    #[arg(
-        long,
-        env = cli_env!("BOUNDLESS_VERIFIER_PROGRAM_URL"),
-        required_if_eq("proving_mode", "boundless")
-    )]
+    #[arg(long, env = cli_env!("BOUNDLESS_VERIFIER_PROGRAM_URL"))]
     boundless_verifier_program_url: Option<Url>,
 
     /// Interval between Boundless fulfillment status checks, in seconds.
@@ -213,6 +281,95 @@ struct BoundlessArgs {
         default_value_t = DEFAULT_MAX_ATTESTATION_AGE_SECS
     )]
     max_attestation_age_secs: u64,
+}
+
+/// TDX attestation proving CLI arguments.
+#[derive(Args)]
+struct TdxArgs {
+    /// TDX attestation proving backend.
+    #[arg(long, env = cli_env!("TDX_PROVING_MODE"))]
+    tdx_proving_mode: Option<TdxProvingMode>,
+
+    /// TDX ZK coprocessor accepted by the deployed verifier.
+    #[arg(
+        long,
+        env = cli_env!("TDX_ZK_COPROCESSOR"),
+        default_value = "risc-zero"
+    )]
+    tdx_zk_coprocessor: TdxZkCoprocessor,
+
+    /// TDX verifier guest image ID for Boundless mode.
+    #[arg(long, env = cli_env!("TDX_IMAGE_ID"))]
+    tdx_image_id: Option<String>,
+
+    /// TDX verifier guest ELF path for RISC Zero local proving.
+    #[arg(long, env = cli_env!("TDX_ELF_PATH"))]
+    tdx_elf_path: Option<PathBuf>,
+
+    /// TDX Boundless Network RPC URL.
+    #[arg(long, env = cli_env!("TDX_BOUNDLESS_RPC_URL"))]
+    tdx_boundless_rpc_url: Option<Url>,
+
+    /// TDX Boundless Network proving fee private key.
+    #[arg(long, env = cli_env!("TDX_BOUNDLESS_PRIVATE_KEY"))]
+    tdx_boundless_private_key: Option<String>,
+
+    /// HTTP(S) URL of the TDX attestation verifier ELF.
+    #[arg(long, env = cli_env!("TDX_BOUNDLESS_VERIFIER_PROGRAM_URL"))]
+    tdx_boundless_verifier_program_url: Option<Url>,
+
+    /// Interval between TDX Boundless fulfillment status checks, in seconds.
+    #[arg(long, env = cli_env!("TDX_BOUNDLESS_POLL_INTERVAL_SECS"), default_value_t = 5)]
+    tdx_boundless_poll_interval_secs: u64,
+
+    /// TDX proof generation timeout in seconds.
+    #[arg(long, env = cli_env!("TDX_BOUNDLESS_TIMEOUT_SECS"), default_value_t = 600)]
+    tdx_boundless_timeout_secs: u64,
+
+    /// Number of deterministic TDX request-ID slots to probe during recovery.
+    #[arg(
+        long,
+        env = cli_env!("TDX_BOUNDLESS_MAX_RECOVERY_ATTEMPTS"),
+        default_value_t = DEFAULT_MAX_RECOVERY_ATTEMPTS
+    )]
+    tdx_boundless_max_recovery_attempts: u32,
+
+    /// Maximum accepted age of a recovered TDX quote proof, in seconds.
+    #[arg(
+        long,
+        env = cli_env!("TDX_MAX_RECOVERED_QUOTE_AGE_SECS"),
+        default_value_t = DEFAULT_TDX_MAX_QUOTE_AGE_SECS
+    )]
+    tdx_max_recovered_quote_age_secs: u64,
+}
+
+/// TDX proving backend selector.
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub(crate) enum TdxProvingMode {
+    /// Native direct verification for local development and mock contracts.
+    Direct,
+    /// RISC Zero proving via `risc0_zkvm::default_prover()`.
+    RiscZero,
+    /// Boundless marketplace proving for RISC Zero proofs.
+    Boundless,
+}
+
+/// TDX ZK coprocessor selector.
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub(crate) enum TdxZkCoprocessor {
+    /// RISC Zero zkVM proving system.
+    RiscZero,
+    /// Succinct SP1 proving system.
+    Succinct,
+}
+
+impl From<TdxZkCoprocessor> for ZkCoProcessorType {
+    fn from(value: TdxZkCoprocessor) -> Self {
+        match value {
+            TdxZkCoprocessor::RiscZero => Self::RiscZero,
+            TdxZkCoprocessor::Succinct => Self::Succinct,
+        }
+    }
 }
 
 /// CRL (Certificate Revocation List) checking CLI arguments.
@@ -268,69 +425,140 @@ fn parse_image_id(s: &str) -> std::result::Result<[u32; 8], RegistrarError> {
     Ok(id)
 }
 
+fn start_boundless_balance_monitor(
+    platform: SignerAttestationKind,
+    address: Address,
+    rpc_url: Url,
+    cancel: CancellationToken,
+) {
+    let (layer, balance_rx) =
+        BalanceMonitorLayer::new(address, cancel, BalanceMonitorLayer::DEFAULT_POLL_INTERVAL);
+    let _provider = ProviderBuilder::new().layer(layer).connect_http(rpc_url);
+    tokio::spawn(async move {
+        let mut rx = balance_rx;
+        let platform = platform.rpc_name();
+        let address = address.to_string();
+        while rx.changed().await.is_ok() {
+            RegistrarMetrics::boundless_balance_wei(platform, address.clone())
+                .set(f64::from(*rx.borrow_and_update()));
+        }
+    });
+    info!(
+        %address,
+        platform = platform.rpc_name(),
+        "Boundless balance monitor started"
+    );
+}
+
+async fn build_discovery(config: &DiscoveryConfig) -> eyre::Result<Box<dyn InstanceDiscovery>> {
+    match config {
+        DiscoveryConfig::AwsTargetGroup(aws) => {
+            let aws_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+                .region(aws_config::Region::new(aws.aws_region.clone()))
+                .load()
+                .await;
+            let elb_client = aws_sdk_elasticloadbalancingv2::Client::new(&aws_config);
+            let ec2_client = aws_sdk_ec2::Client::new(&aws_config);
+            Ok(Box::new(AwsTargetGroupDiscovery::new(
+                elb_client,
+                ec2_client,
+                aws.target_group_arn.clone(),
+                aws.port,
+            )))
+        }
+        DiscoveryConfig::Static(static_config) => {
+            Ok(Box::new(StaticEndpointDiscovery::new(static_config.endpoints.clone())))
+        }
+    }
+}
+
+fn build_proof_provider(
+    config: &PlatformProvingConfig,
+) -> std::result::Result<Box<dyn TeeAttestationProofProvider>, RegistrarError> {
+    match config {
+        PlatformProvingConfig::Nitro(ProvingConfig::Boundless(boundless)) => {
+            Ok(Box::new(NitroBoundlessProver {
+                rpc_url: boundless.rpc_url.clone(),
+                signer: boundless.signer.clone(),
+                verifier_program_url: boundless.verifier_program_url.clone(),
+                image_id: boundless.image_id,
+                poll_interval: boundless.poll_interval,
+                timeout: boundless.timeout,
+                trusted_certs_prefix_len: DEFAULT_TRUSTED_CERTS_PREFIX,
+                max_recovery_attempts: boundless.max_recovery_attempts,
+                max_attestation_age: boundless.max_attestation_age,
+                submit_lock: Arc::new(tokio::sync::Mutex::new(())),
+                recovery_blocked: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
+            }))
+        }
+        PlatformProvingConfig::Nitro(ProvingConfig::Direct { elf_path }) => {
+            let elf = std::fs::read(elf_path).map_err(|e| {
+                RegistrarError::Config(format!("failed to read ELF at {}: {e}", elf_path.display()))
+            })?;
+            let prover =
+                NitroDirectProver::new(elf, DEFAULT_TRUSTED_CERTS_PREFIX).map_err(|e| {
+                    RegistrarError::Config(format!("failed to create Nitro direct prover: {e}"))
+                })?;
+            Ok(Box::new(prover))
+        }
+        PlatformProvingConfig::Tdx(TdxProvingConfig::Direct { zk_coprocessor }) => {
+            let prover = TdxDirectProver::new(*zk_coprocessor).map_err(|e| {
+                RegistrarError::Config(format!("failed to create TDX direct prover: {e}"))
+            })?;
+            Ok(Box::new(prover))
+        }
+        PlatformProvingConfig::Tdx(TdxProvingConfig::RiscZero { elf_path }) => {
+            let elf = std::fs::read(elf_path).map_err(|e| {
+                RegistrarError::Config(format!("failed to read ELF at {}: {e}", elf_path.display()))
+            })?;
+            let prover = TdxRiscZeroProver::new(elf).map_err(|e| {
+                RegistrarError::Config(format!("failed to create TDX RISC Zero prover: {e}"))
+            })?;
+            Ok(Box::new(prover))
+        }
+        PlatformProvingConfig::Tdx(TdxProvingConfig::Boundless(boundless)) => {
+            Ok(Box::new(TdxBoundlessProver {
+                rpc_url: boundless.rpc_url.clone(),
+                signer: boundless.signer.clone(),
+                verifier_program_url: boundless.verifier_program_url.clone(),
+                image_id: boundless.image_id,
+                poll_interval: boundless.poll_interval,
+                timeout: boundless.timeout,
+                max_recovery_attempts: boundless.max_recovery_attempts,
+                recovered_proof_policy: RecoveredProofPolicy::new(
+                    boundless.max_recovered_quote_age,
+                ),
+                submit_lock: Arc::new(tokio::sync::Mutex::new(())),
+                recovery_blocked: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
+            }))
+        }
+    }
+}
+
 impl Cli {
     /// Validate the CLI arguments for logical conflicts and parse into a [`RegistrarConfig`].
     pub(crate) fn into_config(self) -> std::result::Result<RegistrarConfig, RegistrarError> {
-        let discovery = AwsDiscoveryConfig {
-            target_group_arn: self.target_group_arn,
-            aws_region: self.aws_region,
-            port: self.prover_port,
-        };
+        let nitro_discovery = self.build_nitro_discovery_config()?;
+        let nitro_proving = self.build_nitro_proving_config()?;
+        let mut fleets = vec![PlatformRegistrationConfig {
+            attestation_kind: SignerAttestationKind::Nitro,
+            discovery: nitro_discovery,
+            proving: PlatformProvingConfig::Nitro(nitro_proving),
+        }];
+
+        if self.tdx_enabled() {
+            fleets.push(PlatformRegistrationConfig {
+                attestation_kind: SignerAttestationKind::Tdx,
+                discovery: self.build_tdx_discovery_config()?,
+                proving: PlatformProvingConfig::Tdx(self.build_tdx_proving_config()?),
+            });
+        }
 
         // Convert signing and tx manager config via the macro-generated TryFrom impls.
         let signing = SignerConfig::try_from(self.signer)
             .map_err(|e| RegistrarError::Config(format!("signer: {e}")))?;
         let tx_manager = TxManagerConfig::try_from(self.tx_manager)
             .map_err(|e| RegistrarError::Config(format!("tx-manager: {e}")))?;
-
-        // Build proving config based on mode.
-        let proving = match self.proving_mode {
-            ProvingMode::Boundless => {
-                if self.boundless.boundless_timeout_secs == 0 {
-                    return Err(RegistrarError::Config(
-                        "--boundless-timeout-secs must be greater than 0".into(),
-                    ));
-                }
-
-                let boundless_key =
-                    self.boundless.boundless_private_key.as_deref().ok_or_else(|| {
-                        RegistrarError::Config("--boundless-private-key is required".into())
-                    })?;
-                let image_id_hex = self
-                    .image_id
-                    .as_deref()
-                    .ok_or_else(|| RegistrarError::Config("--image-id is required".into()))?;
-
-                ProvingConfig::Boundless(Box::new(BoundlessConfig {
-                    rpc_url: self.boundless.boundless_rpc_url.ok_or_else(|| {
-                        RegistrarError::Config("--boundless-rpc-url is required".into())
-                    })?,
-                    signer: parse_private_key("--boundless-private-key", boundless_key)?,
-                    verifier_program_url: self
-                        .boundless
-                        .boundless_verifier_program_url
-                        .ok_or_else(|| {
-                            RegistrarError::Config(
-                                "--boundless-verifier-program-url is required".into(),
-                            )
-                        })?,
-                    image_id: parse_image_id(image_id_hex)?,
-                    poll_interval: Duration::from_secs(self.boundless.boundless_poll_interval_secs),
-                    timeout: Duration::from_secs(self.boundless.boundless_timeout_secs),
-                    nitro_verifier_address: self.boundless.nitro_verifier_address,
-                    max_recovery_attempts: self.boundless.boundless_max_recovery_attempts,
-                    max_attestation_age: Duration::from_secs(
-                        self.boundless.max_attestation_age_secs,
-                    ),
-                }))
-            }
-            ProvingMode::Direct => {
-                let elf_path = self.elf_path.ok_or_else(|| {
-                    RegistrarError::Config("--elf-path is required for direct mode".into())
-                })?;
-                ProvingConfig::Direct { elf_path }
-            }
-        };
 
         if self.poll_interval_secs == 0 {
             return Err(RegistrarError::Config(
@@ -377,10 +605,9 @@ impl Cli {
             l1_rpc_url: self.l1_rpc_url,
             tee_prover_registry_address: self.tee_prover_registry_address,
             l1_chain_id: self.l1_chain_id,
-            discovery,
+            fleets,
             signing,
             tx_manager,
-            proving,
             poll_interval: Duration::from_secs(self.poll_interval_secs),
             prover_timeout: Duration::from_secs(self.prover_timeout_secs),
             max_concurrency: self.max_concurrency,
@@ -392,6 +619,222 @@ impl Cli {
             health_addr,
             crl,
         })
+    }
+
+    fn build_nitro_discovery_config(&self) -> std::result::Result<DiscoveryConfig, RegistrarError> {
+        match self.nitro_discovery_mode {
+            DiscoveryMode::AwsTargetGroup => {
+                let target_group_arn = self
+                    .nitro_target_group_arn
+                    .clone()
+                    .or_else(|| self.target_group_arn.clone())
+                    .ok_or_else(|| {
+                        RegistrarError::Config(
+                            "--nitro-target-group-arn is required for Nitro AWS discovery".into(),
+                        )
+                    })?;
+                let aws_region =
+                    self.nitro_aws_region.clone().or_else(|| self.aws_region.clone()).ok_or_else(
+                        || {
+                            RegistrarError::Config(
+                                "--nitro-aws-region is required for Nitro AWS discovery".into(),
+                            )
+                        },
+                    )?;
+                Ok(DiscoveryConfig::AwsTargetGroup(AwsDiscoveryConfig {
+                    target_group_arn,
+                    aws_region,
+                    port: self.nitro_prover_port.or(self.prover_port).unwrap_or(8000),
+                }))
+            }
+            DiscoveryMode::Static => {
+                if self.nitro_prover_endpoint.is_empty() {
+                    return Err(RegistrarError::Config(
+                        "--nitro-prover-endpoint is required for Nitro static discovery".into(),
+                    ));
+                }
+                Ok(DiscoveryConfig::Static(StaticDiscoveryConfig {
+                    endpoints: self.nitro_prover_endpoint.clone(),
+                }))
+            }
+        }
+    }
+
+    fn build_nitro_proving_config(&self) -> std::result::Result<ProvingConfig, RegistrarError> {
+        let proving_mode = self
+            .nitro_proving_mode
+            .or(self.proving_mode)
+            .ok_or_else(|| RegistrarError::Config("--nitro-proving-mode is required".into()))?;
+        match proving_mode {
+            ProvingMode::Boundless => {
+                if self.boundless.boundless_timeout_secs == 0 {
+                    return Err(RegistrarError::Config(
+                        "--boundless-timeout-secs must be greater than 0".into(),
+                    ));
+                }
+
+                let boundless_key =
+                    self.boundless.boundless_private_key.as_deref().ok_or_else(|| {
+                        RegistrarError::Config("--boundless-private-key is required".into())
+                    })?;
+                let image_id_hex =
+                    self.nitro_image_id.as_deref().or(self.image_id.as_deref()).ok_or_else(
+                        || RegistrarError::Config("--nitro-image-id is required".into()),
+                    )?;
+
+                Ok(ProvingConfig::Boundless(Box::new(BoundlessConfig {
+                    rpc_url: self.boundless.boundless_rpc_url.clone().ok_or_else(|| {
+                        RegistrarError::Config("--boundless-rpc-url is required".into())
+                    })?,
+                    signer: parse_private_key("--boundless-private-key", boundless_key)?,
+                    verifier_program_url: self
+                        .boundless
+                        .boundless_verifier_program_url
+                        .clone()
+                        .ok_or_else(|| {
+                            RegistrarError::Config(
+                                "--boundless-verifier-program-url is required".into(),
+                            )
+                        })?,
+                    image_id: parse_image_id(image_id_hex)?,
+                    poll_interval: Duration::from_secs(self.boundless.boundless_poll_interval_secs),
+                    timeout: Duration::from_secs(self.boundless.boundless_timeout_secs),
+                    nitro_verifier_address: self.boundless.nitro_verifier_address,
+                    max_recovery_attempts: self.boundless.boundless_max_recovery_attempts,
+                    max_attestation_age: Duration::from_secs(
+                        self.boundless.max_attestation_age_secs,
+                    ),
+                })))
+            }
+            ProvingMode::Direct => {
+                let elf_path =
+                    self.nitro_elf_path.clone().or_else(|| self.elf_path.clone()).ok_or_else(
+                        || {
+                            RegistrarError::Config(
+                                "--nitro-elf-path is required for direct mode".into(),
+                            )
+                        },
+                    )?;
+                Ok(ProvingConfig::Direct { elf_path })
+            }
+        }
+    }
+
+    const fn tdx_enabled(&self) -> bool {
+        self.tdx_discovery_mode.is_some()
+            || self.tdx_target_group_arn.is_some()
+            || self.tdx_aws_region.is_some()
+            || !self.tdx_prover_endpoint.is_empty()
+            || self.tdx.tdx_proving_mode.is_some()
+            || self.tdx.tdx_image_id.is_some()
+            || self.tdx.tdx_elf_path.is_some()
+            || self.tdx.tdx_boundless_rpc_url.is_some()
+            || self.tdx.tdx_boundless_private_key.is_some()
+            || self.tdx.tdx_boundless_verifier_program_url.is_some()
+    }
+
+    fn build_tdx_discovery_config(&self) -> std::result::Result<DiscoveryConfig, RegistrarError> {
+        let mode = self.tdx_discovery_mode.unwrap_or_else(|| {
+            if self.tdx_target_group_arn.is_some() || self.tdx_aws_region.is_some() {
+                DiscoveryMode::AwsTargetGroup
+            } else {
+                DiscoveryMode::Static
+            }
+        });
+        match mode {
+            DiscoveryMode::AwsTargetGroup => {
+                let target_group_arn = self.tdx_target_group_arn.clone().ok_or_else(|| {
+                    RegistrarError::Config(
+                        "--tdx-target-group-arn is required for TDX AWS discovery".into(),
+                    )
+                })?;
+                let aws_region = self.tdx_aws_region.clone().ok_or_else(|| {
+                    RegistrarError::Config(
+                        "--tdx-aws-region is required for TDX AWS discovery".into(),
+                    )
+                })?;
+                Ok(DiscoveryConfig::AwsTargetGroup(AwsDiscoveryConfig {
+                    target_group_arn,
+                    aws_region,
+                    port: self.tdx_prover_port,
+                }))
+            }
+            DiscoveryMode::Static => {
+                if self.tdx_prover_endpoint.is_empty() {
+                    return Err(RegistrarError::Config(
+                        "--tdx-prover-endpoint is required for TDX static discovery".into(),
+                    ));
+                }
+                Ok(DiscoveryConfig::Static(StaticDiscoveryConfig {
+                    endpoints: self.tdx_prover_endpoint.clone(),
+                }))
+            }
+        }
+    }
+
+    fn build_tdx_proving_config(&self) -> std::result::Result<TdxProvingConfig, RegistrarError> {
+        let mode = self.tdx.tdx_proving_mode.ok_or_else(|| {
+            RegistrarError::Config("--tdx-proving-mode is required when TDX is enabled".into())
+        })?;
+        let zk_coprocessor = self.tdx.tdx_zk_coprocessor.into();
+        match mode {
+            TdxProvingMode::Direct => Ok(TdxProvingConfig::Direct { zk_coprocessor }),
+            TdxProvingMode::RiscZero => {
+                if !matches!(self.tdx.tdx_zk_coprocessor, TdxZkCoprocessor::RiscZero) {
+                    return Err(RegistrarError::Config(
+                        "--tdx-zk-coprocessor must be risc-zero for --tdx-proving-mode risc-zero"
+                            .into(),
+                    ));
+                }
+                let elf_path = self.tdx.tdx_elf_path.clone().ok_or_else(|| {
+                    RegistrarError::Config(
+                        "--tdx-elf-path is required for TDX RISC Zero proving".into(),
+                    )
+                })?;
+                Ok(TdxProvingConfig::RiscZero { elf_path })
+            }
+            TdxProvingMode::Boundless => {
+                if !matches!(self.tdx.tdx_zk_coprocessor, TdxZkCoprocessor::RiscZero) {
+                    return Err(RegistrarError::Config(
+                        "--tdx-zk-coprocessor must be risc-zero for TDX Boundless proving".into(),
+                    ));
+                }
+                if self.tdx.tdx_boundless_timeout_secs == 0 {
+                    return Err(RegistrarError::Config(
+                        "--tdx-boundless-timeout-secs must be greater than 0".into(),
+                    ));
+                }
+                let boundless_key =
+                    self.tdx.tdx_boundless_private_key.as_deref().ok_or_else(|| {
+                        RegistrarError::Config("--tdx-boundless-private-key is required".into())
+                    })?;
+                let image_id_hex = self.tdx.tdx_image_id.as_deref().ok_or_else(|| {
+                    RegistrarError::Config("--tdx-image-id is required for TDX Boundless".into())
+                })?;
+                Ok(TdxProvingConfig::Boundless(Box::new(TdxBoundlessConfig {
+                    rpc_url: self.tdx.tdx_boundless_rpc_url.clone().ok_or_else(|| {
+                        RegistrarError::Config("--tdx-boundless-rpc-url is required".into())
+                    })?,
+                    signer: parse_private_key("--tdx-boundless-private-key", boundless_key)?,
+                    verifier_program_url: self
+                        .tdx
+                        .tdx_boundless_verifier_program_url
+                        .clone()
+                        .ok_or_else(|| {
+                            RegistrarError::Config(
+                                "--tdx-boundless-verifier-program-url is required".into(),
+                            )
+                        })?,
+                    image_id: parse_image_id(image_id_hex)?,
+                    poll_interval: Duration::from_secs(self.tdx.tdx_boundless_poll_interval_secs),
+                    timeout: Duration::from_secs(self.tdx.tdx_boundless_timeout_secs),
+                    max_recovery_attempts: self.tdx.tdx_boundless_max_recovery_attempts,
+                    max_recovered_quote_age: Duration::from_secs(
+                        self.tdx.tdx_max_recovered_quote_age_secs,
+                    ),
+                })))
+            }
+        }
     }
 
     /// Run the registrar service.
@@ -442,23 +885,28 @@ impl Cli {
             });
             info!(%l1_addr, "L1 balance monitor started");
 
-            if let ProvingConfig::Boundless(ref boundless) = config.proving {
-                let bl_addr = boundless.signer.address();
-                let (bl_layer, bl_balance_rx) = BalanceMonitorLayer::new(
-                    bl_addr,
-                    cancel.clone(),
-                    BalanceMonitorLayer::DEFAULT_POLL_INTERVAL,
-                );
-                let _bl_provider =
-                    ProviderBuilder::new().layer(bl_layer).connect_http(boundless.rpc_url.clone());
-                tokio::spawn(async move {
-                    let mut rx = bl_balance_rx;
-                    while rx.changed().await.is_ok() {
-                        RegistrarMetrics::boundless_balance_wei()
-                            .set(f64::from(*rx.borrow_and_update()));
+            for fleet in &config.fleets {
+                match &fleet.proving {
+                    PlatformProvingConfig::Nitro(ProvingConfig::Boundless(boundless)) => {
+                        start_boundless_balance_monitor(
+                            SignerAttestationKind::Nitro,
+                            boundless.signer.address(),
+                            boundless.rpc_url.clone(),
+                            cancel.clone(),
+                        );
                     }
-                });
-                info!(%bl_addr, "Boundless balance monitor started");
+                    PlatformProvingConfig::Tdx(TdxProvingConfig::Boundless(boundless)) => {
+                        start_boundless_balance_monitor(
+                            SignerAttestationKind::Tdx,
+                            boundless.signer.address(),
+                            boundless.rpc_url.clone(),
+                            cancel.clone(),
+                        );
+                    }
+                    PlatformProvingConfig::Nitro(ProvingConfig::Direct { .. })
+                    | PlatformProvingConfig::Tdx(TdxProvingConfig::Direct { .. })
+                    | PlatformProvingConfig::Tdx(TdxProvingConfig::RiscZero { .. }) => {}
+                }
             }
 
             provider
@@ -475,52 +923,19 @@ impl Cli {
         )
         .await?;
 
-        // ── 4. Build AWS SDK clients for discovery ───────────────────────────
-        let aws_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-            .region(aws_config::Region::new(config.discovery.aws_region.clone()))
-            .load()
-            .await;
-        let elb_client = aws_sdk_elasticloadbalancingv2::Client::new(&aws_config);
-        let ec2_client = aws_sdk_ec2::Client::new(&aws_config);
-
-        let discovery = AwsTargetGroupDiscovery::new(
-            elb_client,
-            ec2_client,
-            config.discovery.target_group_arn.clone(),
-            config.discovery.port,
-        );
+        // ── 4. Build platform fleets ─────────────────────────────────────────
+        let mut fleets = Vec::with_capacity(config.fleets.len());
+        for fleet_config in &config.fleets {
+            let discovery = build_discovery(&fleet_config.discovery).await?;
+            let proof_provider = build_proof_provider(&fleet_config.proving)?;
+            fleets.push(ProverFleet::new(fleet_config.attestation_kind, discovery, proof_provider));
+        }
 
         // ── 5. Build registry client ─────────────────────────────────────────
         let registry = RegistryContractClient::new(
             config.tee_prover_registry_address,
             config.l1_rpc_url.clone(),
         );
-
-        // ── 6. Build proof provider ──────────────────────────────────────────
-        let proof_provider: Box<dyn TeeAttestationProofProvider> = match config.proving {
-            ProvingConfig::Boundless(ref boundless) => Box::new(BoundlessProver {
-                rpc_url: boundless.rpc_url.clone(),
-                signer: boundless.signer.clone(),
-                verifier_program_url: boundless.verifier_program_url.clone(),
-                image_id: boundless.image_id,
-                poll_interval: boundless.poll_interval,
-                timeout: boundless.timeout,
-                trusted_certs_prefix_len: DEFAULT_TRUSTED_CERTS_PREFIX,
-                max_recovery_attempts: boundless.max_recovery_attempts,
-                max_attestation_age: boundless.max_attestation_age,
-                submit_lock: Arc::new(tokio::sync::Mutex::new(())),
-                recovery_blocked: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
-            }),
-            ProvingConfig::Direct { ref elf_path } => {
-                let elf = std::fs::read(elf_path).map_err(|e| {
-                    RegistrarError::Config(format!(
-                        "failed to read ELF at {}: {e}",
-                        elf_path.display()
-                    ))
-                })?;
-                Box::new(DirectProver::new(elf, DEFAULT_TRUSTED_CERTS_PREFIX)?)
-            }
-        };
 
         // ── 7. Start health HTTP server ──────────────────────────────────────
         // health_handle is awaited during graceful shutdown in step 9 below.
@@ -542,6 +957,7 @@ impl Cli {
             tx_retry_delay: config.tx_retry_delay,
             unhealthy_registration_window: config.unhealthy_registration_window,
             crl: config.crl,
+            tdx_attestation: TdxAttestationConfig::intel_pcs(),
         };
 
         // Mark the service as ready. This signals "initialised and running", not
@@ -551,9 +967,8 @@ impl Cli {
         ready.store(true, Ordering::SeqCst);
 
         let cancel_guard = cancel.clone().drop_guard();
-        let driver_result = RegistrationDriver::new(
-            discovery,
-            proof_provider,
+        let driver_result = RegistrationDriver::new_with_fleets(
+            fleets,
             registry,
             tx_manager,
             signer_client,
@@ -591,6 +1006,7 @@ impl Cli {
 mod tests {
     use std::{net::SocketAddr, time::Duration};
 
+    use clap::CommandFactory;
     use rstest::rstest;
 
     use super::*;
@@ -612,6 +1028,9 @@ mod tests {
     const TEST_IMAGE_ID: &str =
         "0x0100000002000000030000000400000005000000060000000700000008000000";
     const TEST_ELF_PATH: &str = "/tmp/guest.elf";
+    const TEST_TDX_ENDPOINT: &str = "http://127.0.0.1:9000";
+    const TEST_TDX_TARGET_GROUP_ARN: &str =
+        "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/tdx/def456";
     const TEST_SIGNER_ENDPOINT: &str = "http://localhost:8546";
     const TEST_SIGNER_ADDR: &str = "0x0000000000000000000000000000000000000002";
 
@@ -697,6 +1116,36 @@ mod tests {
         ]
     }
 
+    fn nitro_fleet(config: &RegistrarConfig) -> &PlatformRegistrationConfig {
+        config
+            .fleets
+            .iter()
+            .find(|fleet| fleet.attestation_kind == SignerAttestationKind::Nitro)
+            .expect("Nitro fleet should be configured")
+    }
+
+    fn nitro_discovery(config: &RegistrarConfig) -> &AwsDiscoveryConfig {
+        let DiscoveryConfig::AwsTargetGroup(discovery) = &nitro_fleet(config).discovery else {
+            panic!("expected Nitro AWS discovery config");
+        };
+        discovery
+    }
+
+    fn nitro_proving(config: &RegistrarConfig) -> &ProvingConfig {
+        let PlatformProvingConfig::Nitro(proving) = &nitro_fleet(config).proving else {
+            panic!("expected Nitro proving config");
+        };
+        proving
+    }
+
+    fn tdx_fleet(config: &RegistrarConfig) -> &PlatformRegistrationConfig {
+        config
+            .fleets
+            .iter()
+            .find(|fleet| fleet.attestation_kind == SignerAttestationKind::Tdx)
+            .expect("TDX fleet should be configured")
+    }
+
     // ── Happy-path parsing ──────────────────────────────────────────────
 
     #[rstest]
@@ -707,18 +1156,260 @@ mod tests {
         assert!(Cli::parse_from(args).into_config().is_ok());
     }
 
+    #[rstest]
+    fn dual_nitro_tdx_static_config_parses() {
+        let mut args = boundless_args();
+        args.extend([
+            "--tdx-discovery-mode",
+            "static",
+            "--tdx-prover-endpoint",
+            TEST_TDX_ENDPOINT,
+            "--tdx-proving-mode",
+            "direct",
+            "--tdx-zk-coprocessor",
+            "risc-zero",
+        ]);
+
+        let config = Cli::parse_from(args).into_config().unwrap();
+
+        assert_eq!(config.fleets.len(), 2);
+        let DiscoveryConfig::Static(static_config) = &tdx_fleet(&config).discovery else {
+            panic!("expected TDX static discovery");
+        };
+        assert_eq!(static_config.endpoints, vec![Url::parse(TEST_TDX_ENDPOINT).unwrap()]);
+        assert!(matches!(
+            tdx_fleet(&config).proving,
+            PlatformProvingConfig::Tdx(TdxProvingConfig::Direct { .. })
+        ));
+    }
+
+    #[rstest]
+    fn nitro_static_discovery_config_parses() {
+        let mut args = direct_args();
+        args.retain(|arg| {
+            !matches!(
+                *arg,
+                "--target-group-arn" | TEST_TARGET_GROUP_ARN | "--aws-region" | TEST_AWS_REGION
+            )
+        });
+        args.extend([
+            "--nitro-discovery-mode",
+            "static",
+            "--nitro-prover-endpoint",
+            "http://127.0.0.1:8000",
+        ]);
+
+        let config = Cli::parse_from(args).into_config().unwrap();
+
+        assert!(matches!(nitro_fleet(&config).discovery, DiscoveryConfig::Static(_)));
+    }
+
+    #[rstest]
+    fn tdx_aws_discovery_config_parses() {
+        let mut args = boundless_args();
+        args.extend([
+            "--tdx-discovery-mode",
+            "aws-target-group",
+            "--tdx-target-group-arn",
+            TEST_TDX_TARGET_GROUP_ARN,
+            "--tdx-aws-region",
+            TEST_AWS_REGION,
+            "--tdx-prover-port",
+            "9000",
+            "--tdx-proving-mode",
+            "direct",
+        ]);
+
+        let config = Cli::parse_from(args).into_config().unwrap();
+
+        let DiscoveryConfig::AwsTargetGroup(discovery) = &tdx_fleet(&config).discovery else {
+            panic!("expected TDX AWS discovery");
+        };
+        assert_eq!(discovery.target_group_arn, TEST_TDX_TARGET_GROUP_ARN);
+        assert_eq!(discovery.aws_region, TEST_AWS_REGION);
+        assert_eq!(discovery.port, 9000);
+    }
+
+    #[rstest]
+    fn tdx_aws_discovery_mode_is_inferred_from_aws_flags() {
+        let mut args = boundless_args();
+        args.extend([
+            "--tdx-target-group-arn",
+            TEST_TDX_TARGET_GROUP_ARN,
+            "--tdx-aws-region",
+            TEST_AWS_REGION,
+            "--tdx-prover-port",
+            "9000",
+            "--tdx-proving-mode",
+            "direct",
+        ]);
+
+        let config = Cli::parse_from(args).into_config().unwrap();
+
+        let DiscoveryConfig::AwsTargetGroup(discovery) = &tdx_fleet(&config).discovery else {
+            panic!("expected TDX AWS discovery");
+        };
+        assert_eq!(discovery.target_group_arn, TEST_TDX_TARGET_GROUP_ARN);
+        assert_eq!(discovery.aws_region, TEST_AWS_REGION);
+        assert_eq!(discovery.port, 9000);
+    }
+
+    #[rstest]
+    fn tdx_risc_zero_config_parses() {
+        let mut args = boundless_args();
+        args.extend([
+            "--tdx-prover-endpoint",
+            TEST_TDX_ENDPOINT,
+            "--tdx-proving-mode",
+            "risc-zero",
+            "--tdx-elf-path",
+            TEST_ELF_PATH,
+        ]);
+
+        let config = Cli::parse_from(args).into_config().unwrap();
+
+        assert!(matches!(
+            tdx_fleet(&config).proving,
+            PlatformProvingConfig::Tdx(TdxProvingConfig::RiscZero { .. })
+        ));
+    }
+
+    #[rstest]
+    fn tdx_sp1_direct_config_parses() {
+        let mut args = boundless_args();
+        args.extend([
+            "--tdx-prover-endpoint",
+            TEST_TDX_ENDPOINT,
+            "--tdx-proving-mode",
+            "direct",
+            "--tdx-zk-coprocessor",
+            "succinct",
+        ]);
+
+        let config = Cli::parse_from(args).into_config().unwrap();
+
+        let PlatformProvingConfig::Tdx(TdxProvingConfig::Direct { zk_coprocessor }) =
+            &tdx_fleet(&config).proving
+        else {
+            panic!("expected TDX direct proving");
+        };
+        assert_eq!(*zk_coprocessor as u8, ZkCoProcessorType::Succinct as u8);
+    }
+
+    #[rstest]
+    fn nitro_prefixed_aliases_parse() {
+        let mut args = vec![
+            "prover-registrar",
+            "--l1-rpc-url",
+            TEST_L1_RPC,
+            "--l1-chain-id",
+            TEST_L1_CHAIN_ID,
+            "--tee-prover-registry-address",
+            TEST_REGISTRY_ADDR,
+            "--nitro-target-group-arn",
+            TEST_TARGET_GROUP_ARN,
+            "--nitro-aws-region",
+            TEST_AWS_REGION,
+            "--private-key",
+            TEST_PRIVATE_KEY,
+            "--nitro-proving-mode",
+            "direct",
+            "--nitro-elf-path",
+            TEST_ELF_PATH,
+        ];
+        args.extend(["--nitro-prover-port", "8100"]);
+
+        let config = Cli::parse_from(args).into_config().unwrap();
+
+        assert_eq!(nitro_discovery(&config).port, 8100);
+        assert!(matches!(nitro_proving(&config), ProvingConfig::Direct { .. }));
+    }
+
+    #[rstest]
+    fn nitro_prefixed_mode_overrides_legacy_boundless_mode() {
+        let mut args = common_args();
+        args.extend([
+            "--proving-mode",
+            "boundless",
+            "--nitro-proving-mode",
+            "direct",
+            "--nitro-elf-path",
+            TEST_ELF_PATH,
+        ]);
+
+        let config = Cli::try_parse_from(args)
+            .expect("prefixed Nitro direct mode should not require legacy Boundless args")
+            .into_config()
+            .unwrap();
+
+        assert!(matches!(nitro_proving(&config), ProvingConfig::Direct { .. }));
+    }
+
+    #[rstest]
+    fn help_lists_separate_nitro_and_tdx_configuration() {
+        let help = Cli::command().render_long_help().to_string();
+
+        for flag in [
+            "--nitro-discovery-mode",
+            "--nitro-target-group-arn",
+            "--nitro-prover-endpoint",
+            "--tdx-discovery-mode",
+            "--tdx-target-group-arn",
+            "--tdx-prover-endpoint",
+            "--tdx-proving-mode",
+            "--tdx-zk-coprocessor",
+        ] {
+            assert!(help.contains(flag), "help should contain {flag}");
+        }
+        assert!(
+            !help.contains("--tee-platform"),
+            "TDX should not be presented as a mutually exclusive platform mode"
+        );
+    }
+
     // ── Proving mode variants ───────────────────────────────────────────
 
     #[rstest]
     fn boundless_mode_returns_boundless_proving() {
         let config = Cli::parse_from(boundless_args()).into_config().unwrap();
-        assert!(matches!(config.proving, ProvingConfig::Boundless(_)));
+        assert!(matches!(nitro_proving(&config), ProvingConfig::Boundless(_)));
     }
 
     #[rstest]
     fn direct_mode_returns_direct_proving() {
         let config = Cli::parse_from(direct_args()).into_config().unwrap();
-        assert!(matches!(config.proving, ProvingConfig::Direct { .. }));
+        assert!(matches!(nitro_proving(&config), ProvingConfig::Direct { .. }));
+    }
+
+    #[rstest]
+    fn tdx_boundless_recovered_quote_age_defaults_to_tdx_freshness_window() {
+        let mut args = boundless_args();
+        args.extend([
+            "--tdx-prover-endpoint",
+            TEST_TDX_ENDPOINT,
+            "--tdx-proving-mode",
+            "boundless",
+            "--tdx-image-id",
+            TEST_IMAGE_ID,
+            "--tdx-boundless-rpc-url",
+            TEST_BOUNDLESS_RPC,
+            "--tdx-boundless-private-key",
+            TEST_BOUNDLESS_KEY,
+            "--tdx-boundless-verifier-program-url",
+            TEST_VERIFIER_URL,
+        ]);
+
+        let config = Cli::parse_from(args).into_config().unwrap();
+        let PlatformProvingConfig::Tdx(TdxProvingConfig::Boundless(boundless)) =
+            &tdx_fleet(&config).proving
+        else {
+            panic!("expected TDX Boundless proving");
+        };
+
+        assert_eq!(
+            boundless.max_recovered_quote_age,
+            Duration::from_secs(DEFAULT_TDX_MAX_QUOTE_AGE_SECS),
+        );
     }
 
     // ── Signing mode variants ───────────────────────────────────────────
@@ -798,15 +1489,16 @@ mod tests {
     #[rstest]
     fn discovery_config_fields() {
         let config = Cli::parse_from(boundless_args()).into_config().unwrap();
-        assert_eq!(config.discovery.target_group_arn, TEST_TARGET_GROUP_ARN);
-        assert_eq!(config.discovery.aws_region, TEST_AWS_REGION);
-        assert_eq!(config.discovery.port, DEFAULT_PROVER_PORT);
+        let discovery = nitro_discovery(&config);
+        assert_eq!(discovery.target_group_arn, TEST_TARGET_GROUP_ARN);
+        assert_eq!(discovery.aws_region, TEST_AWS_REGION);
+        assert_eq!(discovery.port, DEFAULT_PROVER_PORT);
     }
 
     #[rstest]
     fn image_id_parsed_correctly() {
         let config = Cli::parse_from(boundless_args()).into_config().unwrap();
-        let ProvingConfig::Boundless(b) = &config.proving else {
+        let ProvingConfig::Boundless(b) = nitro_proving(&config) else {
             panic!("expected Boundless proving config");
         };
         assert_eq!(b.image_id, [1, 2, 3, 4, 5, 6, 7, 8]);

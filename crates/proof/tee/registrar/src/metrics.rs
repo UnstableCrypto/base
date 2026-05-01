@@ -16,6 +16,14 @@ base_metrics::define_metrics! {
     #[describe("Total number of successful discovery cycles")]
     discovery_success_total: counter,
 
+    #[describe("Total number of discovered prover instances by TEE platform")]
+    #[label(platform)]
+    fleet_discovered_instances_total: counter,
+
+    #[describe("Total number of reachable prover instances by TEE platform")]
+    #[label(platform)]
+    fleet_reachable_instances_total: counter,
+
     #[describe("Total number of processing errors encountered")]
     processing_errors_total: counter,
 
@@ -34,7 +42,9 @@ base_metrics::define_metrics! {
     #[describe("Registrar L1 account balance in wei")]
     account_balance_wei: gauge,
 
-    #[describe("Registrar Boundless account balance in wei")]
+    #[describe("Registrar Boundless account balance in wei by TEE platform and address")]
+    #[label(platform)]
+    #[label(address)]
     boundless_balance_wei: gauge,
 }
 

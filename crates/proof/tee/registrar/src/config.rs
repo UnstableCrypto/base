@@ -1,9 +1,12 @@
 use std::{net::SocketAddr, path::PathBuf, time::Duration};
 
-use alloy_primitives::Address;
+use alloy_primitives::{Address, B256, b256};
 use alloy_signer_local::PrivateKeySigner;
+use base_proof_contracts::{TDXTcbStatus, ZkCoProcessorType};
 use base_tx_manager::{SignerConfig, TxManagerConfig};
 use url::Url;
+
+use crate::SignerAttestationKind;
 
 /// AWS ALB target group discovery configuration.
 ///
@@ -21,6 +24,22 @@ pub struct AwsDiscoveryConfig {
     pub port: u16,
 }
 
+/// Static endpoint discovery configuration.
+#[derive(Clone, Debug)]
+pub struct StaticDiscoveryConfig {
+    /// JSON-RPC endpoints to poll directly.
+    pub endpoints: Vec<Url>,
+}
+
+/// Per-fleet discovery configuration.
+#[derive(Clone, Debug)]
+pub enum DiscoveryConfig {
+    /// Discover prover instances through an AWS target group.
+    AwsTargetGroup(AwsDiscoveryConfig),
+    /// Poll a fixed list of prover JSON-RPC endpoints.
+    Static(StaticDiscoveryConfig),
+}
+
 /// Default number of deterministic request-ID slots to probe when
 /// recovering in-flight Boundless proofs after an instance rotation.
 pub const DEFAULT_MAX_RECOVERY_ATTEMPTS: u32 = 5;
@@ -31,6 +50,14 @@ pub const DEFAULT_MAX_RECOVERY_ATTEMPTS: u32 = 5;
 /// Set to 3300 s (55 minutes), slightly under the on-chain `MAX_AGE` of
 /// 60 minutes, to account for clock skew and processing delays.
 pub const DEFAULT_MAX_ATTESTATION_AGE_SECS: u64 = 3300;
+
+/// Default maximum accepted age for TDX quotes in seconds.
+pub const DEFAULT_TDX_MAX_QUOTE_AGE_SECS: u64 = 300;
+
+/// Keccak-256 hash of Intel's production SGX/TDX Provisioning Certification
+/// Root CA DER certificate for PCS API v4.
+pub const DEFAULT_TDX_TRUSTED_ROOT_CA_HASH: B256 =
+    b256!("a1acc73eb45794fa1734f14d882e91925b6006f79d3bb2460df9d01b333d7009");
 
 /// Boundless Network configuration for ZK proof generation.
 #[derive(Clone)]
@@ -87,6 +114,139 @@ pub enum ProvingConfig {
     },
 }
 
+/// TDX attestation proving backend configuration.
+#[derive(Clone)]
+pub enum TdxProvingConfig {
+    /// Native direct verification for local development and mock contracts.
+    Direct {
+        /// ZK coprocessor enum passed to `registerTDXSigner`.
+        zk_coprocessor: ZkCoProcessorType,
+    },
+    /// RISC Zero proving via `risc0_zkvm::default_prover()`.
+    RiscZero {
+        /// Path to the TDX verifier guest ELF binary on disk.
+        elf_path: PathBuf,
+    },
+    /// RISC Zero proving through the Boundless marketplace.
+    Boundless(Box<TdxBoundlessConfig>),
+}
+
+impl std::fmt::Debug for TdxProvingConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Direct { zk_coprocessor } => {
+                f.debug_struct("Direct").field("zk_coprocessor", &(*zk_coprocessor as u8)).finish()
+            }
+            Self::RiscZero { elf_path } => {
+                f.debug_struct("RiscZero").field("elf_path", elf_path).finish()
+            }
+            Self::Boundless(config) => f.debug_tuple("Boundless").field(config).finish(),
+        }
+    }
+}
+
+/// Boundless Network configuration for TDX attestation proof generation.
+#[derive(Clone)]
+pub struct TdxBoundlessConfig {
+    /// Boundless Network RPC URL.
+    pub rpc_url: Url,
+    /// Signer for Boundless Network proving fees.
+    pub signer: PrivateKeySigner,
+    /// HTTP(S) URL of the TDX attestation verifier ELF.
+    pub verifier_program_url: Url,
+    /// Expected image ID of the TDX verifier guest program.
+    pub image_id: [u32; 8],
+    /// Interval between fulfillment status checks.
+    pub poll_interval: Duration,
+    /// Proof generation timeout.
+    pub timeout: Duration,
+    /// Maximum number of deterministic request-ID slots to probe when
+    /// recovering in-flight proofs after an instance rotation.
+    pub max_recovery_attempts: u32,
+    /// Maximum accepted age for recovered TDX quote proofs.
+    pub max_recovered_quote_age: Duration,
+}
+
+/// Intel PCS and verifier policy configuration for TDX attestation hydration.
+#[derive(Clone)]
+pub struct TdxAttestationConfig {
+    /// Intel TDX PCS API base URL.
+    pub pcs_tdx_base_url: Url,
+    /// Trusted Intel SGX/TDX root CA certificate hash expected by the verifier.
+    pub trusted_root_ca_hash: B256,
+    /// Maximum accepted TDX quote age.
+    pub max_quote_age: Duration,
+    /// Contract TCB statuses accepted by verifier policy.
+    pub allowed_tcb_statuses: Vec<TDXTcbStatus>,
+    /// HTTP timeout for Intel PCS collateral and CRL fetches.
+    pub fetch_timeout: Duration,
+}
+
+impl std::fmt::Debug for TdxAttestationConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let allowed_tcb_statuses =
+            self.allowed_tcb_statuses.iter().map(|status| *status as u8).collect::<Vec<_>>();
+        f.debug_struct("TdxAttestationConfig")
+            .field("pcs_tdx_base_url", &url_origin(&self.pcs_tdx_base_url))
+            .field("trusted_root_ca_hash", &self.trusted_root_ca_hash)
+            .field("max_quote_age", &self.max_quote_age)
+            .field("allowed_tcb_statuses", &allowed_tcb_statuses)
+            .field("fetch_timeout", &self.fetch_timeout)
+            .finish()
+    }
+}
+
+impl TdxAttestationConfig {
+    /// Returns the default Intel PCS TDX attestation hydration configuration.
+    pub fn intel_pcs() -> Self {
+        Self {
+            pcs_tdx_base_url: Url::parse(
+                "https://api.trustedservices.intel.com/tdx/certification/v4/",
+            )
+            .expect("default Intel PCS URL must be valid"),
+            trusted_root_ca_hash: DEFAULT_TDX_TRUSTED_ROOT_CA_HASH,
+            max_quote_age: Duration::from_secs(DEFAULT_TDX_MAX_QUOTE_AGE_SECS),
+            allowed_tcb_statuses: vec![TDXTcbStatus::UpToDate],
+            fetch_timeout: Duration::from_secs(crate::DEFAULT_CRL_FETCH_TIMEOUT_SECS),
+        }
+    }
+}
+
+impl std::fmt::Debug for TdxBoundlessConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TdxBoundlessConfig")
+            .field("rpc_url", &url_origin(&self.rpc_url))
+            .field("signer", &self.signer.address())
+            .field("verifier_program_url", &url_origin(&self.verifier_program_url))
+            .field("image_id", &self.image_id)
+            .field("poll_interval", &self.poll_interval)
+            .field("timeout", &self.timeout)
+            .field("max_recovery_attempts", &self.max_recovery_attempts)
+            .field("max_recovered_quote_age", &self.max_recovered_quote_age)
+            .finish()
+    }
+}
+
+/// Platform-specific attestation proving configuration.
+#[derive(Clone, Debug)]
+pub enum PlatformProvingConfig {
+    /// AWS Nitro attestation proving.
+    Nitro(ProvingConfig),
+    /// Intel TDX attestation proving.
+    Tdx(TdxProvingConfig),
+}
+
+/// Runtime configuration for one prover fleet.
+#[derive(Clone, Debug)]
+pub struct PlatformRegistrationConfig {
+    /// TEE platform expected from every endpoint in the fleet.
+    pub attestation_kind: SignerAttestationKind,
+    /// Platform-specific discovery source.
+    pub discovery: DiscoveryConfig,
+    /// Platform-specific attestation proving backend.
+    pub proving: PlatformProvingConfig,
+}
+
 /// CRL (Certificate Revocation List) checking configuration.
 #[derive(Clone, Debug)]
 pub struct CrlConfig {
@@ -112,17 +272,14 @@ pub struct RegistrarConfig {
     pub tee_prover_registry_address: Address,
     /// L1 chain ID (validated against the RPC provider at startup).
     pub l1_chain_id: u64,
-    // ── Discovery ─────────────────────────────────────────────────────────────
-    /// AWS ALB target group discovery configuration.
-    pub discovery: AwsDiscoveryConfig,
+    // ── Fleets ────────────────────────────────────────────────────────────────
+    /// Platform-specific prover fleets to discover and register.
+    pub fleets: Vec<PlatformRegistrationConfig>,
     // ── Signing / Tx Manager ──────────────────────────────────────────────────
     /// Signing configuration (local private key or remote sidecar).
     pub signing: SignerConfig,
     /// Transaction manager configuration (fee limits, confirmations, timeouts).
     pub tx_manager: TxManagerConfig,
-    // ── Proving ───────────────────────────────────────────────────────────────
-    /// ZK proving backend configuration.
-    pub proving: ProvingConfig,
     // ── Polling / Server ──────────────────────────────────────────────────────
     /// Interval between discovery and registration poll cycles.
     pub poll_interval: Duration,
@@ -152,10 +309,9 @@ impl std::fmt::Debug for RegistrarConfig {
             .field("l1_rpc_url", &url_origin(&self.l1_rpc_url))
             .field("tee_prover_registry_address", &self.tee_prover_registry_address)
             .field("l1_chain_id", &self.l1_chain_id)
-            .field("discovery", &self.discovery)
+            .field("fleets", &self.fleets)
             .field("signing", &self.signing)
             .field("tx_manager", &self.tx_manager)
-            .field("proving", &self.proving)
             .field("poll_interval", &self.poll_interval)
             .field("prover_timeout", &self.prover_timeout)
             .field("max_concurrency", &self.max_concurrency)
@@ -176,4 +332,16 @@ pub(crate) fn url_origin(url: &Url) -> String {
         s.push_str(&format!(":{port}"));
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn intel_pcs_pins_production_root_ca_hash() {
+        let config = TdxAttestationConfig::intel_pcs();
+
+        assert_eq!(config.trusted_root_ca_hash, DEFAULT_TDX_TRUSTED_ROOT_CA_HASH);
+    }
 }

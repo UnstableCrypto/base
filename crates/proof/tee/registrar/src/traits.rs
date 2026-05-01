@@ -16,6 +16,13 @@ pub trait InstanceDiscovery: Send + Sync {
     async fn discover_instances(&self) -> Result<Vec<ProverInstance>>;
 }
 
+#[async_trait]
+impl InstanceDiscovery for Box<dyn InstanceDiscovery> {
+    async fn discover_instances(&self) -> Result<Vec<ProverInstance>> {
+        (**self).discover_instances().await
+    }
+}
+
 /// Fetches signer identity data from a prover instance endpoint.
 ///
 /// The primary implementation is [`ProverClient`](crate::ProverClient), which

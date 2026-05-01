@@ -4,7 +4,10 @@
 mod config;
 pub use config::{
     AwsDiscoveryConfig, BoundlessConfig, CrlConfig, DEFAULT_MAX_ATTESTATION_AGE_SECS,
-    DEFAULT_MAX_RECOVERY_ATTEMPTS, ProvingConfig, RegistrarConfig,
+    DEFAULT_MAX_RECOVERY_ATTEMPTS, DEFAULT_TDX_MAX_QUOTE_AGE_SECS,
+    DEFAULT_TDX_TRUSTED_ROOT_CA_HASH, DiscoveryConfig, PlatformProvingConfig,
+    PlatformRegistrationConfig, ProvingConfig, RegistrarConfig, StaticDiscoveryConfig,
+    TdxAttestationConfig, TdxBoundlessConfig, TdxProvingConfig,
 };
 
 mod crl;
@@ -14,12 +17,12 @@ pub use crl::{
 };
 
 mod discovery;
-pub use discovery::AwsTargetGroupDiscovery;
+pub use discovery::{AwsTargetGroupDiscovery, StaticEndpointDiscovery};
 
 mod driver;
 pub use driver::{
     DEFAULT_MAX_CONCURRENCY, DEFAULT_MAX_TX_RETRIES, DEFAULT_TX_RETRY_DELAY_SECS,
-    DEFAULT_UNHEALTHY_REGISTRATION_WINDOW_SECS, DriverConfig, RegistrationDriver,
+    DEFAULT_UNHEALTHY_REGISTRATION_WINDOW_SECS, DriverConfig, ProverFleet, RegistrationDriver,
 };
 
 mod error;
@@ -36,6 +39,9 @@ pub use registry::{RegistryClient, RegistryContractClient};
 
 mod traits;
 pub use traits::{InstanceDiscovery, SignerClient};
+
+mod tdx;
+pub use tdx::{MAX_TDX_COLLATERAL_RESPONSE_BYTES, TdxAttestationHydrator, TdxCollateralFetch};
 
 mod types;
 pub use types::{

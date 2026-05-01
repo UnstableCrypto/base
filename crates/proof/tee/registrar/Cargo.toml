@@ -35,8 +35,11 @@ reqwest.workspace = true
 base-proof-contracts.workspace = true
 
 # Proving
+base-proof-tee-tdx-prover.workspace = true
 base-proof-tee-attestation.workspace = true
+base-proof-tee-tdx-verifier.workspace = true
 base-proof-tee-nitro-verifier.workspace = true
+base-proof-tee-tdx-attestation-prover.workspace = true
 
 # Transaction management
 base-tx-manager.workspace = true
@@ -64,6 +67,7 @@ tracing.workspace = true
 # Misc
 url.workspace = true
 hex.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
 
 [dev-dependencies]
 sha2.workspace = true
