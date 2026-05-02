@@ -67,9 +67,10 @@ pub struct ProposerArgs {
     #[arg(long = "nitro-prover-rpc", env = cli_env!("NITRO_PROVER_RPC"))]
     pub nitro_prover_rpc: Option<Url>,
 
-    /// URL of the Intel TDX prover RPC endpoint.
+    /// URL of the Intel TDX prover RPC endpoint. When omitted, the proposer
+    /// preserves legacy Nitro-only deployment behavior.
     #[arg(long = "tdx-prover-rpc", env = cli_env!("TDX_PROVER_RPC"))]
-    pub tdx_prover_rpc: Url,
+    pub tdx_prover_rpc: Option<Url>,
 
     /// URL of the L1 Ethereum RPC endpoint.
     #[arg(long = "l1-eth-rpc", env = cli_env!("L1_ETH_RPC"))]
@@ -268,7 +269,7 @@ mod tests {
         assert!(!cli.proposer.dry_run);
         assert!(!cli.proposer.allow_non_finalized);
         assert_eq!(cli.proposer.nitro_prover_rpc.unwrap().as_str(), "http://localhost:8080/");
-        assert_eq!(cli.proposer.tdx_prover_rpc.as_str(), "http://localhost:8081/");
+        assert_eq!(cli.proposer.tdx_prover_rpc.unwrap().as_str(), "http://localhost:8081/");
         assert_eq!(cli.proposer.poll_interval, Duration::from_secs(12));
         assert_eq!(cli.proposer.rpc_timeout, Duration::from_secs(30));
         assert_eq!(cli.proposer.rollup_rpc.as_str(), "http://localhost:7545/");
@@ -330,5 +331,33 @@ mod tests {
             "0x0000000000000000000000000000000000000000000000000000000000000001",
         ];
         assert!(Cli::try_parse_from(args).is_err());
+    }
+
+    #[test]
+    fn test_legacy_nitro_only_cli_omits_tdx() {
+        let args = vec![
+            "proposer",
+            "--prover-rpc",
+            "http://localhost:8080",
+            "--l1-eth-rpc",
+            "http://localhost:8545",
+            "--l2-eth-rpc",
+            "http://localhost:9545",
+            "--anchor-state-registry-addr",
+            "0x1234567890123456789012345678901234567890",
+            "--dispute-game-factory-addr",
+            "0x2234567890123456789012345678901234567890",
+            "--game-type",
+            "1",
+            "--tee-image-hash",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "--rollup-rpc",
+            "http://localhost:7545",
+        ];
+
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        assert_eq!(cli.proposer.prover_rpc.unwrap().as_str(), "http://localhost:8080/");
+        assert!(cli.proposer.tdx_prover_rpc.is_none());
     }
 }

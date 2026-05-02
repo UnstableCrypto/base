@@ -9,13 +9,13 @@ use std::{
     time::Duration,
 };
 
-use alloy_primitives::Address;
+use alloy_primitives::{Address, B256};
 use alloy_provider::ProviderBuilder;
 use alloy_signer_local::PrivateKeySigner;
 use base_balance_monitor::BalanceMonitorLayer;
 use base_cli_utils::RuntimeManager;
 use base_health::HealthServer;
-use base_proof_contracts::ZkCoProcessorType;
+use base_proof_contracts::{TDXTcbStatus, ZkCoProcessorType};
 use base_proof_tee_attestation::TeeAttestationProofProvider;
 use base_proof_tee_nitro_attestation_prover::{
     BoundlessProver as NitroBoundlessProver, DirectProver as NitroDirectProver,
@@ -169,6 +169,10 @@ pub(crate) struct Cli {
     // ── TDX Proving ──────────────────────────────────────────────────────────
     #[command(flatten)]
     tdx: TdxArgs,
+
+    // ── TDX Collateral / Policy ──────────────────────────────────────────────
+    #[command(flatten)]
+    tdx_collateral: TdxCollateralArgs,
 
     // ── Polling / Server ──────────────────────────────────────────────────────
     /// Interval between discovery and registration poll cycles, in seconds.
@@ -341,6 +345,96 @@ struct TdxArgs {
         default_value_t = DEFAULT_TDX_MAX_QUOTE_AGE_SECS
     )]
     tdx_max_recovered_quote_age_secs: u64,
+}
+
+/// TDX collateral retrieval and verifier policy CLI arguments.
+#[derive(Args)]
+struct TdxCollateralArgs {
+    /// Intel TDX PCS API base URL.
+    #[arg(long, env = cli_env!("TDX_PCS_TDX_BASE_URL"))]
+    tdx_pcs_tdx_base_url: Option<Url>,
+
+    /// Trusted Intel SGX/TDX root CA certificate hash.
+    #[arg(long, env = cli_env!("TDX_TRUSTED_ROOT_CA_HASH"))]
+    tdx_trusted_root_ca_hash: Option<B256>,
+
+    /// Maximum accepted TDX quote age, in seconds.
+    #[arg(
+        long,
+        env = cli_env!("TDX_MAX_QUOTE_AGE_SECS"),
+        value_parser = clap::value_parser!(u64).range(1..)
+    )]
+    tdx_max_quote_age_secs: Option<u64>,
+
+    /// Allowed TDX TCB status. Repeat to allow multiple statuses.
+    #[arg(long, env = cli_env!("TDX_ALLOWED_TCB_STATUS"), value_enum)]
+    tdx_allowed_tcb_status: Vec<TdxTcbStatusArg>,
+
+    /// Intel PCS and CRL fetch timeout, in seconds.
+    #[arg(
+        long,
+        env = cli_env!("TDX_COLLATERAL_FETCH_TIMEOUT_SECS"),
+        value_parser = clap::value_parser!(u64).range(1..)
+    )]
+    tdx_collateral_fetch_timeout_secs: Option<u64>,
+}
+
+impl TdxCollateralArgs {
+    fn config(&self) -> TdxAttestationConfig {
+        let mut config = TdxAttestationConfig::intel_pcs();
+        if let Some(pcs_tdx_base_url) = &self.tdx_pcs_tdx_base_url {
+            config.pcs_tdx_base_url = pcs_tdx_base_url.clone();
+        }
+        if let Some(trusted_root_ca_hash) = self.tdx_trusted_root_ca_hash {
+            config.trusted_root_ca_hash = trusted_root_ca_hash;
+        }
+        if let Some(max_quote_age_secs) = self.tdx_max_quote_age_secs {
+            config.max_quote_age = Duration::from_secs(max_quote_age_secs);
+        }
+        if !self.tdx_allowed_tcb_status.is_empty() {
+            config.allowed_tcb_statuses =
+                self.tdx_allowed_tcb_status.iter().map(|status| status.to_contract()).collect();
+        }
+        if let Some(fetch_timeout_secs) = self.tdx_collateral_fetch_timeout_secs {
+            config.fetch_timeout = Duration::from_secs(fetch_timeout_secs);
+        }
+        config
+    }
+}
+
+/// CLI representation of contract TDX TCB statuses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum TdxTcbStatusArg {
+    /// Platform TCB is up to date.
+    UpToDate,
+    /// Platform needs software hardening.
+    SwHardeningNeeded,
+    /// Platform needs configuration hardening.
+    ConfigurationNeeded,
+    /// Platform needs configuration and software hardening.
+    ConfigurationAndSwHardeningNeeded,
+    /// Platform TCB is out of date.
+    OutOfDate,
+    /// Platform TCB is out of date and needs configuration hardening.
+    OutOfDateConfigurationNeeded,
+    /// Platform TCB has been revoked.
+    Revoked,
+}
+
+impl TdxTcbStatusArg {
+    const fn to_contract(self) -> TDXTcbStatus {
+        match self {
+            Self::UpToDate => TDXTcbStatus::UpToDate,
+            Self::SwHardeningNeeded => TDXTcbStatus::SwHardeningNeeded,
+            Self::ConfigurationNeeded => TDXTcbStatus::ConfigurationNeeded,
+            Self::ConfigurationAndSwHardeningNeeded => {
+                TDXTcbStatus::ConfigurationAndSwHardeningNeeded
+            }
+            Self::OutOfDate => TDXTcbStatus::OutOfDate,
+            Self::OutOfDateConfigurationNeeded => TDXTcbStatus::OutOfDateConfigurationNeeded,
+            Self::Revoked => TDXTcbStatus::Revoked,
+        }
+    }
 }
 
 /// TDX proving backend selector.
@@ -598,6 +692,7 @@ impl Cli {
             nitro_verifier_address: self.crl.crl_nitro_verifier_address,
             fetch_timeout: Duration::from_secs(self.crl.crl_fetch_timeout_secs),
         };
+        let tdx_attestation = self.tdx_collateral.config();
 
         let health_addr = self.health.socket_addr();
 
@@ -618,6 +713,7 @@ impl Cli {
             ),
             health_addr,
             crl,
+            tdx_attestation,
         })
     }
 
@@ -957,7 +1053,7 @@ impl Cli {
             tx_retry_delay: config.tx_retry_delay,
             unhealthy_registration_window: config.unhealthy_registration_window,
             crl: config.crl,
-            tdx_attestation: TdxAttestationConfig::intel_pcs(),
+            tdx_attestation: config.tdx_attestation,
         };
 
         // Mark the service as ready. This signals "initialised and running", not
@@ -1297,6 +1393,67 @@ mod tests {
     }
 
     #[rstest]
+    fn tdx_collateral_policy_config_parses() {
+        let root_hash = "0x1111111111111111111111111111111111111111111111111111111111111111";
+        let pcs_url = "https://pcs.example.test/tdx/certification/v4/";
+        let mut args = boundless_args();
+        args.extend([
+            "--tdx-prover-endpoint",
+            TEST_TDX_ENDPOINT,
+            "--tdx-proving-mode",
+            "direct",
+            "--tdx-pcs-tdx-base-url",
+            pcs_url,
+            "--tdx-trusted-root-ca-hash",
+            root_hash,
+            "--tdx-max-quote-age-secs",
+            "120",
+            "--tdx-allowed-tcb-status",
+            "up-to-date",
+            "--tdx-allowed-tcb-status",
+            "sw-hardening-needed",
+            "--tdx-collateral-fetch-timeout-secs",
+            "7",
+        ]);
+
+        let config = Cli::parse_from(args).into_config().unwrap();
+
+        assert_eq!(config.tdx_attestation.pcs_tdx_base_url, Url::parse(pcs_url).unwrap());
+        assert_eq!(config.tdx_attestation.trusted_root_ca_hash, root_hash.parse::<B256>().unwrap());
+        assert_eq!(config.tdx_attestation.max_quote_age, Duration::from_secs(120));
+        assert_eq!(
+            config
+                .tdx_attestation
+                .allowed_tcb_statuses
+                .iter()
+                .map(|status| *status as u8)
+                .collect::<Vec<_>>(),
+            vec![TDXTcbStatus::UpToDate as u8, TDXTcbStatus::SwHardeningNeeded as u8]
+        );
+        assert_eq!(config.tdx_attestation.fetch_timeout, Duration::from_secs(7));
+    }
+
+    #[rstest]
+    fn tdx_collateral_defaults_do_not_enable_tdx_fleet() {
+        let config = Cli::parse_from(boundless_args()).into_config().unwrap();
+
+        assert_eq!(config.fleets.len(), 1);
+        assert_eq!(
+            config.tdx_attestation.max_quote_age,
+            Duration::from_secs(DEFAULT_TDX_MAX_QUOTE_AGE_SECS),
+        );
+        assert_eq!(
+            config
+                .tdx_attestation
+                .allowed_tcb_statuses
+                .iter()
+                .map(|status| *status as u8)
+                .collect::<Vec<_>>(),
+            vec![TDXTcbStatus::UpToDate as u8]
+        );
+    }
+
+    #[rstest]
     fn nitro_prefixed_aliases_parse() {
         let mut args = vec![
             "prover-registrar",
@@ -1358,6 +1515,10 @@ mod tests {
             "--tdx-prover-endpoint",
             "--tdx-proving-mode",
             "--tdx-zk-coprocessor",
+            "--tdx-pcs-tdx-base-url",
+            "--tdx-trusted-root-ca-hash",
+            "--tdx-allowed-tcb-status",
+            "--tdx-collateral-fetch-timeout-secs",
         ] {
             assert!(help.contains(flag), "help should contain {flag}");
         }

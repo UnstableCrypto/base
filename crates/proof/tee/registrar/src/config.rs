@@ -301,6 +301,8 @@ pub struct RegistrarConfig {
     // ── CRL Checking ──────────────────────────────────────────────────────
     /// CRL (Certificate Revocation List) checking configuration.
     pub crl: CrlConfig,
+    /// TDX collateral retrieval and verifier policy configuration.
+    pub tdx_attestation: TdxAttestationConfig,
 }
 
 impl std::fmt::Debug for RegistrarConfig {
@@ -320,6 +322,7 @@ impl std::fmt::Debug for RegistrarConfig {
             .field("unhealthy_registration_window", &self.unhealthy_registration_window)
             .field("health_addr", &self.health_addr)
             .field("crl", &self.crl)
+            .field("tdx_attestation", &self.tdx_attestation)
             .finish()
     }
 }

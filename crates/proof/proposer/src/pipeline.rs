@@ -2680,7 +2680,7 @@ mod tests {
         assert!(calls.contains(&(TeeProofPlatform::Nitro, request.clone())));
         assert!(calls.contains(&(TeeProofPlatform::Tdx, request)));
         let (nitro_aggregate, _) = proof.nitro.proposals();
-        let (tdx_aggregate, _) = proof.tdx.proposals();
+        let (tdx_aggregate, _) = proof.tdx.as_ref().unwrap().proposals();
         assert_ne!(nitro_aggregate.signature, tdx_aggregate.signature);
         assert_eq!(nitro_aggregate.output_root, tdx_aggregate.output_root);
         assert_eq!(nitro_aggregate.l2_block_number, tdx_aggregate.l2_block_number);
