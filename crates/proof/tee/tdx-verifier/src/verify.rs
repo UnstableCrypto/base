@@ -1034,6 +1034,20 @@ mod tests {
     }
 
     #[test]
+    fn verifies_tdx_tcb_info_without_tee_type() {
+        let mut input = fixture().input;
+        let raw = String::from_utf8(tcb_info_raw("UpToDate"))
+            .unwrap()
+            .replace(r#""teeType":"00000081","#, "");
+        input.collateral.tcb_info.raw = Bytes::from(raw.into_bytes());
+        resign_tcb_info(&mut input);
+
+        let journal = TdxVerifier::verify(&input).unwrap();
+
+        assert_eq!(journal.result as u8, TDXVerificationResult::Success as u8);
+    }
+
+    #[test]
     fn fixture_quote_collateral_and_journal_encode_tdx_registration_calldata() {
         let fixture = fixture();
         let journal = TdxVerifier::verify(&fixture.input).unwrap();

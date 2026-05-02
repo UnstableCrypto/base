@@ -644,9 +644,9 @@ pub struct TdxTcbInfoDocument {
 pub struct TdxTcbInfoBody {
     /// Intel collateral class identifier.
     pub id: String,
-    /// Intel TEE type for TDX.
-    #[serde(rename = "teeType")]
-    pub tee_type: TdxTeeType,
+    /// Intel TEE type for TDX, when supplied by the PCS response.
+    #[serde(default, rename = "teeType")]
+    pub tee_type: Option<TdxTeeType>,
     /// Collateral issue date authenticated inside signed JSON.
     #[serde(rename = "issueDate")]
     pub issue_date: String,
@@ -672,7 +672,9 @@ pub struct TdxTcbInfoBody {
 impl TdxTcbInfoBody {
     /// Verifies that this signed TCB info document is TDX collateral.
     pub fn verify_tdx_collateral(&self) -> Result<()> {
-        if self.id != TDX_TCB_INFO_ID || self.tee_type.value != TDX_TEE_TYPE {
+        if self.id != TDX_TCB_INFO_ID
+            || self.tee_type.is_some_and(|tee_type| tee_type.value != TDX_TEE_TYPE)
+        {
             return Err(TdxVerifierError::TcbInfoInvalid("TCB info is not TDX collateral".into()));
         }
         Ok(())

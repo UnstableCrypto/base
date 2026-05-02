@@ -37,8 +37,10 @@ use crate::{
 pub const MAX_TDX_COLLATERAL_RESPONSE_BYTES: u64 = 10 * 1024 * 1024;
 
 const PCK_CERT_CHAIN_CERTIFICATION_DATA_TYPE: u16 = 5;
-const TCB_INFO_ISSUER_CHAIN_HEADER: &str = "sgx-tcb-info-issuer-chain";
-const TCB_INFO_SIGNATURE_HEADER: &str = "sgx-tcb-info-signature";
+const TCB_INFO_ISSUER_CHAIN_HEADER: &str = "tcb-info-issuer-chain";
+const LEGACY_TCB_INFO_ISSUER_CHAIN_HEADER: &str = "sgx-tcb-info-issuer-chain";
+const TCB_INFO_SIGNATURE_HEADER: &str = "tcb-info-signature";
+const LEGACY_TCB_INFO_SIGNATURE_HEADER: &str = "sgx-tcb-info-signature";
 const QE_IDENTITY_ISSUER_CHAIN_HEADER: &str = "sgx-enclave-identity-issuer-chain";
 const QE_IDENTITY_SIGNATURE_FIELD: &str = "signature";
 const ALLOWED_INTEL_HOST_SUFFIX: &str = ".trustedservices.intel.com";
@@ -613,10 +615,18 @@ impl TdxAttestationHydrator {
         url.query_pairs_mut()
             .append_pair("fmspc", &hex::encode(&platform.fmspc))
             .append_pair("pceid", &hex::encode(&platform.pce_id));
+        let chain_headers = [
+            HeaderName::from_static(TCB_INFO_ISSUER_CHAIN_HEADER),
+            HeaderName::from_static(LEGACY_TCB_INFO_ISSUER_CHAIN_HEADER),
+        ];
+        let signature_headers = [
+            HeaderName::from_static(TCB_INFO_SIGNATURE_HEADER),
+            HeaderName::from_static(LEGACY_TCB_INFO_SIGNATURE_HEADER),
+        ];
         self.fetch_signed_collateral(
             url,
-            HeaderName::from_static(TCB_INFO_ISSUER_CHAIN_HEADER),
-            Some(HeaderName::from_static(TCB_INFO_SIGNATURE_HEADER)),
+            &chain_headers,
+            Some(&signature_headers),
             TdxSignedCollateralBody::TcbInfo,
         )
         .await
@@ -628,29 +638,30 @@ impl TdxAttestationHydrator {
             .pcs_tdx_base_url
             .join("qe/identity")
             .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
-        self.fetch_signed_collateral(
-            url,
-            HeaderName::from_static(QE_IDENTITY_ISSUER_CHAIN_HEADER),
-            None,
-            TdxSignedCollateralBody::QeIdentity,
-        )
-        .await
+        let chain_headers = [HeaderName::from_static(QE_IDENTITY_ISSUER_CHAIN_HEADER)];
+        self.fetch_signed_collateral(url, &chain_headers, None, TdxSignedCollateralBody::QeIdentity)
+            .await
     }
 
     async fn fetch_signed_collateral(
         &self,
         url: url::Url,
-        chain_header: HeaderName,
-        signature_header: Option<HeaderName>,
+        chain_headers: &[HeaderName],
+        signature_headers: Option<&[HeaderName]>,
         body_kind: TdxSignedCollateralBody,
     ) -> Result<TdxSignedCollateral> {
         let response = self.get(url).await?;
         let headers = response.headers().clone();
         let raw = Self::limited_body(response).await?;
-        let signing_chain = Self::certificate_chain_from_header(&headers, &chain_header)?;
+        let signing_chain = Self::certificate_chain_from_header(&headers, chain_headers)?;
         Self::verify_trusted_root_ca_hash(&signing_chain, self.config.trusted_root_ca_hash)?;
-        let signature = match signature_header {
-            Some(header) => Self::signature_from_header(&headers, &header)?,
+        let signature = match signature_headers {
+            Some(signature_header_names) => Self::signature_from_header_or_json_field(
+                &headers,
+                signature_header_names,
+                &raw,
+                QE_IDENTITY_SIGNATURE_FIELD,
+            )?,
             None => Self::signature_from_json_field(&raw, QE_IDENTITY_SIGNATURE_FIELD)?,
         };
         let collateral =
@@ -732,19 +743,21 @@ impl TdxAttestationHydrator {
 
     fn certificate_chain_from_header(
         headers: &HeaderMap,
-        header: &HeaderName,
+        header_names: &[HeaderName],
     ) -> Result<Vec<TdxCertificate>> {
-        let value = headers
-            .get(header)
-            .ok_or_else(|| {
-                RegistrarError::TdxAttestation(Box::new(TdxHydrationError::MissingHeader {
-                    header: header.as_str().to_string(),
-                }))
-            })?
-            .to_str()
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+        let value = Self::header_value(headers, header_names)?;
         let decoded = Self::percent_decode(value)?;
         Self::certificate_chain_from_pem(&decoded)
+    }
+
+    fn header_value<'a>(headers: &'a HeaderMap, header_names: &[HeaderName]) -> Result<&'a str> {
+        for header in header_names {
+            if let Some(value) = headers.get(header) {
+                return value.to_str().map_err(|e| RegistrarError::TdxAttestation(Box::new(e)));
+            }
+        }
+        let header = header_names.iter().map(HeaderName::as_str).collect::<Vec<_>>().join(" or ");
+        Err(RegistrarError::TdxAttestation(Box::new(TdxHydrationError::MissingHeader { header })))
     }
 
     fn signature_from_header(headers: &HeaderMap, header: &HeaderName) -> Result<Bytes> {
@@ -758,6 +771,20 @@ impl TdxAttestationHydrator {
             .to_str()
             .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
         Self::signature_from_hex(value)
+    }
+
+    fn signature_from_header_or_json_field(
+        headers: &HeaderMap,
+        header_names: &[HeaderName],
+        raw: &[u8],
+        field: &'static str,
+    ) -> Result<Bytes> {
+        for header in header_names {
+            if headers.contains_key(header) {
+                return Self::signature_from_header(headers, header);
+            }
+        }
+        Self::signature_from_json_field(raw, field)
     }
 
     fn signature_from_json_field(raw: &[u8], field: &'static str) -> Result<Bytes> {
@@ -994,6 +1021,8 @@ impl Error for TdxHydrationError {}
 
 #[cfg(test)]
 mod tests {
+    use reqwest::header::HeaderValue;
+
     use super::*;
 
     fn certificate_with_raw(raw: &'static [u8]) -> TdxCertificate {
@@ -1187,6 +1216,40 @@ mod tests {
     }
 
     #[test]
+    fn header_value_accepts_current_tdx_tcb_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            HeaderName::from_static(TCB_INFO_ISSUER_CHAIN_HEADER),
+            HeaderValue::from_static("current-chain"),
+        );
+        let header_names = [
+            HeaderName::from_static(TCB_INFO_ISSUER_CHAIN_HEADER),
+            HeaderName::from_static(LEGACY_TCB_INFO_ISSUER_CHAIN_HEADER),
+        ];
+
+        let value = TdxAttestationHydrator::header_value(&headers, &header_names).unwrap();
+
+        assert_eq!(value, "current-chain");
+    }
+
+    #[test]
+    fn header_value_accepts_legacy_sgx_tcb_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            HeaderName::from_static(LEGACY_TCB_INFO_ISSUER_CHAIN_HEADER),
+            HeaderValue::from_static("legacy-chain"),
+        );
+        let header_names = [
+            HeaderName::from_static(TCB_INFO_ISSUER_CHAIN_HEADER),
+            HeaderName::from_static(LEGACY_TCB_INFO_ISSUER_CHAIN_HEADER),
+        ];
+
+        let value = TdxAttestationHydrator::header_value(&headers, &header_names).unwrap();
+
+        assert_eq!(value, "legacy-chain");
+    }
+
+    #[test]
     fn qe_identity_signature_from_json_body_decodes_top_level_signature() {
         let raw = br#"{"enclaveIdentity":{},"signature":"0x0102ff"}"#;
 
@@ -1195,6 +1258,50 @@ mod tests {
                 .unwrap();
 
         assert_eq!(signature, Bytes::from_static(&[0x01, 0x02, 0xff]));
+    }
+
+    #[test]
+    fn tcb_info_signature_from_json_body_decodes_top_level_signature() {
+        let headers = HeaderMap::new();
+        let header_names = [
+            HeaderName::from_static(TCB_INFO_SIGNATURE_HEADER),
+            HeaderName::from_static(LEGACY_TCB_INFO_SIGNATURE_HEADER),
+        ];
+        let raw = br#"{"tcbInfo":{},"signature":"0102ff"}"#;
+
+        let signature = TdxAttestationHydrator::signature_from_header_or_json_field(
+            &headers,
+            &header_names,
+            raw,
+            QE_IDENTITY_SIGNATURE_FIELD,
+        )
+        .unwrap();
+
+        assert_eq!(signature, Bytes::from_static(&[0x01, 0x02, 0xff]));
+    }
+
+    #[test]
+    fn tcb_info_signature_prefers_header_when_present() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            HeaderName::from_static(LEGACY_TCB_INFO_SIGNATURE_HEADER),
+            HeaderValue::from_static("0x03"),
+        );
+        let header_names = [
+            HeaderName::from_static(TCB_INFO_SIGNATURE_HEADER),
+            HeaderName::from_static(LEGACY_TCB_INFO_SIGNATURE_HEADER),
+        ];
+        let raw = br#"{"tcbInfo":{},"signature":"0102ff"}"#;
+
+        let signature = TdxAttestationHydrator::signature_from_header_or_json_field(
+            &headers,
+            &header_names,
+            raw,
+            QE_IDENTITY_SIGNATURE_FIELD,
+        )
+        .unwrap();
+
+        assert_eq!(signature, Bytes::from_static(&[0x03]));
     }
 
     #[test]
