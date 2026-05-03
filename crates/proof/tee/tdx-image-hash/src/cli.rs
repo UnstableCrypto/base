@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use alloy_primitives::{Address, B256};
-use base_proof_contracts::TDXTcbStatus;
 use base_proof_tee_registrar::TdxAttestationConfig;
+use base_proof_tee_tdx_verifier::TDXTcbStatus;
 use clap::{Parser, ValueEnum};
 use eyre::Result;
 use url::Url;

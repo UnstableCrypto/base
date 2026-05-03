@@ -1,7 +1,8 @@
 //! Error types for TDX quote and collateral verification.
 
-use base_proof_contracts::TDXVerificationResult;
 use thiserror::Error;
+
+use crate::TDXVerificationResult;
 
 /// Errors that can occur during TDX quote and collateral verification.
 #[derive(Debug, Error)]

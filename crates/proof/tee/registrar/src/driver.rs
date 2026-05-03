@@ -1154,12 +1154,11 @@ mod tests {
     use alloy_rpc_types_eth::TransactionReceipt;
     use alloy_sol_types::SolCall;
     use async_trait::async_trait;
-    use base_proof_contracts::TDXTcbStatus;
     use base_proof_tee_attestation::{Result as TeeAttestationResult, TeeAttestationProof};
     use base_proof_tee_tdx_attestation_prover::TdxAttestationProverInput;
     use base_proof_tee_tdx_verifier::{
-        IntelTcbStatus, TdxCollateral, TdxQuotePolicy, TdxRevocationEvidence, TdxSignedCollateral,
-        TdxVerifierInput,
+        IntelTcbStatus, TDXTcbStatus, TdxCollateral, TdxQuotePolicy, TdxRevocationEvidence,
+        TdxSignedCollateral, TdxVerifierInput,
     };
     use base_tx_manager::{SendHandle, TxCandidate, TxManager, TxManagerError};
     use hex_literal::hex;

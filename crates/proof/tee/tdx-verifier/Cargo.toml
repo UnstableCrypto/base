@@ -18,9 +18,6 @@ serde = { workspace = true, features = ["derive"] }
 time = { workspace = true, features = ["parsing"] }
 serde_json = { workspace = true, features = ["preserve_order"] }
 
-# Contracts
-base-proof-contracts.workspace = true
-
 # Crypto
 sha2.workspace = true
 k256.workspace = true

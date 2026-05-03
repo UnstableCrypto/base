@@ -32,7 +32,7 @@ x509-parser.workspace = true
 reqwest.workspace = true
 
 # Contracts
-base-proof-contracts = { workspace = true, features = ["clients"] }
+base-proof-contracts.workspace = true
 
 # Proving
 base-proof-tee-tdx-prover.workspace = true

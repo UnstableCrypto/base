@@ -4,10 +4,9 @@ use std::fmt;
 
 use alloy_primitives::Address;
 use alloy_sol_types::{SolValue, sol};
-use base_proof_contracts::TDXTcbStatus;
 use base_proof_tee_tdx_verifier::{
-    IntelTcbStatus, TdxCertificate, TdxCertificateRevocationList, TdxCollateral, TdxQuotePolicy,
-    TdxRevocationEvidence, TdxSignedCollateral, TdxVerifierInput,
+    IntelTcbStatus, TDXTcbStatus, TdxCertificate, TdxCertificateRevocationList, TdxCollateral,
+    TdxQuotePolicy, TdxRevocationEvidence, TdxSignedCollateral, TdxVerifierInput,
 };
 
 use crate::{ProverError, Result};
@@ -388,7 +387,7 @@ pub fn intel_tcb_status_from_u8(status: u8) -> Result<IntelTcbStatus> {
 #[cfg(test)]
 mod tests {
     use alloy_primitives::{B256, Bytes};
-    use base_proof_contracts::TDXTcbStatus;
+    use base_proof_tee_tdx_verifier::TDXTcbStatus;
     use rstest::rstest;
 
     use super::*;

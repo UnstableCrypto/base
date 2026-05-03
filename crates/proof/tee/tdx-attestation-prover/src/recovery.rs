@@ -3,8 +3,8 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use alloy_sol_types::SolValue;
-use base_proof_contracts::TDXVerifierJournal;
 use base_proof_tee_attestation::TeeAttestationProof;
+use base_proof_tee_tdx_verifier::TDXVerifierJournal;
 
 /// Policy for accepting recovered TDX proofs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,8 +62,8 @@ impl RecoveredProofPolicy {
 #[cfg(test)]
 mod tests {
     use alloy_primitives::{Address, B256, Bytes};
-    use base_proof_contracts::{TDXTcbStatus, TDXVerificationResult};
     use base_proof_tee_attestation::TeeAttestationKind;
+    use base_proof_tee_tdx_verifier::{TDXTcbStatus, TDXVerificationResult};
     use rstest::rstest;
 
     use super::*;

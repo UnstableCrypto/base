@@ -15,7 +15,6 @@ use alloy_signer_local::PrivateKeySigner;
 use base_balance_monitor::BalanceMonitorLayer;
 use base_cli_utils::RuntimeManager;
 use base_health::HealthServer;
-use base_proof_contracts::TDXTcbStatus;
 use base_proof_tee_attestation::TeeAttestationProofProvider;
 use base_proof_tee_nitro_attestation_prover::{
     BoundlessProver as NitroBoundlessProver, DirectProver as NitroDirectProver,
@@ -34,6 +33,7 @@ use base_proof_tee_tdx_attestation_prover::{
     BoundlessProver as TdxBoundlessProver, DirectProver as TdxDirectProver, RecoveredProofPolicy,
     RiscZeroProver as TdxRiscZeroProver,
 };
+use base_proof_tee_tdx_verifier::TDXTcbStatus;
 use base_tx_manager::{BaseTxMetrics, SignerConfig, SimpleTxManager, TxManagerConfig};
 use clap::{Args, Parser, ValueEnum};
 use eyre::WrapErr;

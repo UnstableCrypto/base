@@ -1,7 +1,6 @@
 //! Explicit TDX collateral, signing chain, and revocation evidence inputs.
 
 use alloy_primitives::{B256, Bytes, keccak256};
-use base_proof_contracts::TDXTcbStatus;
 use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
 use serde::{Deserialize, Deserializer, de};
 use serde_json::Value;
@@ -16,7 +15,7 @@ use crate::{
     ParsedTdxQuote, QE_REPORT_ATTRIBUTES_LEN, QE_REPORT_ATTRIBUTES_OFFSET,
     QE_REPORT_ISV_PROD_ID_OFFSET, QE_REPORT_ISV_SVN_OFFSET, QE_REPORT_MISCSELECT_LEN,
     QE_REPORT_MISCSELECT_OFFSET, QE_REPORT_MRSIGNER_LEN, QE_REPORT_MRSIGNER_OFFSET, Result,
-    TDX_TEE_TYPE, TdxVerifierError,
+    TDX_TEE_TYPE, TDXTcbStatus, TdxVerifierError,
 };
 
 /// Subject common name expected for Intel PCS TCB collateral signing certificates.

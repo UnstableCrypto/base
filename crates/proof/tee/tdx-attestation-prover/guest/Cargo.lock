@@ -378,14 +378,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
-name = "base-proof-contracts"
-version = "0.0.0"
-dependencies = [
- "alloy-primitives",
- "alloy-sol-types",
-]
-
-[[package]]
 name = "base-proof-tee-attestation"
 version = "0.0.0"
 dependencies = [
@@ -400,7 +392,6 @@ dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
  "async-trait",
- "base-proof-contracts",
  "base-proof-tee-attestation",
  "base-proof-tee-tdx-verifier",
  "thiserror",
@@ -421,7 +412,6 @@ version = "0.0.0"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
- "base-proof-contracts",
  "k256",
  "p256",
  "serde",

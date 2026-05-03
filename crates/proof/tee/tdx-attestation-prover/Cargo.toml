@@ -13,7 +13,6 @@ workspace = true
 
 [dependencies]
 # Verification and shared proof model
-base-proof-contracts.workspace = true
 base-proof-tee-attestation.workspace = true
 base-proof-tee-tdx-verifier.workspace = true
 

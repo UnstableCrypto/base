@@ -4,11 +4,10 @@ use std::{fmt, sync::Arc};
 
 use alloy_primitives::{Address, Bytes};
 use async_trait::async_trait;
-use base_proof_contracts::TDXVerifierJournal;
 use base_proof_tee_attestation::{
     TeeAttestationKind, TeeAttestationProof, TeeAttestationProofProvider,
 };
-use base_proof_tee_tdx_verifier::{TdxVerifier, TdxVerifierInput};
+use base_proof_tee_tdx_verifier::{TDXVerifierJournal, TdxVerifier, TdxVerifierInput};
 
 use crate::{ProverError, Result, TdxAttestationProverInput};
 
@@ -112,10 +111,10 @@ impl TeeAttestationProofProvider for DirectProver {
 mod tests {
     use alloy_primitives::{B256, Bytes};
     use alloy_sol_types::SolValue;
-    use base_proof_contracts::{TDXTcbStatus, TDXVerificationResult};
     use base_proof_tee_tdx_verifier::{
-        IntelTcbStatus, TdxCertificate, TdxCertificateRevocationList, TdxCollateral,
-        TdxQuotePolicy, TdxRevocationEvidence, TdxSignedCollateral,
+        IntelTcbStatus, TDXTcbStatus, TDXVerificationResult, TdxCertificate,
+        TdxCertificateRevocationList, TdxCollateral, TdxQuotePolicy, TdxRevocationEvidence,
+        TdxSignedCollateral,
     };
     use rstest::rstest;
 

@@ -3,9 +3,8 @@
 use std::fmt;
 
 use alloy_primitives::{Address, B256, Bytes};
-use base_proof_contracts::TDXTcbStatus;
 
-use crate::{TdxCertificate, TdxCollateral, TdxRevocationEvidence};
+use crate::{TDXTcbStatus, TdxCertificate, TdxCollateral, TdxRevocationEvidence};
 
 /// Quote timestamp policy enforced inside the verifier guest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

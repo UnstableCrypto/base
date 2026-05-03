@@ -19,6 +19,12 @@ pub use error::{Result, TdxVerifierError};
 mod input;
 pub use input::{TdxQuotePolicy, TdxVerifierInput};
 
+mod types;
+pub use types::{
+    ITDXVerifier, TDXTcbStatus, TDXVerificationResult, TDXVerifierJournal, ZkCoProcessorConfig,
+    ZkCoProcessorType,
+};
+
 mod quote;
 pub use quote::{
     CERTIFICATION_DATA_HEADER_LEN, ECDSA_P256_ATTESTATION_KEY_TYPE, ECDSA_P256_PUBLIC_KEY_BODY_LEN,

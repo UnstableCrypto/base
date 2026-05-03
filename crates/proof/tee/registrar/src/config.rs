@@ -2,7 +2,7 @@ use std::{net::SocketAddr, path::PathBuf, time::Duration};
 
 use alloy_primitives::{Address, B256, b256};
 use alloy_signer_local::PrivateKeySigner;
-use base_proof_contracts::TDXTcbStatus;
+use base_proof_tee_tdx_verifier::TDXTcbStatus;
 use base_tx_manager::{SignerConfig, TxManagerConfig};
 use url::Url;
 
