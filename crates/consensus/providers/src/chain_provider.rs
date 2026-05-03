@@ -2,12 +2,13 @@
 
 use std::{boxed::Box, num::NonZeroUsize, vec::Vec};
 
-use alloy_consensus::{Header, Receipt, TxEnvelope};
-use alloy_eips::BlockId;
-use alloy_primitives::B256;
+use alloy_consensus::{Header, Receipt, TxEnvelope, TxReceipt};
+use alloy_eips::{BlockId, eip2718::Encodable2718};
+use alloy_primitives::{B256, Bloom, Log, logs_bloom};
 use alloy_provider::{Provider, RootProvider};
 use alloy_transport::{RpcError, TransportErrorKind};
 use async_trait::async_trait;
+use base_common_consensus::ReceiptRoot;
 use base_consensus_derive::{ChainProvider, PipelineError, PipelineErrorKind, ResetError};
 use base_protocol::BlockInfo;
 use lru::LruCache;
@@ -105,6 +106,48 @@ impl AlloyChainProvider {
 
         Ok(())
     }
+
+    /// Calculates the receipt root and aggregate logs bloom for a block's receipts.
+    pub fn calculate_receipts_root_and_logs_bloom<T>(receipts: &[T]) -> (B256, Bloom)
+    where
+        T: TxReceipt<Log = Log> + Encodable2718,
+    {
+        let receipts_root = ReceiptRoot::calculate(receipts);
+        let logs_bloom = logs_bloom(receipts.iter().flat_map(|receipt| receipt.logs()));
+
+        (receipts_root, logs_bloom)
+    }
+
+    /// Verifies receipts against the commitments in the block header.
+    pub fn verify_receipts_root_and_logs_bloom<T>(
+        header: &Header,
+        block_hash: B256,
+        receipts: &[T],
+    ) -> Result<(), AlloyChainProviderError>
+    where
+        T: TxReceipt<Log = Log> + Encodable2718,
+    {
+        let (actual_receipts_root, actual_logs_bloom) =
+            Self::calculate_receipts_root_and_logs_bloom(receipts);
+
+        if actual_receipts_root != header.receipts_root {
+            return Err(AlloyChainProviderError::ReceiptsRootMismatch {
+                block_hash,
+                expected: header.receipts_root,
+                actual: actual_receipts_root,
+            });
+        }
+
+        if actual_logs_bloom != header.logs_bloom {
+            return Err(AlloyChainProviderError::LogsBloomMismatch {
+                block_hash,
+                expected: header.logs_bloom,
+                actual: actual_logs_bloom,
+            });
+        }
+
+        Ok(())
+    }
 }
 
 /// An error for the [`AlloyChainProvider`].
@@ -119,6 +162,28 @@ pub enum AlloyChainProviderError {
     /// Failed to convert RPC receipts into consensus receipts.
     #[error("Failed to convert RPC receipts into consensus receipts: {0}")]
     ReceiptsConversion(B256),
+    /// Receipt root does not match the block header.
+    #[error(
+        "Receipt root mismatch for block {block_hash:?}: expected {expected:?}, got {actual:?}"
+    )]
+    ReceiptsRootMismatch {
+        /// The block hash whose receipts were checked.
+        block_hash: B256,
+        /// The receipt root committed in the header.
+        expected: B256,
+        /// The receipt root calculated from the returned receipts.
+        actual: B256,
+    },
+    /// Logs bloom does not match the block header.
+    #[error("Logs bloom mismatch for block {block_hash:?}: expected {expected:?}, got {actual:?}")]
+    LogsBloomMismatch {
+        /// The block hash whose receipts were checked.
+        block_hash: B256,
+        /// The logs bloom committed in the header.
+        expected: Bloom,
+        /// The logs bloom calculated from the returned receipts.
+        actual: Bloom,
+    },
 }
 
 impl From<AlloyChainProviderError> for PipelineErrorKind {
@@ -142,6 +207,12 @@ impl From<AlloyChainProviderError> for PipelineErrorKind {
             AlloyChainProviderError::ReceiptsConversion(_) => {
                 Self::Temporary(PipelineError::Provider(
                     "Failed to convert RPC receipts into consensus receipts".to_string(),
+                ))
+            }
+            AlloyChainProviderError::ReceiptsRootMismatch { .. }
+            | AlloyChainProviderError::LogsBloomMismatch { .. } => {
+                Self::Temporary(PipelineError::Provider(
+                    "RPC receipts do not match L1 header commitments".to_string(),
                 ))
             }
         }
@@ -219,6 +290,16 @@ impl ChainProvider for AlloyChainProvider {
             Metrics::chain_rpc_errors("receipts_by_hash").increment(1);
         })?
         .ok_or(AlloyChainProviderError::BlockNotFound(hash.into()))?;
+
+        if !self.trust_rpc {
+            let header = self.header_by_hash(hash).await?;
+            let receipt_envelopes = receipts
+                .iter()
+                .map(|receipt| receipt.inner.clone().into_primitives_receipt())
+                .collect::<Vec<_>>();
+            Self::verify_receipts_root_and_logs_bloom(&header, hash, &receipt_envelopes)?;
+        }
+
         let consensus_receipts = receipts
             .into_iter()
             .map(|r| r.inner.into_primitives_receipt().as_receipt().cloned())
@@ -277,9 +358,70 @@ impl ChainProvider for AlloyChainProvider {
 
 #[cfg(test)]
 mod tests {
-    use alloy_primitives::B256;
+    use alloy_consensus::{EthereumReceipt, ReceiptEnvelope, TxType};
+    use alloy_primitives::{Address, B256, Bloom, Bytes, Log, LogData, b256};
 
     use super::*;
+
+    fn receipt_with_log() -> ReceiptEnvelope {
+        EthereumReceipt {
+            tx_type: TxType::Legacy,
+            success: true,
+            cumulative_gas_used: 21_000,
+            logs: vec![Log {
+                address: Address::repeat_byte(0x11),
+                data: LogData::new_unchecked(
+                    vec![b256!(
+                        "0x1111111111111111111111111111111111111111111111111111111111111111"
+                    )],
+                    Bytes::from_static(&[0x22]),
+                ),
+            }],
+        }
+        .into()
+    }
+
+    fn header_matching_receipts(receipts: &[ReceiptEnvelope]) -> Header {
+        let (receipts_root, logs_bloom) =
+            AlloyChainProvider::calculate_receipts_root_and_logs_bloom(receipts);
+
+        Header { receipts_root, logs_bloom, ..Default::default() }
+    }
+
+    #[test]
+    fn verify_receipts_root_and_logs_bloom_accepts_matching_header() {
+        let receipts = vec![receipt_with_log()];
+        let header = header_matching_receipts(&receipts);
+
+        AlloyChainProvider::verify_receipts_root_and_logs_bloom(&header, B256::ZERO, &receipts)
+            .expect("matching receipts should verify");
+    }
+
+    #[test]
+    fn verify_receipts_root_and_logs_bloom_rejects_root_mismatch() {
+        let receipts = vec![receipt_with_log()];
+        let mut header = header_matching_receipts(&receipts);
+        header.receipts_root = B256::repeat_byte(0xff);
+
+        let err =
+            AlloyChainProvider::verify_receipts_root_and_logs_bloom(&header, B256::ZERO, &receipts)
+                .expect_err("mismatched receipt root should fail");
+
+        assert!(matches!(err, AlloyChainProviderError::ReceiptsRootMismatch { .. }));
+    }
+
+    #[test]
+    fn verify_receipts_root_and_logs_bloom_rejects_bloom_mismatch() {
+        let receipts = vec![receipt_with_log()];
+        let mut header = header_matching_receipts(&receipts);
+        header.logs_bloom = Bloom::ZERO;
+
+        let err =
+            AlloyChainProvider::verify_receipts_root_and_logs_bloom(&header, B256::ZERO, &receipts)
+                .expect_err("mismatched logs bloom should fail");
+
+        assert!(matches!(err, AlloyChainProviderError::LogsBloomMismatch { .. }));
+    }
 
     #[test]
     fn test_from_alloy_chain_provider_error() {

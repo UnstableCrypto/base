@@ -17,6 +17,7 @@ workspace = true
 # Alloy
 alloy-rlp.workspace = true
 alloy-eips.workspace = true
+alloy-trie.workspace = true
 alloy-consensus.workspace = true
 alloy-primitives = { workspace = true, features = ["rlp"] }
 

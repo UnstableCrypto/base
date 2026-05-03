@@ -187,7 +187,10 @@ impl FollowNode {
         // Create the [`L1WatcherActor`]. Previously known as the DA watcher actor.
         let l1_watcher = L1WatcherActor::new(
             Arc::clone(&self.config),
-            AlloyL1BlockFetcher(self.l1_config.engine_provider.clone()),
+            AlloyL1BlockFetcher::new(
+                self.l1_config.engine_provider.clone(),
+                self.l1_config.trust_rpc,
+            ),
             l1_head_updates_tx.clone(),
             QueuedL1WatcherDerivationClient { derivation_actor_request_tx },
             None,
@@ -199,7 +202,10 @@ impl FollowNode {
         );
         let l1_query_processor = L1WatcherQueryProcessor::new(
             Arc::clone(&self.config),
-            AlloyL1BlockFetcher(self.l1_config.engine_provider.clone()),
+            AlloyL1BlockFetcher::new(
+                self.l1_config.engine_provider.clone(),
+                self.l1_config.trust_rpc,
+            ),
             l1_query_rx,
             l1_head_updates_tx.subscribe(),
             cancellation.clone(),

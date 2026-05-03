@@ -20,6 +20,9 @@ pub use receipts::{
     BaseReceipt, BaseReceiptEnvelope, BaseTxReceipt, DepositReceipt, DepositReceiptWithBloom,
 };
 
+mod receipt_root;
+pub use receipt_root::ReceiptRoot;
+
 mod transaction;
 #[cfg(feature = "serde")]
 pub use transaction::serde_deposit_tx_rpc;
