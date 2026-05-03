@@ -1,8 +1,10 @@
 use std::{fmt, net::SocketAddr, sync::Arc, time::Duration};
 
 use base_health::{HealthzApiServer, HealthzRpc};
-use base_proof_host::{ProverConfig, ProverRpc, ProverRpcError, ProverService};
-use base_proof_primitives::{EnclaveApiServer, ProverApiServer};
+use base_proof_host::{
+    ProverConfig, ProverRequestHandler, ProverRpc, ProverRpcError, ProverService,
+};
+use base_proof_primitives::{EnclaveApiServer, ProofRequest, ProofResult, ProverApiServer};
 use base_proof_tee_tdx_runtime::{TdxQuoteProvider, TdxRuntime};
 use jsonrpsee::{
     RpcModule,
@@ -16,10 +18,42 @@ use crate::{TdxBackend, TdxSignerAttestation};
 /// JSON-RPC attestation kind returned by TDX prover servers.
 pub const TDX_ATTESTATION_KIND: &str = "tdx";
 
-/// Host-side TDX prover server exposing the shared JSON-RPC interface.
-pub struct TdxProverServer<P> {
+/// One TDX enclave runtime and its proving service.
+pub struct TdxEnclaveService<P> {
     runtime: Arc<TdxRuntime<P>>,
     service: ProverService<TdxBackend<P>>,
+}
+
+impl<P> TdxEnclaveService<P>
+where
+    P: TdxQuoteProvider + fmt::Debug + 'static,
+{
+    /// Create a service wrapper for one TDX runtime.
+    pub fn new(config: ProverConfig, runtime: Arc<TdxRuntime<P>>) -> Self {
+        let backend = TdxBackend::new(Arc::clone(&runtime));
+        Self { runtime, service: ProverService::new(config, backend) }
+    }
+
+    /// Returns the runtime used for signer and quote collection calls.
+    pub const fn runtime(&self) -> &Arc<TdxRuntime<P>> {
+        &self.runtime
+    }
+
+    /// Returns the prover service for this enclave.
+    pub const fn service(&self) -> &ProverService<TdxBackend<P>> {
+        &self.service
+    }
+}
+
+impl<P> fmt::Debug for TdxEnclaveService<P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TdxEnclaveService").finish_non_exhaustive()
+    }
+}
+
+/// Host-side TDX prover server exposing the shared JSON-RPC interface.
+pub struct TdxProverServer<P> {
+    enclaves: Vec<TdxEnclaveService<P>>,
     proof_request_timeout: Duration,
 }
 
@@ -33,8 +67,25 @@ where
         runtime: Arc<TdxRuntime<P>>,
         proof_request_timeout: Duration,
     ) -> Self {
-        let backend = TdxBackend::new(Arc::clone(&runtime));
-        Self { runtime, service: ProverService::new(config, backend), proof_request_timeout }
+        Self::new_multi(config, vec![runtime], proof_request_timeout)
+    }
+
+    /// Create a server with multiple TDX runtimes for multi-enclave deployments.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `runtimes` is empty.
+    pub fn new_multi(
+        config: ProverConfig,
+        runtimes: Vec<Arc<TdxRuntime<P>>>,
+        proof_request_timeout: Duration,
+    ) -> Self {
+        assert!(!runtimes.is_empty(), "at least one runtime is required");
+        let enclaves = runtimes
+            .into_iter()
+            .map(|runtime| TdxEnclaveService::new(config.clone(), runtime))
+            .collect();
+        Self { enclaves, proof_request_timeout }
     }
 
     /// Start the JSON-RPC HTTP server on the given address.
@@ -51,9 +102,14 @@ where
     /// Build the JSON-RPC module served by this TDX prover.
     pub fn into_rpc_module(self) -> eyre::Result<RpcModule<()>> {
         let mut module = RpcModule::new(());
+        let runtimes = self.enclaves.iter().map(|enclave| Arc::clone(enclave.runtime())).collect();
+
         module.merge(HealthzRpc::new(env!("CARGO_PKG_VERSION")).into_rpc())?;
-        module.merge(ProverRpc::new(self.service, self.proof_request_timeout).into_rpc())?;
-        module.merge(TdxSignerRpc { runtime: self.runtime }.into_rpc())?;
+        module.merge(
+            ProverRpc::new(TdxProverHandler::new(self.enclaves), self.proof_request_timeout)
+                .into_rpc(),
+        )?;
+        module.merge(TdxSignerRpc::new(runtimes).into_rpc())?;
 
         Ok(module)
     }
@@ -65,15 +121,64 @@ impl<P> fmt::Debug for TdxProverServer<P> {
     }
 }
 
+/// Selects the TDX enclave that should serve a proof request.
+pub struct TdxProverHandler<P> {
+    /// TDX enclave services available for proving.
+    pub enclaves: Vec<TdxEnclaveService<P>>,
+}
+
+impl<P> TdxProverHandler<P> {
+    /// Create a proof request handler over all available TDX enclave services.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `enclaves` is empty.
+    pub fn new(enclaves: Vec<TdxEnclaveService<P>>) -> Self {
+        assert!(!enclaves.is_empty(), "at least one enclave is required");
+        Self { enclaves }
+    }
+}
+
+impl<P> fmt::Debug for TdxProverHandler<P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TdxProverHandler").field("enclave_count", &self.enclaves.len()).finish()
+    }
+}
+
+#[async_trait]
+impl<P> ProverRequestHandler for TdxProverHandler<P>
+where
+    P: TdxQuoteProvider + fmt::Debug + 'static,
+{
+    async fn prove_block(&self, request: ProofRequest) -> Result<ProofResult, ProverRpcError> {
+        // Constructor guarantees at least one enclave.
+        let enclave = &self.enclaves[0];
+
+        enclave.service().prove_block(request).await.map_err(|e| ProverRpcError::new(-32000, e))
+    }
+}
+
 /// Inner RPC handler for `enclave_*` methods.
 pub struct TdxSignerRpc<P> {
-    /// TDX runtime used for signer and quote collection calls.
-    pub runtime: Arc<TdxRuntime<P>>,
+    /// TDX runtimes used for signer and quote collection calls.
+    pub runtimes: Vec<Arc<TdxRuntime<P>>>,
 }
 
 impl<P> fmt::Debug for TdxSignerRpc<P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TdxSignerRpc").finish_non_exhaustive()
+        f.debug_struct("TdxSignerRpc").field("runtime_count", &self.runtimes.len()).finish()
+    }
+}
+
+impl<P> TdxSignerRpc<P> {
+    /// Create signer RPC over all available TDX runtimes.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `runtimes` is empty.
+    pub fn new(runtimes: Vec<Arc<TdxRuntime<P>>>) -> Self {
+        assert!(!runtimes.is_empty(), "at least one runtime is required");
+        Self { runtimes }
     }
 }
 
@@ -83,7 +188,7 @@ where
     P: TdxQuoteProvider + fmt::Debug + 'static,
 {
     async fn signer_public_key(&self) -> RpcResult<Vec<Vec<u8>>> {
-        Ok(vec![self.runtime.signer_public_key().to_vec()])
+        Ok(self.runtimes.iter().map(|runtime| runtime.signer_public_key().to_vec()).collect())
     }
 
     async fn signer_attestation(
@@ -104,16 +209,21 @@ where
             ));
         }
 
-        let signer_public_key = self.runtime.signer_public_key();
-        let quote =
-            self.runtime.signer_quote().map_err(|error| ProverRpcError::rpc_err(-32001, error))?;
-        let attestation = TdxSignerAttestation::new(
-            signer_public_key.to_vec().into(),
-            quote.quote,
-            quote.quote_timestamp_millis,
-        )
-        .encode();
-        Ok(vec![attestation])
+        let mut attestations = Vec::with_capacity(self.runtimes.len());
+        for runtime in &self.runtimes {
+            let signer_public_key = runtime.signer_public_key();
+            let quote =
+                runtime.signer_quote().map_err(|error| ProverRpcError::rpc_err(-32001, error))?;
+            attestations.push(
+                TdxSignerAttestation::new(
+                    signer_public_key.to_vec().into(),
+                    quote.quote,
+                    quote.quote_timestamp_millis,
+                )
+                .encode(),
+            );
+        }
+        Ok(attestations)
     }
 
     async fn attestation_kind(&self) -> RpcResult<String> {
@@ -134,6 +244,8 @@ mod tests {
     use crate::MeasuredMockTdxQuoteProvider;
 
     const TEST_KEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+    const SECOND_TEST_KEY: &str =
+        "0x59c6995e998f97a5a004497e5da276ed8c36d492db6c00f2f4e4f0a575a199d4";
 
     struct FailingProverHandler;
 
@@ -144,10 +256,17 @@ mod tests {
         }
     }
 
+    fn test_runtime(key: &str) -> Arc<TdxRuntime<MeasuredMockTdxQuoteProvider>> {
+        let signer = TdxSigner::from_hex(key).unwrap();
+        Arc::new(TdxRuntime::new(signer, MeasuredMockTdxQuoteProvider::local_mock()))
+    }
+
     fn test_rpc() -> TdxSignerRpc<MeasuredMockTdxQuoteProvider> {
-        let signer = TdxSigner::from_hex(TEST_KEY).unwrap();
-        let runtime = TdxRuntime::new(signer, MeasuredMockTdxQuoteProvider::local_mock());
-        TdxSignerRpc { runtime: Arc::new(runtime) }
+        TdxSignerRpc::new(vec![test_runtime(TEST_KEY)])
+    }
+
+    fn multi_test_rpc() -> TdxSignerRpc<MeasuredMockTdxQuoteProvider> {
+        TdxSignerRpc::new(vec![test_runtime(TEST_KEY), test_runtime(SECOND_TEST_KEY)])
     }
 
     #[tokio::test]
@@ -168,7 +287,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         let attestation = TdxSignerAttestation::decode(&result[0]).unwrap();
         let quote = base_proof_tee_tdx_verifier::TdxQuote::parse(&attestation.quote).unwrap();
-        assert_eq!(attestation.signer_public_key, rpc.runtime.signer_public_key().to_vec());
+        assert_eq!(attestation.signer_public_key, rpc.runtimes[0].signer_public_key().to_vec());
         assert_eq!(
             quote.report_data_suffix(),
             base_proof_tee_tdx_verifier::TdxVerifier::timestamp_report_data_suffix(
@@ -205,6 +324,33 @@ mod tests {
         let result = EnclaveApiServer::attestation_kind(&rpc).await.unwrap();
 
         assert_eq!(result, TDX_ATTESTATION_KIND);
+    }
+
+    #[tokio::test]
+    async fn signer_public_key_serves_all_tdx_signer_keys() {
+        let rpc = multi_test_rpc();
+        let result = EnclaveApiServer::signer_public_key(&rpc).await.unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], rpc.runtimes[0].signer_public_key().to_vec());
+        assert_eq!(result[1], rpc.runtimes[1].signer_public_key().to_vec());
+        assert_ne!(result[0], result[1]);
+    }
+
+    #[tokio::test]
+    async fn signer_attestation_serves_all_tdx_payloads() {
+        let rpc = multi_test_rpc();
+        let result = EnclaveApiServer::signer_attestation(&rpc, None, None).await.unwrap();
+
+        assert_eq!(result.len(), 2);
+        for (index, payload) in result.iter().enumerate() {
+            let attestation = TdxSignerAttestation::decode(payload).unwrap();
+            assert_eq!(
+                attestation.signer_public_key,
+                rpc.runtimes[index].signer_public_key().to_vec()
+            );
+            assert!(base_proof_tee_tdx_verifier::TdxQuote::parse(&attestation.quote).is_ok());
+        }
     }
 
     #[tokio::test]

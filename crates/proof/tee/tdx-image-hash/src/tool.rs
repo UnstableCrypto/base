@@ -258,7 +258,7 @@ mod tests {
         let signer = TdxSigner::from_hex(TEST_KEY).unwrap();
         let runtime = Arc::new(TdxRuntime::new(signer, MeasuredMockTdxQuoteProvider::local_mock()));
         let mut module = RpcModule::new(());
-        module.merge(TdxSignerRpc { runtime }.into_rpc()).unwrap();
+        module.merge(TdxSignerRpc::new(vec![runtime]).into_rpc()).unwrap();
         let server =
             Server::builder().build("127.0.0.1:0".parse::<SocketAddr>().unwrap()).await.unwrap();
         let addr = server.local_addr().unwrap();

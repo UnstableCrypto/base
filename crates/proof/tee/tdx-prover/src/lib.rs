@@ -19,4 +19,6 @@ mod oracle;
 pub use oracle::Oracle;
 
 mod server;
-pub use server::{TDX_ATTESTATION_KIND, TdxProverServer, TdxSignerRpc};
+pub use server::{
+    TDX_ATTESTATION_KIND, TdxEnclaveService, TdxProverHandler, TdxProverServer, TdxSignerRpc,
+};
