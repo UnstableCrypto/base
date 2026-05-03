@@ -35,6 +35,130 @@ keccak256(MRTD || RTMR0 || RTMR1 || RTMR2 || RTMR3)
 
 It is not raw MRTD and not `keccak256(MRTD)`.
 
+## Shared GCP SSH And Tunnel Access
+
+Any phase that reaches the real GCP TDX prover should use the same SSH and
+tunnel process. Keep the POC closed to public inbound traffic and expose the
+prover RPC through a local SSH tunnel. SSH must still be reachable through an
+approved operational path. Prefer VPN or IAP access. If IAP is used, the caller
+needs permission to create IAP TCP tunnels and the VPC needs an ingress rule
+from `35.235.240.0/20` to TCP port 22 for the VM tag.
+
+If the normal operational path is available, open the tunnel with:
+
+```sh
+gcloud compute ssh "$TDX_VM_NAME" --project "$PROJECT_ID" --zone "$ZONE" -- \
+  -L 7310:127.0.0.1:7310
+```
+
+For shared test sessions in this project, do not assume `gcloud compute ssh` or
+IAP tunneling will work. If they hang or time out, use the project-specific
+direct SSH workaround below. This workaround connects directly to the VM public
+IP as the username from project SSH metadata and, only when needed, adds a
+temporary tag-scoped firewall rule for the operator's public `/32`.
+
+### SSH Access Workaround
+
+First identify the VM, zone, network, public IP, and tags:
+
+```sh
+gcloud compute instances list \
+  --project "$PROJECT_ID" \
+  --filter='name~tdx OR tags.items=base-tdx-prover' \
+  --format='table(name,zone,status,networkInterfaces[0].networkIP,networkInterfaces[0].accessConfigs[0].natIP,tags.items)'
+```
+
+Set `TDX_VM_NAME`, `ZONE`, `TDX_VM_PUBLIC_IP`, and `TDX_NETWORK` from that
+output and the instance network description. For the existing POC VM used in
+earlier phases, those values were:
+
+```sh
+export TDX_VM_NAME="base-tdx-prover-poc"
+export ZONE="us-east4-a"
+export TDX_VM_PUBLIC_IP="35.199.48.239"
+export TDX_NETWORK="vpc-d-base-dev"
+```
+
+Confirm the SSH username and key in project metadata. The username is the text
+before the first colon in the matching `ssh-keys` entry, for example
+`jackchuma`:
+
+```sh
+gcloud compute project-info describe \
+  --project "$PROJECT_ID" \
+  --format='json(commonInstanceMetadata.items)'
+```
+
+```sh
+export TDX_SSH_USER="jackchuma"
+```
+
+Try direct SSH with the metadata username and the GCE SSH key:
+
+```sh
+ssh -i ~/.ssh/google_compute_engine \
+  -o BatchMode=yes \
+  -o ConnectTimeout=15 \
+  "$TDX_SSH_USER@$TDX_VM_PUBLIC_IP" \
+  'hostname && whoami'
+```
+
+If direct SSH times out and the normal VPN/IAP path is not available, add a
+temporary source-restricted firewall rule. Use the VM network from the instance
+description, the VM tag `base-tdx-prover`, and the operator's IPv4 `/32`:
+
+```sh
+export OPERATOR_IPV4="$(curl -s https://api.ipify.org)"
+export TDX_TEMP_SSH_RULE="base-tdx-prover-ssh-${USER}-$(date +%Y%m%d)"
+
+gcloud compute firewall-rules create "$TDX_TEMP_SSH_RULE" \
+  --project "$PROJECT_ID" \
+  --network "$TDX_NETWORK" \
+  --direction INGRESS \
+  --priority 1000 \
+  --action ALLOW \
+  --rules tcp:22 \
+  --source-ranges "$OPERATOR_IPV4/32" \
+  --target-tags base-tdx-prover \
+  --description "Temporary source-restricted SSH access for TDX test"
+```
+
+Open the local RPC tunnel with direct SSH:
+
+```sh
+ssh -i ~/.ssh/google_compute_engine \
+  -o BatchMode=yes \
+  -o ConnectTimeout=15 \
+  -N \
+  -L 127.0.0.1:7310:127.0.0.1:7310 \
+  "$TDX_SSH_USER@$TDX_VM_PUBLIC_IP"
+```
+
+In another terminal, verify the tunnel before continuing to any phase that uses
+the real GCP TDX prover:
+
+```sh
+curl -s http://127.0.0.1:7310 \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"enclave_attestationKind","params":[]}'
+```
+
+Expected:
+
+- The response contains `"result":"tdx"`.
+- The local tunnel is listening only on `127.0.0.1:7310`.
+
+When the test session ends, close the tunnel and delete the temporary firewall
+rule if one was created:
+
+```sh
+gcloud compute firewall-rules delete "$TDX_TEMP_SSH_RULE" \
+  --project "$PROJECT_ID" \
+  --quiet
+```
+
+Do not leave temporary public SSH access in place after the test session.
+
 ## Reference Surfaces In This Repo
 
 - TDX prover binary:
@@ -216,19 +340,9 @@ gcloud compute instances create "$TDX_VM_NAME" \
   --tags base-tdx-prover
 ```
 
-Keep the first POC closed to public inbound traffic. Use SSH tunneling for RPC:
-
-```sh
-gcloud compute ssh "$TDX_VM_NAME" --project "$PROJECT_ID" --zone "$ZONE" -- \
-  -L 7310:127.0.0.1:7310
-```
-
-SSH must still be reachable through an approved operational path. Prefer VPN or
-IAP access. If IAP is used, the caller needs permission to create IAP TCP
-tunnels and the VPC needs an ingress rule from `35.235.240.0/20` to TCP port
-22 for the VM tag. If a temporary public SSH rule is used for a smoke test, make
-it tag-scoped and source-restricted to the operator's `/32`, then remove it
-after the test.
+Keep the first POC closed to public inbound traffic. Use the shared GCP SSH and
+tunnel process above before running any command that reaches the VM or the
+`127.0.0.1:7310` prover endpoint.
 
 ### Verify TDX And TSM/configfs Inside The VM
 
@@ -650,6 +764,7 @@ Check:
 
 - [ ] Local TDX package tests pass.
 - [ ] Local mock TDX prover RPC smoke test passes.
+- [ ] Test-session SSH workaround is applied and the local TDX tunnel is active.
 - [ ] GCP TDX VM boots with TSM/configfs quote support.
 - [ ] Real TDX prover returns `enclave_attestationKind == "tdx"`.
 - [ ] Real TDX prover returns a stable signer public key.
