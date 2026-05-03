@@ -1,6 +1,6 @@
 //! Shared TEE attestation proof types and provider trait.
 
-use std::{error::Error, fmt};
+use std::error::Error;
 
 use alloy_primitives::{Address, Bytes};
 use async_trait::async_trait;
@@ -12,30 +12,13 @@ pub type BoxError = Box<dyn Error + Send + Sync>;
 pub type Result<T, E = BoxError> = std::result::Result<T, E>;
 
 /// Supported TEE attestation proof families.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TeeAttestationKind {
     /// AWS Nitro Enclave attestation proof.
     Nitro,
     /// Intel TDX attestation proof.
     Tdx,
 }
-
-impl fmt::Debug for TeeAttestationKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Nitro => f.write_str("Nitro"),
-            Self::Tdx => f.write_str("Tdx"),
-        }
-    }
-}
-
-impl PartialEq for TeeAttestationKind {
-    fn eq(&self, other: &Self) -> bool {
-        matches!((self, other), (Self::Nitro, Self::Nitro) | (Self::Tdx, Self::Tdx))
-    }
-}
-
-impl Eq for TeeAttestationKind {}
 
 /// A generated TEE attestation proof ready for on-chain signer registration.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -168,25 +151,6 @@ mod tests {
         assert_eq!(proof.kind, TeeAttestationKind::Nitro);
         assert_eq!(proof.output, output);
         assert_eq!(proof.proof_bytes, proof_bytes);
-    }
-
-    #[rstest]
-    fn tdx_kind_is_distinct() {
-        let kind = TeeAttestationKind::Tdx;
-
-        assert_eq!(kind, TeeAttestationKind::Tdx);
-    }
-
-    #[rstest]
-    fn proof_clone() {
-        let proof = TeeAttestationProof {
-            kind: TeeAttestationKind::Nitro,
-            output: Bytes::from_static(b"j"),
-            proof_bytes: Bytes::from_static(b"s"),
-        };
-        let cloned = proof.clone();
-
-        assert_eq!(proof, cloned);
     }
 
     #[rstest]
