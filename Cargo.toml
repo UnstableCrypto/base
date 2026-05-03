@@ -236,11 +236,11 @@ base-zk-db = { path = "crates/proof/zk/db" }
 base-zk-outbox = { path = "crates/proof/zk/outbox" }
 base-zk-service = { path = "crates/proof/zk/service" }
 base-challenger = { path = "crates/proof/challenge" }
-base-proof-tee-attestation = { path = "crates/proof/tee/attestation" }
 base-proof-tee-registrar = { path = "crates/proof/tee/registrar" }
 base-proof-tee-nitro-host = { path = "crates/proof/tee/nitro-host" }
-base-proof = { path = "crates/proof/proof", default-features = false }
 base-proof-tee-tdx-prover = { path = "crates/proof/tee/tdx-prover" }
+base-proof = { path = "crates/proof/proof", default-features = false }
+base-proof-tee-attestation = { path = "crates/proof/tee/attestation" }
 base-proof-tee-tdx-runtime = { path = "crates/proof/tee/tdx-runtime" }
 base-proof-mpt = { path = "crates/proof/mpt", default-features = false }
 base-proof-tee-tdx-verifier = { path = "crates/proof/tee/tdx-verifier" }
