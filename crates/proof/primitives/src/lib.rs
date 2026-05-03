@@ -16,7 +16,7 @@ pub use proposal::{ECDSA_SIGNATURE_LENGTH, PROOF_JOURNAL_BASE_LENGTH, ProofJourn
 
 mod proof_encoder;
 pub use proof_encoder::{
-    CryptoError, DUAL_TEE_SIGNATURE_COUNT, DUAL_TEE_SIGNATURE_LENGTH, PROOF_TYPE_TEE,
+    CryptoError, DUAL_TEE_SIGNATURE_COUNT, DUAL_TEE_SIGNATURE_LENGTH, L1Origin, PROOF_TYPE_TEE,
     PROOF_TYPE_ZK, ProofEncoder,
 };
 
