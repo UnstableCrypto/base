@@ -32,6 +32,7 @@ members = [
   "crates/proof/tee/registrar",
   "crates/proof/tee/nitro-verifier",
   "crates/proof/tee/tdx-verifier",
+  "crates/proof/tee/tdx-collateral",
   "crates/proof/tee/tdx-runtime",
   "crates/proof/tee/tdx-image-hash",
   "crates/proof/tee/nitro-attestation-prover",
@@ -247,6 +248,7 @@ base-proof-mpt = { path = "crates/proof/mpt", default-features = false }
 base-proof-tee-tdx-verifier = { path = "crates/proof/tee/tdx-verifier" }
 base-proof-tee-nitro-enclave = { path = "crates/proof/tee/nitro-enclave" }
 base-proof-host = { path = "crates/proof/host", default-features = false }
+base-proof-tee-tdx-collateral = { path = "crates/proof/tee/tdx-collateral" }
 base-proof-tee-nitro-verifier = { path = "crates/proof/tee/nitro-verifier" }
 base-proof-client = { path = "crates/proof/client", default-features = false }
 base-proof-driver = { path = "crates/proof/driver", default-features = false }

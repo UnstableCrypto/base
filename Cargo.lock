@@ -5291,7 +5291,7 @@ dependencies = [
  "base-proof-tee-attestation",
  "base-proof-tee-nitro-verifier",
  "base-proof-tee-tdx-attestation-prover",
- "base-proof-tee-tdx-prover",
+ "base-proof-tee-tdx-collateral",
  "base-proof-tee-tdx-verifier",
  "base-tx-manager",
  "futures",
@@ -5303,7 +5303,6 @@ dependencies = [
  "rand 0.9.4",
  "reqwest 0.13.2",
  "rstest",
- "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.18",
  "tokio",
@@ -5366,6 +5365,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "base-proof-tee-tdx-collateral"
+version = "0.0.0"
+dependencies = [
+ "alloy-primitives",
+ "base-proof-tee-tdx-attestation-prover",
+ "base-proof-tee-tdx-verifier",
+ "reqwest 0.13.2",
+ "rstest",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+ "x509-parser",
+]
+
+[[package]]
 name = "base-proof-tee-tdx-image-hash"
 version = "0.0.0"
 dependencies = [
@@ -5374,6 +5390,7 @@ dependencies = [
  "base-proof-contracts",
  "base-proof-primitives",
  "base-proof-tee-registrar",
+ "base-proof-tee-tdx-collateral",
  "base-proof-tee-tdx-prover",
  "base-proof-tee-tdx-runtime",
  "base-proof-tee-tdx-verifier",

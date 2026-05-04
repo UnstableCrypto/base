@@ -1,4 +1,5 @@
 use base_proof_tee_attestation::{BoxError, TeeAttestationKind};
+use base_proof_tee_tdx_collateral::TdxCollateralError;
 use base_tx_manager::TxManagerError;
 use thiserror::Error;
 
@@ -99,6 +100,12 @@ impl From<BoxError> for RegistrarError {
 impl From<TxManagerError> for RegistrarError {
     fn from(e: TxManagerError) -> Self {
         Self::Transaction(Box::new(e))
+    }
+}
+
+impl From<TdxCollateralError> for RegistrarError {
+    fn from(e: TdxCollateralError) -> Self {
+        Self::TdxAttestation(Box::new(e))
     }
 }
 

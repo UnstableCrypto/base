@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use alloy_primitives::{Address, B256};
-use base_proof_tee_registrar::TdxAttestationConfig;
+use base_proof_tee_tdx_collateral::TdxAttestationConfig;
 use base_proof_tee_tdx_verifier::TDXTcbStatus;
 use clap::{Parser, ValueEnum};
 use eyre::Result;
@@ -164,7 +164,7 @@ impl TdxTcbStatusArg {
 
 #[cfg(test)]
 mod tests {
-    use base_proof_tee_registrar::DEFAULT_TDX_TRUSTED_ROOT_CA_HASH;
+    use base_proof_tee_tdx_collateral::DEFAULT_TDX_TRUSTED_ROOT_CA_HASH;
     use clap::Parser as _;
 
     use super::*;

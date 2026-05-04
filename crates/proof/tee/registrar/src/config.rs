@@ -1,8 +1,8 @@
 use std::{net::SocketAddr, path::PathBuf, time::Duration};
 
-use alloy_primitives::{Address, B256, b256};
+use alloy_primitives::Address;
 use alloy_signer_local::PrivateKeySigner;
-use base_proof_tee_tdx_verifier::TDXTcbStatus;
+use base_proof_tee_tdx_collateral::TdxAttestationConfig;
 use base_tx_manager::{SignerConfig, TxManagerConfig};
 use url::Url;
 
@@ -50,14 +50,6 @@ pub const DEFAULT_MAX_RECOVERY_ATTEMPTS: u32 = 5;
 /// Set to 3300 s (55 minutes), slightly under the on-chain `MAX_AGE` of
 /// 60 minutes, to account for clock skew and processing delays.
 pub const DEFAULT_MAX_ATTESTATION_AGE_SECS: u64 = 3300;
-
-/// Default maximum accepted age for TDX quotes in seconds.
-pub const DEFAULT_TDX_MAX_QUOTE_AGE_SECS: u64 = 300;
-
-/// Keccak-256 hash of Intel's production SGX/TDX Provisioning Certification
-/// Root CA DER certificate for PCS API v4.
-pub const DEFAULT_TDX_TRUSTED_ROOT_CA_HASH: B256 =
-    b256!("a1acc73eb45794fa1734f14d882e91925b6006f79d3bb2460df9d01b333d7009");
 
 /// Boundless Network configuration for ZK proof generation.
 #[derive(Clone)]
@@ -160,51 +152,6 @@ pub struct TdxBoundlessConfig {
     pub max_recovery_attempts: u32,
     /// Maximum accepted age for recovered TDX quote proofs.
     pub max_recovered_quote_age: Duration,
-}
-
-/// Intel PCS and verifier policy configuration for TDX attestation hydration.
-#[derive(Clone)]
-pub struct TdxAttestationConfig {
-    /// Intel TDX PCS API base URL.
-    pub pcs_tdx_base_url: Url,
-    /// Trusted Intel SGX/TDX root CA certificate hash expected by the verifier.
-    pub trusted_root_ca_hash: B256,
-    /// Maximum accepted TDX quote age.
-    pub max_quote_age: Duration,
-    /// Contract TCB statuses accepted by verifier policy.
-    pub allowed_tcb_statuses: Vec<TDXTcbStatus>,
-    /// HTTP timeout for Intel PCS collateral and CRL fetches.
-    pub fetch_timeout: Duration,
-}
-
-impl std::fmt::Debug for TdxAttestationConfig {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let allowed_tcb_statuses =
-            self.allowed_tcb_statuses.iter().map(|status| *status as u8).collect::<Vec<_>>();
-        f.debug_struct("TdxAttestationConfig")
-            .field("pcs_tdx_base_url", &url_origin(&self.pcs_tdx_base_url))
-            .field("trusted_root_ca_hash", &self.trusted_root_ca_hash)
-            .field("max_quote_age", &self.max_quote_age)
-            .field("allowed_tcb_statuses", &allowed_tcb_statuses)
-            .field("fetch_timeout", &self.fetch_timeout)
-            .finish()
-    }
-}
-
-impl TdxAttestationConfig {
-    /// Returns the default Intel PCS TDX attestation hydration configuration.
-    pub fn intel_pcs() -> Self {
-        Self {
-            pcs_tdx_base_url: Url::parse(
-                "https://api.trustedservices.intel.com/tdx/certification/v4/",
-            )
-            .expect("default Intel PCS URL must be valid"),
-            trusted_root_ca_hash: DEFAULT_TDX_TRUSTED_ROOT_CA_HASH,
-            max_quote_age: Duration::from_secs(DEFAULT_TDX_MAX_QUOTE_AGE_SECS),
-            allowed_tcb_statuses: vec![TDXTcbStatus::UpToDate],
-            fetch_timeout: Duration::from_secs(crate::DEFAULT_CRL_FETCH_TIMEOUT_SECS),
-        }
-    }
 }
 
 impl std::fmt::Debug for TdxBoundlessConfig {
@@ -340,6 +287,6 @@ mod tests {
     fn intel_pcs_pins_production_root_ca_hash() {
         let config = TdxAttestationConfig::intel_pcs();
 
-        assert_eq!(config.trusted_root_ca_hash, DEFAULT_TDX_TRUSTED_ROOT_CA_HASH);
+        assert_eq!(config.trusted_root_ca_hash, crate::DEFAULT_TDX_TRUSTED_ROOT_CA_HASH);
     }
 }

@@ -1,6 +1,12 @@
 #![doc = include_str!("../README.md")]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
+mod attestation;
+pub use attestation::{
+    TDX_SIGNER_ATTESTATION_HEADER_LEN, TDX_SIGNER_ATTESTATION_MAGIC, TdxSignerAttestation,
+    TdxSignerAttestationDecodeError,
+};
+
 mod collateral;
 pub use collateral::{
     AuthenticatedTdxCertificate, AuthenticatedTdxCrl, CollateralVerifier,

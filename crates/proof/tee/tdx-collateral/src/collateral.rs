@@ -1,4 +1,4 @@
-//! TDX attestation hydration for registrar proof generation.
+//! TDX attestation collateral hydration for proof generation.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -10,12 +10,11 @@ use std::{
 
 use alloy_primitives::{Address, B256, Bytes, hex};
 use base_proof_tee_tdx_attestation_prover::TdxAttestationProverInput;
-use base_proof_tee_tdx_prover::TdxSignerAttestation;
 use base_proof_tee_tdx_verifier::{
     AuthenticatedTdxCertificate, CollateralVerifier, ParsedTdxQuote, TdxCertificate,
     TdxCertificateRevocationList, TdxCollateral, TdxPckTcb, TdxPlatformIdentity, TdxQuote,
     TdxQuotePolicy, TdxRevocationEvidence, TdxSignedCollateral, TdxSignedCollateralBody,
-    TdxVerifierError, TdxVerifierInput,
+    TdxSignerAttestation, TdxVerifierError, TdxVerifierInput,
 };
 use reqwest::{
     StatusCode,
@@ -29,9 +28,7 @@ use x509_parser::{
     prelude::FromDer,
 };
 
-use crate::{
-    RegistrarError, RegistrarMetrics, Result, TdxAttestationConfig, crl::build_crl_http_client,
-};
+use crate::{Result, TdxAttestationConfig, TdxCollateralError, build_tdx_collateral_http_client};
 
 /// Maximum allowed Intel PCS response size.
 pub const MAX_TDX_COLLATERAL_RESPONSE_BYTES: u64 = 10 * 1024 * 1024;
@@ -192,8 +189,8 @@ pub struct TdxAttestationHydrator {
 impl TdxAttestationHydrator {
     /// Creates a hydrator with a hardened HTTP client.
     pub fn new(config: TdxAttestationConfig) -> Result<Self> {
-        let client = build_crl_http_client(config.fetch_timeout)
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+        let client = build_tdx_collateral_http_client(config.fetch_timeout)
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         Ok(Self { config, client, cache: Arc::new(Mutex::new(TdxCollateralCache::default())) })
     }
 
@@ -245,7 +242,7 @@ impl TdxAttestationHydrator {
             Err(signer_attestation_error) => {
                 let prover_input = TdxAttestationProverInput::decode(attestation_bytes).map_err(
                     |prover_input_error| {
-                        RegistrarError::TdxAttestation(Box::new(
+                        TdxCollateralError::source(Box::new(
                             TdxHydrationError::AttestationPayloadDecode {
                                 signer_attestation_error: signer_attestation_error.to_string(),
                                 prover_input_error: prover_input_error.to_string(),
@@ -265,31 +262,25 @@ impl TdxAttestationHydrator {
 
     /// Fetches Intel PCS collateral and CRLs required to verify `quote`.
     pub async fn fetch_collateral(&self, quote: &[u8]) -> Result<TdxCollateralFetch> {
-        match self.fetch_collateral_inner(quote).await {
-            Ok(fetch) => Ok(fetch),
-            Err(error) => {
-                RegistrarMetrics::tdx_collateral_fetch_failures_total().increment(1);
-                Err(error)
-            }
-        }
+        self.fetch_collateral_inner(quote).await
     }
 
     /// Fetches Intel PCS collateral and CRLs required to verify `quote`.
     pub async fn fetch_collateral_inner(&self, quote: &[u8]) -> Result<TdxCollateralFetch> {
         let parsed_quote =
-            TdxQuote::parse(quote).map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            TdxQuote::parse(quote).map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         let pck_certificate_chain = Self::pck_certificate_chain_from_quote(&parsed_quote)?;
         Self::verify_trusted_root_ca_hash(
             &pck_certificate_chain,
             self.config.trusted_root_ca_hash,
         )?;
-        let pck_leaf = pck_certificate_chain.last().ok_or_else(|| {
-            RegistrarError::TdxAttestation("PCK certificate chain is empty".into())
-        })?;
+        let pck_leaf = pck_certificate_chain
+            .last()
+            .ok_or_else(|| TdxCollateralError::source("PCK certificate chain is empty"))?;
         let platform = TdxPlatformIdentity::from_pck_certificate_der(&pck_leaf.raw)
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         let pck_tcb = TdxPckTcb::from_pck_certificate_der(&pck_leaf.raw)
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
 
         let verification_time = Self::now_seconds()?;
         let lookup = Self::collateral_cache_lookup(
@@ -311,7 +302,7 @@ impl TdxAttestationHydrator {
             tokio::try_join!(self.fetch_tcb_info(&platform), self.fetch_qe_identity())?;
         let tcb_status = tcb_info
             .tcb_status_for_quote(&parsed_quote, &pck_tcb)
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         let collateral = TdxCollateral { tcb_info, qe_identity, tcb_status };
         let revocation = self
             .fetch_revocation_evidence(&[
@@ -331,22 +322,15 @@ impl TdxAttestationHydrator {
         {
             self.cache_lock()?.insert(lookup, expiration, fetch.clone());
         }
-        self.record_collateral_cache_earliest_expiration(verification_time)?;
         Ok(fetch)
     }
 
-    fn cache_poisoned_error(error: String) -> RegistrarError {
-        RegistrarError::TdxAttestation(Box::new(TdxHydrationError::CachePoisoned { error }))
+    fn cache_poisoned_error(error: String) -> TdxCollateralError {
+        TdxCollateralError::source(Box::new(TdxHydrationError::CachePoisoned { error }))
     }
 
     fn cache_lock(&self) -> Result<std::sync::MutexGuard<'_, TdxCollateralCache>> {
         self.cache.lock().map_err(|e| Self::cache_poisoned_error(e.to_string()))
-    }
-
-    fn record_collateral_cache_earliest_expiration(&self, verification_time: u64) -> Result<()> {
-        let expiration = self.cache_lock()?.earliest_expiration(verification_time).unwrap_or(0);
-        RegistrarMetrics::tdx_collateral_earliest_expiration().set(expiration as f64);
-        Ok(())
     }
 
     /// Verifies host-side collateral and returns the earliest accepted expiration.
@@ -361,11 +345,11 @@ impl TdxAttestationHydrator {
             verification_time,
             &fetch.revocation,
         )
-        .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+        .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         TdxQuote::verify_qe_report(parsed_quote, &pck_leaf_key)
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         TdxQuote::verify_signature(parsed_quote)
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
 
         for (collateral, body_kind, error_mapper) in [
             (
@@ -387,46 +371,44 @@ impl TdxAttestationHydrator {
                 &fetch.revocation,
                 error_mapper,
             )
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         }
 
         let pck_leaf = fetch.pck_certificate_chain.last().ok_or_else(|| {
-            RegistrarError::TdxAttestation(Box::new(TdxVerifierError::PckCertChainInvalid(
+            TdxCollateralError::source(Box::new(TdxVerifierError::PckCertChainInvalid(
                 "certificate chain is empty".into(),
             )))
         })?;
         let pck_platform = TdxPlatformIdentity::from_pck_certificate_der(&pck_leaf.raw)
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         let pck_tcb = TdxPckTcb::from_pck_certificate_der(&pck_leaf.raw)
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         let tcb_info_document = fetch
             .collateral
             .tcb_info
             .tcb_info_document()
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         tcb_info_document
             .tcb_info
             .verify_platform(&pck_platform)
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         let qe_identity_document = fetch
             .collateral
             .qe_identity
             .qe_identity_document()
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         qe_identity_document
             .enclave_identity
             .verify_qe_report(parsed_quote)
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         let tcb_status = tcb_info_document
             .tcb_info
             .tcb_status_for_quote(parsed_quote, &pck_tcb)
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         if tcb_status != fetch.collateral.tcb_status {
-            return Err(RegistrarError::TdxAttestation(Box::new(
-                TdxVerifierError::TcbInfoInvalid(
-                    "collateral TCB status does not match quote".into(),
-                ),
-            )));
+            return Err(TdxCollateralError::source(Box::new(TdxVerifierError::TcbInfoInvalid(
+                "collateral TCB status does not match quote".into(),
+            ))));
         }
 
         Self::validate_collateral_freshness(fetch, verification_time)
@@ -435,7 +417,7 @@ impl TdxAttestationHydrator {
     fn now_seconds() -> Result<u64> {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))
             .map(|duration| duration.as_secs())
     }
 
@@ -446,13 +428,13 @@ impl TdxAttestationHydrator {
     ) -> Result<u64> {
         let quote_timestamp_seconds = quote_timestamp_millis / 1_000;
         if quote_timestamp_seconds > now_seconds {
-            return Err(RegistrarError::TdxAttestation(Box::new(
+            return Err(TdxCollateralError::source(Box::new(
                 TdxHydrationError::FutureQuoteTimestamp { quote_timestamp_seconds, now_seconds },
             )));
         }
         if quote_timestamp_seconds == now_seconds {
             return now_seconds.checked_add(1).ok_or_else(|| {
-                RegistrarError::TdxAttestation(Box::new(TdxHydrationError::TimestampOverflow))
+                TdxCollateralError::source(Box::new(TdxHydrationError::TimestampOverflow))
             });
         }
         Ok(now_seconds)
@@ -466,7 +448,7 @@ impl TdxAttestationHydrator {
     ) -> Result<TdxCollateralCacheLookup> {
         let issuer = pck_certificate_chain
             .first()
-            .ok_or_else(|| RegistrarError::TdxAttestation("certificate chain is empty".into()))?
+            .ok_or_else(|| TdxCollateralError::source("certificate chain is empty"))?
             .hash();
         let pck_issuer = pck_certificate_chain
             .iter()
@@ -514,7 +496,7 @@ impl TdxAttestationHydrator {
             if verification_time < certificate.not_before
                 || verification_time >= certificate.not_after
             {
-                return Err(RegistrarError::TdxAttestation(Box::new(
+                return Err(TdxCollateralError::source(Box::new(
                     TdxVerifierError::CollateralExpired,
                 )));
             }
@@ -543,7 +525,7 @@ impl TdxAttestationHydrator {
             let crl_expiration = fetch
                 .revocation
                 .certificate_chain_next_update(chain, verification_time)
-                .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+                .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
             expiration = expiration.min(crl_expiration);
         }
 
@@ -562,18 +544,16 @@ impl TdxAttestationHydrator {
         };
         let validity = collateral
             .signed_validity(body_kind, error_mapper)
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         if collateral.issue_time != validity.issue_time
             || collateral.next_update != validity.next_update
         {
-            return Err(RegistrarError::TdxAttestation(Box::new(error_mapper(
+            return Err(TdxCollateralError::source(Box::new(error_mapper(
                 "explicit collateral validity does not match signed JSON".into(),
             ))));
         }
         if verification_time < validity.issue_time || verification_time >= validity.next_update {
-            return Err(RegistrarError::TdxAttestation(Box::new(
-                TdxVerifierError::CollateralExpired,
-            )));
+            return Err(TdxCollateralError::source(Box::new(TdxVerifierError::CollateralExpired)));
         }
         Ok(validity.next_update)
     }
@@ -597,14 +577,13 @@ impl TdxAttestationHydrator {
             Ok(tcb_status) => tcb_status,
             Err(error) => {
                 debug!(error = %error, "cached TDX collateral failed quote TCB matching");
-                return Err(RegistrarError::TdxAttestation(Box::new(error)));
+                return Err(TdxCollateralError::source(Box::new(error)));
             }
         };
         fetch.collateral.tcb_status = tcb_status;
 
         match Self::verify_collateral_for_quote(&fetch, parsed_quote, verification_time) {
             Ok(expiration) => {
-                self.record_collateral_cache_earliest_expiration(verification_time)?;
                 debug!(
                     expiration,
                     cache_key_expiration = entry.key.expiration,
@@ -623,7 +602,7 @@ impl TdxAttestationHydrator {
         parsed_quote: &ParsedTdxQuote,
     ) -> Result<Vec<TdxCertificate>> {
         if parsed_quote.certification_data_type != PCK_CERT_CHAIN_CERTIFICATION_DATA_TYPE {
-            return Err(RegistrarError::TdxAttestation(Box::new(
+            return Err(TdxCollateralError::source(Box::new(
                 TdxHydrationError::UnsupportedCertificationData {
                     actual: parsed_quote.certification_data_type,
                 },
@@ -637,7 +616,7 @@ impl TdxAttestationHydrator {
             .config
             .pcs_tdx_base_url
             .join("tcb")
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         url.query_pairs_mut()
             .append_pair("fmspc", &hex::encode(&platform.fmspc))
             .append_pair("pceid", &hex::encode(&platform.pce_id));
@@ -663,7 +642,7 @@ impl TdxAttestationHydrator {
             .config
             .pcs_tdx_base_url
             .join("qe/identity")
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         let chain_headers = [HeaderName::from_static(QE_IDENTITY_ISSUER_CHAIN_HEADER)];
         self.fetch_signed_collateral(url, &chain_headers, None, TdxSignedCollateralBody::QeIdentity)
             .await
@@ -700,7 +679,7 @@ impl TdxAttestationHydrator {
         };
         let validity = collateral
             .signed_validity(body_kind, error_mapper)
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         Ok(TdxSignedCollateral {
             issue_time: validity.issue_time,
             next_update: validity.next_update,
@@ -721,9 +700,9 @@ impl TdxAttestationHydrator {
                     continue;
                 }
                 let url = url::Url::parse(&crl_url)
-                    .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+                    .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
                 if !Self::is_allowed_intel_url(&url) {
-                    return Err(RegistrarError::TdxAttestation(Box::new(
+                    return Err(TdxCollateralError::source(Box::new(
                         TdxHydrationError::DisallowedCrlHost { url: crl_url },
                     )));
                 }
@@ -741,9 +720,9 @@ impl TdxAttestationHydrator {
             .get(url.clone())
             .send()
             .await
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         if !response.status().is_success() {
-            return Err(RegistrarError::TdxAttestation(Box::new(TdxHydrationError::HttpStatus {
+            return Err(TdxCollateralError::source(Box::new(TdxHydrationError::HttpStatus {
                 url: url.to_string(),
                 status: response.status(),
             })));
@@ -753,16 +732,11 @@ impl TdxAttestationHydrator {
 
     async fn limited_body(response: reqwest::Response) -> Result<Bytes> {
         if response.content_length().is_some_and(|len| len > MAX_TDX_COLLATERAL_RESPONSE_BYTES) {
-            return Err(RegistrarError::TdxAttestation(Box::new(
-                TdxHydrationError::ResponseTooLarge,
-            )));
+            return Err(TdxCollateralError::source(Box::new(TdxHydrationError::ResponseTooLarge)));
         }
-        let bytes =
-            response.bytes().await.map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+        let bytes = response.bytes().await.map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_TDX_COLLATERAL_RESPONSE_BYTES {
-            return Err(RegistrarError::TdxAttestation(Box::new(
-                TdxHydrationError::ResponseTooLarge,
-            )));
+            return Err(TdxCollateralError::source(Box::new(TdxHydrationError::ResponseTooLarge)));
         }
         Ok(Bytes(bytes))
     }
@@ -779,23 +753,23 @@ impl TdxAttestationHydrator {
     fn header_value<'a>(headers: &'a HeaderMap, header_names: &[HeaderName]) -> Result<&'a str> {
         for header in header_names {
             if let Some(value) = headers.get(header) {
-                return value.to_str().map_err(|e| RegistrarError::TdxAttestation(Box::new(e)));
+                return value.to_str().map_err(|e| TdxCollateralError::source(Box::new(e)));
             }
         }
         let header = header_names.iter().map(HeaderName::as_str).collect::<Vec<_>>().join(" or ");
-        Err(RegistrarError::TdxAttestation(Box::new(TdxHydrationError::MissingHeader { header })))
+        Err(TdxCollateralError::source(Box::new(TdxHydrationError::MissingHeader { header })))
     }
 
     fn signature_from_header(headers: &HeaderMap, header: &HeaderName) -> Result<Bytes> {
         let value = headers
             .get(header)
             .ok_or_else(|| {
-                RegistrarError::TdxAttestation(Box::new(TdxHydrationError::MissingHeader {
+                TdxCollateralError::source(Box::new(TdxHydrationError::MissingHeader {
                     header: header.as_str().to_string(),
                 }))
             })?
             .to_str()
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         Self::signature_from_hex(value)
     }
 
@@ -815,19 +789,15 @@ impl TdxAttestationHydrator {
 
     fn signature_from_json_field(raw: &[u8], field: &'static str) -> Result<Bytes> {
         let document: serde_json::Value =
-            serde_json::from_slice(raw).map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            serde_json::from_slice(raw).map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         let value = document
             .get(field)
             .ok_or_else(|| {
-                RegistrarError::TdxAttestation(Box::new(TdxHydrationError::MissingJsonField {
-                    field,
-                }))
+                TdxCollateralError::source(Box::new(TdxHydrationError::MissingJsonField { field }))
             })?
             .as_str()
             .ok_or_else(|| {
-                RegistrarError::TdxAttestation(Box::new(TdxHydrationError::InvalidJsonField {
-                    field,
-                }))
+                TdxCollateralError::source(Box::new(TdxHydrationError::InvalidJsonField { field }))
             })?;
         Self::signature_from_hex(value)
     }
@@ -835,9 +805,7 @@ impl TdxAttestationHydrator {
     fn signature_from_hex(value: &str) -> Result<Bytes> {
         let trimmed = value.trim();
         let signature = trimmed.strip_prefix("0x").unwrap_or(trimmed);
-        hex::decode(signature)
-            .map(Bytes::from)
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))
+        hex::decode(signature).map(Bytes::from).map_err(|e| TdxCollateralError::source(Box::new(e)))
     }
 
     fn certificate_chain_from_pem(pem_bytes: &[u8]) -> Result<Vec<TdxCertificate>> {
@@ -845,7 +813,7 @@ impl TdxAttestationHydrator {
         let mut certs = Vec::new();
         while !remaining.iter().all(u8::is_ascii_whitespace) {
             let (rest, pem) = parse_x509_pem(remaining).map_err(|e| {
-                RegistrarError::TdxAttestation(Box::new(TdxHydrationError::Pem(e.to_string())))
+                TdxCollateralError::source(Box::new(TdxHydrationError::Pem(e.to_string())))
             })?;
             if pem.label == "CERTIFICATE" {
                 certs.push(Bytes::from(pem.contents));
@@ -857,13 +825,13 @@ impl TdxAttestationHydrator {
 
     fn chain_from_der_certs(certs: Vec<Bytes>) -> Result<Vec<TdxCertificate>> {
         if certs.is_empty() {
-            return Err(RegistrarError::TdxAttestation("certificate chain is empty".into()));
+            return Err(TdxCollateralError::source("certificate chain is empty"));
         }
         let authenticated = certs
             .iter()
             .map(|cert| TdxCertificate::authenticated_from_der(cert))
             .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         let ordered_indexes = Self::root_to_leaf_indexes(&authenticated)?;
         let mut ordered = Vec::with_capacity(ordered_indexes.len());
         for (position, index) in ordered_indexes.iter().copied().enumerate() {
@@ -875,17 +843,17 @@ impl TdxAttestationHydrator {
             };
             ordered.push(
                 TdxCertificate::from_der(certs[index].clone(), issuer_public_key)
-                    .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?,
+                    .map_err(|e| TdxCollateralError::source(Box::new(e)))?,
             );
         }
         Ok(ordered)
     }
 
     fn root_to_leaf_indexes(certs: &[AuthenticatedTdxCertificate]) -> Result<Vec<usize>> {
-        let mut root_index =
-            certs.iter().position(|cert| cert.issuer_name == cert.subject_name).ok_or_else(
-                || RegistrarError::TdxAttestation("certificate chain root is missing".into()),
-            )?;
+        let mut root_index = certs
+            .iter()
+            .position(|cert| cert.issuer_name == cert.subject_name)
+            .ok_or_else(|| TdxCollateralError::source("certificate chain root is missing"))?;
         let mut ordered = Vec::with_capacity(certs.len());
         let mut used = HashSet::new();
         ordered.push(root_index);
@@ -896,9 +864,7 @@ impl TdxAttestationHydrator {
             let Some(child_index) = certs.iter().enumerate().find_map(|(index, cert)| {
                 (!used.contains(&index) && cert.issuer_name == parent.subject_name).then_some(index)
             }) else {
-                return Err(RegistrarError::TdxAttestation(
-                    "certificate chain is not contiguous".into(),
-                ));
+                return Err(TdxCollateralError::source("certificate chain is not contiguous"));
             };
             ordered.push(child_index);
             used.insert(child_index);
@@ -913,10 +879,10 @@ impl TdxAttestationHydrator {
     ) -> Result<()> {
         let actual_root_ca_hash = chain
             .first()
-            .ok_or_else(|| RegistrarError::TdxAttestation("certificate chain is empty".into()))?
+            .ok_or_else(|| TdxCollateralError::source("certificate chain is empty"))?
             .hash();
         if actual_root_ca_hash != trusted_root_ca_hash {
-            return Err(RegistrarError::TdxAttestation(Box::new(
+            return Err(TdxCollateralError::source(Box::new(
                 TdxHydrationError::RootCaNotTrusted {
                     expected: trusted_root_ca_hash,
                     actual: actual_root_ca_hash,
@@ -928,7 +894,7 @@ impl TdxAttestationHydrator {
 
     fn crl_distribution_point(certificate_der: &[u8]) -> Result<String> {
         let (_, certificate) = X509Certificate::from_der(certificate_der)
-            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         for extension in certificate.extensions() {
             let ParsedExtension::CRLDistributionPoints(points) = extension.parsed_extension()
             else {
@@ -946,9 +912,7 @@ impl TdxAttestationHydrator {
                 }
             }
         }
-        Err(RegistrarError::TdxAttestation(
-            "certificate is missing HTTPS CRL distribution point".into(),
-        ))
+        Err(TdxCollateralError::source("certificate is missing HTTPS CRL distribution point"))
     }
 
     fn is_allowed_intel_url(url: &url::Url) -> bool {
@@ -970,14 +934,14 @@ impl TdxAttestationHydrator {
                 continue;
             }
             let Some(hex_bytes) = bytes.get(index + 1..index + 3) else {
-                return Err(RegistrarError::TdxAttestation(Box::new(
+                return Err(TdxCollateralError::source(Box::new(
                     TdxHydrationError::InvalidPercentEncoding,
                 )));
             };
             let text = std::str::from_utf8(hex_bytes)
-                .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+                .map_err(|e| TdxCollateralError::source(Box::new(e)))?;
             let value = u8::from_str_radix(text, 16).map_err(|_| {
-                RegistrarError::TdxAttestation(Box::new(TdxHydrationError::InvalidPercentEncoding))
+                TdxCollateralError::source(Box::new(TdxHydrationError::InvalidPercentEncoding))
             })?;
             decoded.push(value);
             index += 3;

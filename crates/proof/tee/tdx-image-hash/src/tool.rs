@@ -6,11 +6,12 @@ use alloy_primitives::{Address, keccak256};
 use alloy_provider::RootProvider;
 use base_proof_contracts::ITEEProverRegistry;
 use base_proof_primitives::EnclaveApiClient;
-use base_proof_tee_registrar::{
-    SignerAttestationKind, TdxAttestationConfig, TdxCollateralProvider,
+use base_proof_tee_registrar::SignerAttestationKind;
+use base_proof_tee_tdx_collateral::{TdxAttestationConfig, TdxCollateralProvider};
+use base_proof_tee_tdx_prover::TdxMeasurements;
+use base_proof_tee_tdx_verifier::{
+    TdxQuote, TdxQuotePolicy, TdxSignerAttestation, TdxVerifier, TdxVerifierInput,
 };
-use base_proof_tee_tdx_prover::{TdxMeasurements, TdxSignerAttestation};
-use base_proof_tee_tdx_verifier::{TdxQuote, TdxQuotePolicy, TdxVerifier, TdxVerifierInput};
 use eyre::{Context, Result, bail};
 use jsonrpsee::http_client::HttpClientBuilder;
 use url::Url;
@@ -245,7 +246,7 @@ mod tests {
     use std::{net::SocketAddr, sync::Arc};
 
     use base_proof_primitives::EnclaveApiServer;
-    use base_proof_tee_registrar::TdxAttestationConfig;
+    use base_proof_tee_tdx_collateral::TdxAttestationConfig;
     use base_proof_tee_tdx_prover::{MeasuredMockTdxQuoteProvider, TdxSignerRpc};
     use base_proof_tee_tdx_runtime::{TdxRuntime, TdxSigner};
     use jsonrpsee::{RpcModule, server::Server};

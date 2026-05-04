@@ -1,0 +1,18 @@
+#![doc = include_str!("../README.md")]
+#![cfg_attr(not(test), warn(unused_crate_dependencies))]
+
+mod config;
+pub use config::{
+    DEFAULT_TDX_COLLATERAL_FETCH_TIMEOUT_SECS, DEFAULT_TDX_MAX_QUOTE_AGE_SECS,
+    DEFAULT_TDX_TRUSTED_ROOT_CA_HASH, TdxAttestationConfig, build_tdx_collateral_http_client,
+};
+
+mod error;
+pub use error::{BoxError, Result, TdxCollateralError};
+
+mod collateral;
+pub use collateral::{
+    MAX_TDX_COLLATERAL_RESPONSE_BYTES, TdxAttestationHydrator, TdxCollateralCache,
+    TdxCollateralCacheEntry, TdxCollateralCacheKey, TdxCollateralCacheLookup, TdxCollateralFetch,
+    TdxCollateralProvider,
+};

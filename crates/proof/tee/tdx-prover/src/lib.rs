@@ -1,7 +1,6 @@
 #![doc = include_str!("../README.md")]
 
-mod attestation;
-pub use attestation::{
+pub use base_proof_tee_tdx_verifier::{
     TDX_SIGNER_ATTESTATION_HEADER_LEN, TDX_SIGNER_ATTESTATION_MAGIC, TdxSignerAttestation,
     TdxSignerAttestationDecodeError,
 };
