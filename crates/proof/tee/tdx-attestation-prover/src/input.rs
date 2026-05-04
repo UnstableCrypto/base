@@ -1,7 +1,5 @@
 //! ABI-compatible host and guest input encoding for TDX attestation proving.
 
-use std::fmt;
-
 use alloy_primitives::Address;
 use alloy_sol_types::{SolValue, sol};
 use base_proof_tee_tdx_verifier::{
@@ -104,7 +102,7 @@ sol! {
 }
 
 /// Explicit TDX attestation prover input.
-#[derive(Clone)]
+#[derive(Debug)]
 pub struct TdxAttestationProverInput {
     /// Complete input consumed by `base-proof-tee-tdx-verifier`.
     pub verifier_input: TdxVerifierInput,
@@ -131,15 +129,9 @@ impl TdxAttestationProverInput {
         &self.verifier_input
     }
 
-    /// Consumes this wrapper and returns the verifier input.
-    pub fn into_verifier_input(self) -> TdxVerifierInput {
-        self.verifier_input
-    }
-
     /// ABI-encodes this input for host-to-guest transport.
     pub fn encode(&self) -> Vec<u8> {
-        let abi = TdxVerifierInputAbi::from(&self.verifier_input);
-        SolValue::abi_encode(&abi)
+        SolValue::abi_encode(&TdxVerifierInputAbi::from(&self.verifier_input))
     }
 
     /// ABI-decodes a host-to-guest TDX verifier input.
@@ -157,14 +149,6 @@ impl TdxAttestationProverInput {
             return Err(ProverError::SignerMismatch { expected: signer_address, actual });
         }
         Ok(input)
-    }
-}
-
-impl fmt::Debug for TdxAttestationProverInput {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TdxAttestationProverInput")
-            .field("verifier_input", &self.verifier_input)
-            .finish()
     }
 }
 
@@ -340,27 +324,7 @@ impl From<TdxQuotePolicyInput> for TdxQuotePolicy {
 
 /// Converts a contract TDX TCB status discriminant into a typed status.
 pub fn tdx_tcb_status_from_u8(status: u8) -> Result<TDXTcbStatus> {
-    match status {
-        value if value == TDXTcbStatus::Unknown as u8 => Ok(TDXTcbStatus::Unknown),
-        value if value == TDXTcbStatus::UpToDate as u8 => Ok(TDXTcbStatus::UpToDate),
-        value if value == TDXTcbStatus::SwHardeningNeeded as u8 => {
-            Ok(TDXTcbStatus::SwHardeningNeeded)
-        }
-        value if value == TDXTcbStatus::ConfigurationNeeded as u8 => {
-            Ok(TDXTcbStatus::ConfigurationNeeded)
-        }
-        value if value == TDXTcbStatus::ConfigurationAndSwHardeningNeeded as u8 => {
-            Ok(TDXTcbStatus::ConfigurationAndSwHardeningNeeded)
-        }
-        value if value == TDXTcbStatus::OutOfDate as u8 => Ok(TDXTcbStatus::OutOfDate),
-        value if value == TDXTcbStatus::OutOfDateConfigurationNeeded as u8 => {
-            Ok(TDXTcbStatus::OutOfDateConfigurationNeeded)
-        }
-        value if value == TDXTcbStatus::Revoked as u8 => Ok(TDXTcbStatus::Revoked),
-        value => {
-            Err(ProverError::InputDecode(format!("invalid TDX TCB status discriminant: {value}")))
-        }
-    }
+    TDXTcbStatus::try_from(status).map_err(|e| ProverError::InputDecode(e.to_string()))
 }
 
 /// Converts an Intel TCB status into a stable input discriminant.
@@ -404,47 +368,10 @@ mod tests {
     #[rstest]
     fn prover_input_abi_round_trips() {
         let input = TdxAttestationProverInput::new(verifier_input());
-        let decoded = TdxAttestationProverInput::decode(&input.encode()).unwrap();
+        let encoded = input.encode();
+        let decoded = TdxAttestationProverInput::decode(&encoded).unwrap();
 
-        assert_eq!(decoded.verifier_input.quote, input.verifier_input.quote);
-        assert_eq!(
-            decoded.verifier_input.pck_certificate_chain,
-            input.verifier_input.pck_certificate_chain
-        );
-        assert_eq!(decoded.verifier_input.collateral, input.verifier_input.collateral);
-        assert_eq!(decoded.verifier_input.revocation, input.verifier_input.revocation);
-        assert_eq!(
-            decoded.verifier_input.trusted_root_ca_hash,
-            input.verifier_input.trusted_root_ca_hash
-        );
-        assert_eq!(
-            decoded.verifier_input.expected_public_key,
-            input.verifier_input.expected_public_key
-        );
-        assert_eq!(decoded.verifier_input.expected_signer, input.verifier_input.expected_signer);
-        assert_eq!(
-            decoded.verifier_input.quote_timestamp_millis,
-            input.verifier_input.quote_timestamp_millis
-        );
-        assert_eq!(
-            decoded.verifier_input.verification_time,
-            input.verifier_input.verification_time
-        );
-        assert_eq!(decoded.verifier_input.policy, input.verifier_input.policy);
-        assert_eq!(
-            decoded
-                .verifier_input
-                .allowed_tcb_statuses
-                .iter()
-                .map(|status| *status as u8)
-                .collect::<Vec<_>>(),
-            input
-                .verifier_input
-                .allowed_tcb_statuses
-                .iter()
-                .map(|status| *status as u8)
-                .collect::<Vec<_>>()
-        );
+        assert_eq!(decoded.encode(), encoded);
     }
 
     #[rstest]

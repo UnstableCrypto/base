@@ -250,7 +250,7 @@ impl TdxAttestationHydrator {
                         ))
                     },
                 )?;
-                let verifier_input = prover_input.into_verifier_input();
+                let verifier_input = prover_input.verifier_input;
                 Ok(TdxSignerAttestation::new(
                     verifier_input.expected_public_key,
                     verifier_input.quote,
