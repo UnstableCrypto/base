@@ -110,6 +110,16 @@ impl IntelTcbStatus {
     }
 }
 
+impl<'de> Deserialize<'de> for IntelTcbStatus {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(Self::from_intel_str(&value))
+    }
+}
+
 /// Platform identity fields authenticated by the PCK certificate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TdxPlatformIdentity {
@@ -129,6 +139,9 @@ impl TdxPlatformIdentity {
         let mut pce_id = None;
 
         for extension in cert.tbs_certificate.extensions() {
+            if fmspc.is_some() && pce_id.is_some() {
+                break;
+            }
             match extension.oid.to_id_string().as_str() {
                 "1.2.840.113741.1.13.1.3" => {
                     pce_id = Some(
@@ -243,13 +256,15 @@ impl TdxPlatformIdentity {
             return Err("DER INTEGER is negative".into());
         }
 
-        let significant =
-            content.iter().skip_while(|byte| **byte == 0).copied().collect::<Vec<_>>();
-        if significant.len() > std::mem::size_of::<u64>() {
+        let significant_len = content.iter().skip_while(|byte| **byte == 0).count();
+        if significant_len > std::mem::size_of::<u64>() {
             return Err("DER INTEGER exceeds u64".into());
         }
 
-        Ok(significant.iter().fold(0u64, |value, byte| (value << 8) | u64::from(*byte)))
+        Ok(content
+            .iter()
+            .skip_while(|byte| **byte == 0)
+            .fold(0u64, |value, byte| (value << 8) | u64::from(*byte)))
     }
 }
 
@@ -273,6 +288,9 @@ impl TdxPckTcb {
         let mut pce_svn = None;
 
         for extension in cert.tbs_certificate.extensions() {
+            if sgx_tcb_seen.iter().all(|seen| *seen) && pce_svn.is_some() {
+                break;
+            }
             for component_index in 0..sgx_tcb_svn.len() {
                 if sgx_tcb_seen[component_index] {
                     continue;
@@ -376,8 +394,8 @@ impl TdxCertificate {
     }
 
     /// Returns the canonical certificate bytes covered by `signature`.
-    pub fn to_be_signed_bytes(&self) -> Vec<u8> {
-        self.tbs_certificate.to_vec()
+    pub fn to_be_signed_bytes(&self) -> &[u8] {
+        &self.tbs_certificate
     }
 
     /// Verifies this certificate's signature with an issuer P-256 public key.
@@ -389,7 +407,7 @@ impl TdxCertificate {
         }
         CollateralVerifier::verify_p256_signature(
             issuer_public_key,
-            &self.to_be_signed_bytes(),
+            self.to_be_signed_bytes(),
             &self.signature,
             TdxVerifierError::PckCertChainInvalid("certificate signature failed".into()),
         )
@@ -706,7 +724,7 @@ impl TdxTcbInfoBody {
             .tcb_levels
             .iter()
             .find(|level| level.tcb.matches_quote_and_pck(quote, pck_tcb))
-            .map(|level| IntelTcbStatus::from_intel_str(&level.tcb_status))
+            .map(|level| level.tcb_status)
             .ok_or_else(|| {
                 TdxVerifierError::TcbInfoInvalid("no TCB info level matches quote TCB".into())
             })?;
@@ -726,7 +744,7 @@ impl TdxTcbInfoBody {
             .tcb_levels()
             .iter()
             .find(|level| level.tcb.isvsvn <= module_isvsvn)
-            .map(|level| IntelTcbStatus::from_intel_str(&level.tcb_status))
+            .map(|level| level.tcb_status)
             .ok_or_else(|| {
                 TdxVerifierError::TcbInfoInvalid(
                     "no TDX module identity TCB level matches quote".into(),
@@ -798,7 +816,7 @@ pub struct TdxTcbLevel {
     pub tcb: TdxTcbComponents,
     /// Intel status for this level.
     #[serde(rename = "tcbStatus")]
-    pub tcb_status: String,
+    pub tcb_status: IntelTcbStatus,
 }
 
 /// Component SVN requirements from one TCB level.
@@ -940,7 +958,7 @@ pub struct TdxModuleTcbLevel {
     pub tcb: TdxModuleTcb,
     /// Intel status for this module identity level.
     #[serde(rename = "tcbStatus")]
-    pub tcb_status: String,
+    pub tcb_status: IntelTcbStatus,
 }
 
 /// TDX module identity TCB requirement.
@@ -1066,28 +1084,18 @@ impl TdxQeIdentityBody {
             CollateralVerifier::read_u16_le_bytes(&quote.qe_report, QE_REPORT_ISV_SVN_OFFSET)
                 .map_err(TdxVerifierError::InvalidQuote)?;
 
-        if !CollateralVerifier::masked_bytes_match(
+        Self::verify_masked_field(
             miscselect,
             &self.miscselect,
             &self.miscselect_mask,
-        )
-        .map_err(TdxVerifierError::QeIdentityInvalid)?
-        {
-            return Err(TdxVerifierError::QeIdentityInvalid(
-                "QE report miscselect does not match QE identity".into(),
-            ));
-        }
-        if !CollateralVerifier::masked_bytes_match(
+            "miscselect",
+        )?;
+        Self::verify_masked_field(
             attributes,
             &self.attributes,
             &self.attributes_mask,
-        )
-        .map_err(TdxVerifierError::QeIdentityInvalid)?
-        {
-            return Err(TdxVerifierError::QeIdentityInvalid(
-                "QE report attributes do not match QE identity".into(),
-            ));
-        }
+            "attributes",
+        )?;
         if mrsigner
             != CollateralVerifier::decode_hex_exact(&self.mrsigner, QE_REPORT_MRSIGNER_LEN)
                 .map_err(TdxVerifierError::QeIdentityInvalid)?
@@ -1107,7 +1115,7 @@ impl TdxQeIdentityBody {
             .tcb_levels
             .iter()
             .find(|level| level.tcb.isvsvn <= isvsvn)
-            .map(|level| IntelTcbStatus::from_intel_str(&level.tcb_status))
+            .map(|level| level.tcb_status)
             .ok_or_else(|| {
                 TdxVerifierError::QeIdentityInvalid(
                     "no QE identity TCB level matches QE report".into(),
@@ -1119,6 +1127,23 @@ impl TdxQeIdentityBody {
             ));
         }
 
+        Ok(())
+    }
+
+    /// Verifies a QE report field matches the signed QE identity under a hex mask.
+    pub fn verify_masked_field(
+        actual: &[u8],
+        expected_hex: &str,
+        mask_hex: &str,
+        field_name: &str,
+    ) -> Result<()> {
+        let matches = CollateralVerifier::masked_bytes_match(actual, expected_hex, mask_hex)
+            .map_err(TdxVerifierError::QeIdentityInvalid)?;
+        if !matches {
+            return Err(TdxVerifierError::QeIdentityInvalid(format!(
+                "QE report {field_name} does not match QE identity"
+            )));
+        }
         Ok(())
     }
 
@@ -1140,7 +1165,7 @@ pub struct TdxQeIdentityLevel {
     pub tcb: TdxQeIdentityTcb,
     /// Intel status for this QE identity level.
     #[serde(rename = "tcbStatus")]
-    pub tcb_status: String,
+    pub tcb_status: IntelTcbStatus,
 }
 
 /// QE identity TCB SVN threshold.
@@ -1203,15 +1228,6 @@ impl TdxCertificateRevocationList {
             signature: Bytes::copy_from_slice(crl.signature_value.data.as_ref()),
         })
     }
-
-    /// Returns true if this CRL is issued by the authenticated certificate.
-    pub fn is_issued_by(
-        &self,
-        crl: &AuthenticatedTdxCrl,
-        issuer: &AuthenticatedTdxCertificate,
-    ) -> bool {
-        crl.issuer_name == issuer.subject_name
-    }
 }
 
 /// Authenticated CRL fields parsed from DER.
@@ -1266,6 +1282,14 @@ pub struct TdxRevocationEvidence {
 }
 
 impl TdxRevocationEvidence {
+    /// Pre-parses all supplied CRLs into authenticated form for repeated lookups.
+    pub fn authenticate_crls(&self) -> Result<Vec<AuthenticatedTdxCrl>> {
+        self.certificate_crls
+            .iter()
+            .map(|crl| TdxCertificateRevocationList::authenticated_from_der(&crl.raw))
+            .collect()
+    }
+
     /// Verifies that a certificate is covered by a fresh issuer CRL and is not revoked.
     pub fn verify_certificate_not_revoked(
         &self,
@@ -1273,11 +1297,26 @@ impl TdxRevocationEvidence {
         issuer: &AuthenticatedTdxCertificate,
         verification_time: u64,
     ) -> Result<u64> {
+        let authenticated_crls = self.authenticate_crls()?;
+        Self::verify_certificate_not_revoked_with_crls(
+            &authenticated_crls,
+            certificate,
+            issuer,
+            verification_time,
+        )
+    }
+
+    /// Verifies a certificate against pre-authenticated CRLs.
+    pub fn verify_certificate_not_revoked_with_crls(
+        authenticated_crls: &[AuthenticatedTdxCrl],
+        certificate: &AuthenticatedTdxCertificate,
+        issuer: &AuthenticatedTdxCertificate,
+        verification_time: u64,
+    ) -> Result<u64> {
         let mut found_issuer_crl = false;
         let mut earliest_next_update = u64::MAX;
-        for crl in &self.certificate_crls {
-            let authenticated = TdxCertificateRevocationList::authenticated_from_der(&crl.raw)?;
-            if !crl.is_issued_by(&authenticated, issuer) {
+        for authenticated in authenticated_crls {
+            if authenticated.issuer_name != issuer.subject_name {
                 continue;
             }
             found_issuer_crl = true;
@@ -1307,13 +1346,16 @@ impl TdxRevocationEvidence {
             .iter()
             .map(|cert| TdxCertificate::authenticated_from_der(&cert.raw))
             .collect::<Result<Vec<_>>>()?;
+        let authenticated_crls = self.authenticate_crls()?;
         let mut earliest_next_update = u64::MAX;
         for index in 1..authenticated_chain.len() {
-            earliest_next_update = earliest_next_update.min(self.verify_certificate_not_revoked(
-                &authenticated_chain[index],
-                &authenticated_chain[index - 1],
-                verification_time,
-            )?);
+            earliest_next_update =
+                earliest_next_update.min(Self::verify_certificate_not_revoked_with_crls(
+                    &authenticated_crls,
+                    &authenticated_chain[index],
+                    &authenticated_chain[index - 1],
+                    verification_time,
+                )?);
         }
         Ok(earliest_next_update)
     }
@@ -1342,6 +1384,7 @@ impl CollateralVerifier {
             .iter()
             .map(|cert| TdxCertificate::authenticated_from_der(&cert.raw))
             .collect::<Result<Vec<_>>>()?;
+        let authenticated_crls = revocation.authenticate_crls()?;
 
         for (index, cert) in chain.iter().enumerate() {
             let authenticated = &authenticated_chain[index];
@@ -1375,7 +1418,12 @@ impl CollateralVerifier {
                     "certificate issuer name does not match parent".into(),
                 ));
             }
-            revocation.verify_certificate_not_revoked(authenticated, issuer, verification_time)?;
+            TdxRevocationEvidence::verify_certificate_not_revoked_with_crls(
+                &authenticated_crls,
+                authenticated,
+                issuer,
+                verification_time,
+            )?;
         }
 
         Ok(authenticated_chain.last().expect("chain is non-empty").subject_public_key.clone())
