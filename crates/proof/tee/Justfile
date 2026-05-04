@@ -5,7 +5,6 @@ eif_output := "eif.bin"
 tdx_verifier_guest := "base-proof-tee-tdx-attestation-prover-guest"
 tdx_verifier_image_id := "0x1f1bc81fae82605af46a4c9a20f641922b7542befd9219644c7e6c59ccdeccab"
 
-# Default recipe to display help information
 default:
     @just --list
 
@@ -41,11 +40,9 @@ config-hashes:
 signer-address url:
     #!/usr/bin/env bash
     set -euo pipefail
-    command -v cast >/dev/null 2>&1 || { echo "Error: 'cast' (foundry) is required. Install: https://book.getfoundry.sh/getting-started/installation"; exit 1; }
-    command -v python3 >/dev/null 2>&1 || { echo "Error: 'python3' is required."; exit 1; }
+    command -v cast >/dev/null 2>&1 || { echo "error: 'cast' (foundry) is required. Install: https://book.getfoundry.sh/getting-started/installation" >&2; exit 1; }
+    command -v python3 >/dev/null 2>&1 || { echo "error: 'python3' is required" >&2; exit 1; }
 
-    # Fetch the 65-byte uncompressed public key (0x04 || x || y),
-    # strip the prefix byte, keccak-hash, and take the last 20 bytes.
     PUB_KEY_HEX=$(cast rpc enclave_signerPublicKey -r "{{ url }}" \
         | python3 -c "import json, sys; data = json.load(sys.stdin)[0]; print('0x' + bytes(data[1:]).hex())")
 
@@ -57,16 +54,13 @@ signer-address url:
 remote-pcr0 url:
     #!/usr/bin/env bash
     set -euo pipefail
-    command -v cast >/dev/null 2>&1 || { echo "Error: 'cast' (foundry) is required. Install: https://book.getfoundry.sh/getting-started/installation"; exit 1; }
-    command -v python3 >/dev/null 2>&1 || { echo "Error: 'python3' is required."; exit 1; }
+    command -v cast >/dev/null 2>&1 || { echo "error: 'cast' (foundry) is required. Install: https://book.getfoundry.sh/getting-started/installation" >&2; exit 1; }
+    command -v python3 >/dev/null 2>&1 || { echo "error: 'python3' is required" >&2; exit 1; }
     python3 -c "import cbor2" 2>/dev/null || {
-        echo "Error: python3 'cbor2' package is required."
-        echo "Install with: pip3 install cbor2"
+        echo "error: python3 'cbor2' package is required (install with: pip3 install cbor2)" >&2
         exit 1
     }
 
-    # Fetch the COSE_Sign1 attestation document, decode the CBOR payload,
-    # and extract PCR0 (the enclave image measurement).
     PCR0=$(cast rpc enclave_signerAttestation -r "{{ url }}" \
         | python3 -c "import cbor2,json,sys; data=bytes(json.load(sys.stdin)[0]); _,_,payload,_=cbor2.loads(data); doc=cbor2.loads(payload); print(doc['pcrs'][0].hex())")
 
@@ -89,11 +83,8 @@ build-eif *args="":
 
 # Show PCR values for the current EIF image
 describe-eif:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "PCR values for {{ eif_describe_image }}:"
-    docker run --rm --platform linux/amd64 {{ eif_describe_image }} \
-        ./nitro-cli describe-eif --eif-path eif.bin
+    @echo "PCR values for {{ eif_describe_image }}:"
+    @just _describe-eif {{ eif_describe_image }}
 
 # Build the TDX verifier guest and verify its RISC Zero image ID matches onchain config
 tdx-verifier-image-id expected=tdx_verifier_image_id:
@@ -105,20 +96,13 @@ tdx-verifier-image-id expected=tdx_verifier_image_id:
     helper_manifest="$tee_dir/nitro-attestation-prover/guest/tools/compute-image-id/Cargo.toml"
     elf_path="$guest_dir/target/riscv32im-risc0-zkvm-elf/release/{{ tdx_verifier_guest }}"
     r0bf_path="$guest_dir/target/{{ tdx_verifier_guest }}.r0bf"
-    expected="{{ expected }}"
-    expected="${expected#0x}"
+    expected_hex="{{ expected }}"
+    expected_hex="${expected_hex#0x}"
 
-    command -v cargo >/dev/null 2>&1 || {
-        echo "error: cargo is required" >&2
-        exit 1
-    }
-    command -v rustup >/dev/null 2>&1 || {
-        echo "error: rustup is required" >&2
-        exit 1
-    }
+    command -v cargo >/dev/null 2>&1 || { echo "error: 'cargo' is required" >&2; exit 1; }
+    command -v rustup >/dev/null 2>&1 || { echo "error: 'rustup' is required" >&2; exit 1; }
     if ! rustup toolchain list | grep -q '^risc0'; then
-        echo "error: RISC Zero rust toolchain 'risc0' is not installed" >&2
-        echo "install it with: rzup install" >&2
+        echo "error: RISC Zero rust toolchain 'risc0' is not installed (install with: rzup install)" >&2
         exit 1
     fi
 
@@ -142,9 +126,9 @@ tdx-verifier-image-id expected=tdx_verifier_image_id:
         echo "error: failed to parse image ID from helper output" >&2
         exit 1
     fi
-    if [ "$actual" != "$expected" ]; then
+    if [ "$actual" != "$expected_hex" ]; then
         echo "FAILURE: TDX verifier image ID does not match onchain config" >&2
-        echo "expected: 0x$expected" >&2
+        echo "expected: 0x$expected_hex" >&2
         echo "actual:   0x$actual" >&2
         exit 1
     fi
@@ -159,7 +143,7 @@ verify-reproducible:
     set -euo pipefail
     cleanup() {
         rm -f eif-first.bin eif-second.bin
-        docker rmi {{ eif_describe_image }} {{ eif_describe_image }}:first {{ eif_describe_image }}:second 2>/dev/null || true
+        just _clean-eif-images
     }
     trap cleanup EXIT
 
@@ -206,10 +190,19 @@ verify-reproducible:
 # Clean EIF artifacts
 clean-eif:
     rm -f "{{ eif_output }}" eif-first.bin eif-second.bin
-    docker rmi {{ eif_describe_image }} {{ eif_describe_image }}:first {{ eif_describe_image }}:second 2>/dev/null || true
+    @just _clean-eif-images
     @echo "EIF artifacts cleaned"
 
 # --- Private helpers ---
+
+[private]
+_clean-eif-images:
+    -@docker rmi {{ eif_describe_image }} {{ eif_describe_image }}:first {{ eif_describe_image }}:second 2>/dev/null
+
+[private]
+_describe-eif image:
+    @docker run --rm --platform linux/amd64 {{ image }} \
+        ./nitro-cli describe-eif --eif-path eif.bin
 
 [private]
 sha256 file:
@@ -225,7 +218,4 @@ sha256 file:
 pcr0 image:
     #!/usr/bin/env bash
     set -euo pipefail
-    docker run --rm --platform linux/amd64 {{ image }} \
-        ./nitro-cli describe-eif --eif-path eif.bin \
-        | grep -o '"PCR0": "[^"]*"' \
-        | cut -d'"' -f4
+    just _describe-eif {{ image }} | grep -o '"PCR0": "[^"]*"' | cut -d'"' -f4
