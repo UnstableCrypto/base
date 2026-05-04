@@ -1,13 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
-pub use base_proof_tee_tdx_collateral::{
-    DEFAULT_TDX_MAX_QUOTE_AGE_SECS, DEFAULT_TDX_TRUSTED_ROOT_CA_HASH,
-    MAX_TDX_COLLATERAL_RESPONSE_BYTES, TdxAttestationConfig, TdxAttestationHydrator,
-    TdxCollateralCache, TdxCollateralCacheEntry, TdxCollateralCacheKey, TdxCollateralCacheLookup,
-    TdxCollateralFetch, TdxCollateralProvider,
-};
-
 mod config;
 pub use config::{
     AwsDiscoveryConfig, BoundlessConfig, CrlConfig, DEFAULT_MAX_ATTESTATION_AGE_SECS,

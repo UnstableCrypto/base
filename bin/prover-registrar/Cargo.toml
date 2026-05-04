@@ -22,6 +22,7 @@ base-tx-manager.workspace = true
 base-balance-monitor.workspace = true
 base-proof-tee-attestation.workspace = true
 base-proof-tee-tdx-verifier.workspace = true
+base-proof-tee-tdx-collateral.workspace = true
 base-health = { workspace = true, features = ["axum-server"] }
 base-proof-tee-registrar = { workspace = true, features = ["metrics"] }
 base-proof-tee-tdx-attestation-prover = { workspace = true, features = ["prove"] }

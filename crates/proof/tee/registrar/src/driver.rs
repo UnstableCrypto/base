@@ -12,6 +12,7 @@ use alloy_sol_types::SolCall;
 use base_proof_contracts::{INitroEnclaveVerifier, ITEEProverRegistry};
 use base_proof_tee_attestation::{TeeAttestationKind, TeeAttestationProofProvider};
 use base_proof_tee_nitro_verifier::AttestationReport;
+use base_proof_tee_tdx_collateral::{TdxAttestationConfig, TdxAttestationHydrator};
 use base_tx_manager::{TxCandidate, TxManager, TxManagerError};
 use futures::stream::StreamExt;
 use rand::random;
@@ -21,7 +22,7 @@ use tracing::{Instrument, debug, error, info, info_span, warn};
 use crate::{
     CrlConfig, InstanceDiscovery, InstanceHealthStatus, ProverClient, ProverInstance,
     RegistrarError, RegistrarMetrics, RegistryClient, Result, SignerAttestationKind, SignerClient,
-    TdxAttestationConfig, TdxAttestationHydrator, crl,
+    crl,
 };
 
 /// Default maximum number of instances processed concurrently.

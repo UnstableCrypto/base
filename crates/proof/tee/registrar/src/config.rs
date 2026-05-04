@@ -281,12 +281,14 @@ pub(crate) fn url_origin(url: &Url) -> String {
 
 #[cfg(test)]
 mod tests {
+    use base_proof_tee_tdx_collateral::DEFAULT_TDX_TRUSTED_ROOT_CA_HASH;
+
     use super::*;
 
     #[test]
     fn intel_pcs_pins_production_root_ca_hash() {
         let config = TdxAttestationConfig::intel_pcs();
 
-        assert_eq!(config.trusted_root_ca_hash, crate::DEFAULT_TDX_TRUSTED_ROOT_CA_HASH);
+        assert_eq!(config.trusted_root_ca_hash, DEFAULT_TDX_TRUSTED_ROOT_CA_HASH);
     }
 }

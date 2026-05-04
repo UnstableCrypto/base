@@ -22,17 +22,18 @@ use base_proof_tee_nitro_attestation_prover::{
 use base_proof_tee_registrar::{
     AwsDiscoveryConfig, AwsTargetGroupDiscovery, BoundlessConfig, CrlConfig,
     DEFAULT_CRL_FETCH_TIMEOUT_SECS, DEFAULT_MAX_ATTESTATION_AGE_SECS, DEFAULT_MAX_CONCURRENCY,
-    DEFAULT_MAX_RECOVERY_ATTEMPTS, DEFAULT_MAX_TX_RETRIES, DEFAULT_TDX_MAX_QUOTE_AGE_SECS,
-    DEFAULT_TX_RETRY_DELAY_SECS, DEFAULT_UNHEALTHY_REGISTRATION_WINDOW_SECS, DiscoveryConfig,
-    DriverConfig, InstanceDiscovery, PlatformProvingConfig, PlatformRegistrationConfig,
-    ProverClient, ProverFleet, ProvingConfig, RegistrarConfig, RegistrarError, RegistrarMetrics,
-    RegistrationDriver, RegistryContractClient, SignerAttestationKind, StaticDiscoveryConfig,
-    StaticEndpointDiscovery, TdxAttestationConfig, TdxBoundlessConfig, TdxProvingConfig,
+    DEFAULT_MAX_RECOVERY_ATTEMPTS, DEFAULT_MAX_TX_RETRIES, DEFAULT_TX_RETRY_DELAY_SECS,
+    DEFAULT_UNHEALTHY_REGISTRATION_WINDOW_SECS, DiscoveryConfig, DriverConfig, InstanceDiscovery,
+    PlatformProvingConfig, PlatformRegistrationConfig, ProverClient, ProverFleet, ProvingConfig,
+    RegistrarConfig, RegistrarError, RegistrarMetrics, RegistrationDriver, RegistryContractClient,
+    SignerAttestationKind, StaticDiscoveryConfig, StaticEndpointDiscovery, TdxBoundlessConfig,
+    TdxProvingConfig,
 };
 use base_proof_tee_tdx_attestation_prover::{
     BoundlessProver as TdxBoundlessProver, DirectProver as TdxDirectProver, RecoveredProofPolicy,
     RiscZeroProver as TdxRiscZeroProver,
 };
+use base_proof_tee_tdx_collateral::{DEFAULT_TDX_MAX_QUOTE_AGE_SECS, TdxAttestationConfig};
 use base_proof_tee_tdx_verifier::TDXTcbStatus;
 use base_tx_manager::{BaseTxMetrics, SignerConfig, SimpleTxManager, TxManagerConfig};
 use clap::{Args, Parser, ValueEnum};

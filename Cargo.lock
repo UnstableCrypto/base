@@ -5329,6 +5329,7 @@ dependencies = [
  "base-proof-tee-nitro-attestation-prover",
  "base-proof-tee-registrar",
  "base-proof-tee-tdx-attestation-prover",
+ "base-proof-tee-tdx-collateral",
  "base-proof-tee-tdx-verifier",
  "base-tx-manager",
  "clap",
