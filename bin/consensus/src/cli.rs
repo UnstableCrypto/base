@@ -21,8 +21,10 @@ use strum::IntoEnumIterator;
 use tracing::{error, info, warn};
 use url::Url;
 
-use crate::bootnode::Bootnode;
-use crate::metrics::{init_p2p_metrics, init_rollup_config_metrics};
+use crate::{
+    bootnode::Bootnode,
+    metrics::{init_p2p_metrics, init_rollup_config_metrics},
+};
 
 base_cli_utils::define_log_args!("BASE_NODE");
 base_cli_utils::define_metrics_args!("BASE_NODE", 9090);
