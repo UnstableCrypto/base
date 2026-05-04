@@ -5371,6 +5371,7 @@ dependencies = [
  "alloy-primitives",
  "base-proof-tee-tdx-attestation-prover",
  "base-proof-tee-tdx-verifier",
+ "futures",
  "reqwest 0.13.2",
  "rstest",
  "serde_json",

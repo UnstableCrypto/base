@@ -41,6 +41,7 @@ const LEGACY_TCB_INFO_SIGNATURE_HEADER: &str = "sgx-tcb-info-signature";
 const QE_IDENTITY_ISSUER_CHAIN_HEADER: &str = "sgx-enclave-identity-issuer-chain";
 const QE_IDENTITY_SIGNATURE_FIELD: &str = "signature";
 const ALLOWED_INTEL_HOST_SUFFIX: &str = ".trustedservices.intel.com";
+const CERTIFICATE_PEM_LABEL: &str = "CERTIFICATE";
 
 /// TDX collateral fetched from Intel PCS for one signer quote.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -262,11 +263,6 @@ impl TdxAttestationHydrator {
 
     /// Fetches Intel PCS collateral and CRLs required to verify `quote`.
     pub async fn fetch_collateral(&self, quote: &[u8]) -> Result<TdxCollateralFetch> {
-        self.fetch_collateral_inner(quote).await
-    }
-
-    /// Fetches Intel PCS collateral and CRLs required to verify `quote`.
-    pub async fn fetch_collateral_inner(&self, quote: &[u8]) -> Result<TdxCollateralFetch> {
         let parsed_quote =
             TdxQuote::parse(quote).map_err(|e| TdxCollateralError::source(Box::new(e)))?;
         let pck_certificate_chain = Self::pck_certificate_chain_from_quote(&parsed_quote)?;
@@ -558,6 +554,12 @@ impl TdxAttestationHydrator {
         Ok(validity.next_update)
     }
 
+    /// Returns cached collateral for the given lookup, or `None` if absent.
+    ///
+    /// On TCB matching or verification errors the cache entry is intentionally
+    /// kept: the collateral is platform-scoped and may still be valid for other
+    /// quotes; the error is quote-specific, not a signal that the collateral
+    /// itself is bad.
     fn cached_collateral(
         &self,
         lookup: &TdxCollateralCacheLookup,
@@ -692,7 +694,7 @@ impl TdxAttestationHydrator {
         chains: &[&[TdxCertificate]],
     ) -> Result<TdxRevocationEvidence> {
         let mut seen = HashSet::new();
-        let mut certificate_crls = Vec::new();
+        let mut urls = Vec::new();
         for chain in chains {
             for certificate in chain.iter().skip(1) {
                 let crl_url = Self::crl_distribution_point(&certificate.raw)?;
@@ -706,11 +708,15 @@ impl TdxAttestationHydrator {
                         TdxHydrationError::DisallowedCrlHost { url: crl_url },
                     )));
                 }
-                let response = self.get(url).await?;
-                let raw = Self::limited_body(response).await?;
-                certificate_crls.push(TdxCertificateRevocationList { raw });
+                urls.push(url);
             }
         }
+        let certificate_crls = futures::future::try_join_all(urls.into_iter().map(|url| async {
+            let response = self.get(url).await?;
+            let raw = Self::limited_body(response).await?;
+            Ok::<_, TdxCollateralError>(TdxCertificateRevocationList { raw })
+        }))
+        .await?;
         Ok(TdxRevocationEvidence { certificate_crls })
     }
 
@@ -815,7 +821,7 @@ impl TdxAttestationHydrator {
             let (rest, pem) = parse_x509_pem(remaining).map_err(|e| {
                 TdxCollateralError::source(Box::new(TdxHydrationError::Pem(e.to_string())))
             })?;
-            if pem.label == "CERTIFICATE" {
+            if pem.label == CERTIFICATE_PEM_LABEL {
                 certs.push(Bytes::from(pem.contents));
             }
             remaining = rest;
@@ -1083,50 +1089,9 @@ mod tests {
         }
     }
 
-    fn signed_tcb_info_without_matching_level(
-        issue_time: u64,
-        next_update: u64,
-    ) -> TdxSignedCollateral {
-        let tdx_components = (0..16).map(|_| serde_json::json!({ "svn": 1 })).collect::<Vec<_>>();
-        let sgx_components = (0..16).map(|_| serde_json::json!({ "svn": 0 })).collect::<Vec<_>>();
-        let raw = serde_json::json!({
-            "tcbInfo": {
-                "id": "TDX",
-                "teeType": "0x81",
-                "issueDate": "1970-01-01T00:01:40Z",
-                "nextUpdate": "1970-01-01T00:05:00Z",
-                "fmspc": "020202020202",
-                "pceId": "0303",
-                "tdxModule": {
-                    "mrsigner": "00".repeat(48),
-                    "attributes": "00".repeat(8),
-                    "attributesMask": "00".repeat(8),
-                },
-                "tdxModuleIdentities": [],
-                "tcbLevels": [{
-                    "tcb": {
-                        "pcesvn": 0,
-                        "tdxtcbcomponents": tdx_components,
-                        "sgxtcbcomponents": sgx_components,
-                    },
-                    "tcbStatus": "UpToDate",
-                }],
-            },
-        })
-        .to_string()
-        .into_bytes();
-
-        TdxSignedCollateral {
-            raw: Bytes::from(raw),
-            signing_chain: vec![certificate_with_validity(issue_time, next_update + 100)],
-            signature: Bytes::new(),
-            issue_time,
-            next_update,
-        }
-    }
-
-    fn signed_tcb_info_matching_quote(issue_time: u64, next_update: u64) -> TdxSignedCollateral {
-        let tdx_components = (0..16).map(|_| serde_json::json!({ "svn": 0 })).collect::<Vec<_>>();
+    fn signed_tcb_info(tdx_svn: u64, issue_time: u64, next_update: u64) -> TdxSignedCollateral {
+        let tdx_components =
+            (0..16).map(|_| serde_json::json!({ "svn": tdx_svn })).collect::<Vec<_>>();
         let sgx_components = (0..16).map(|_| serde_json::json!({ "svn": 0 })).collect::<Vec<_>>();
         let raw = serde_json::json!({
             "tcbInfo": {
@@ -1435,7 +1400,7 @@ mod tests {
         let hydrator = TdxAttestationHydrator::new(TdxAttestationConfig::intel_pcs()).unwrap();
         let lookup = cache_lookup();
         let mut fetch = collateral_fetch(300, 400);
-        fetch.collateral.tcb_info = signed_tcb_info_without_matching_level(100, 300);
+        fetch.collateral.tcb_info = signed_tcb_info(1, 100, 300);
         hydrator.cache_lock().unwrap().insert(lookup.clone(), 300, fetch);
 
         let error = hydrator
@@ -1465,7 +1430,7 @@ mod tests {
         let lookup = cache_lookup();
         let pck_certificate_chain = vec![certificate_with_validity(100, 500)];
         let mut fetch = collateral_fetch(300, 400);
-        fetch.collateral.tcb_info = signed_tcb_info_matching_quote(100, 300);
+        fetch.collateral.tcb_info = signed_tcb_info(0, 100, 300);
         fetch.trusted_root_ca_hash = pck_certificate_chain[0].hash();
         hydrator.cache_lock().unwrap().insert(lookup.clone(), 300, fetch);
 

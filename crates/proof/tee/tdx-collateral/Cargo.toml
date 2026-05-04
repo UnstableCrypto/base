@@ -26,6 +26,7 @@ x509-parser.workspace = true
 reqwest.workspace = true
 
 # Async
+futures.workspace = true
 tokio = { workspace = true, features = ["time", "macros"] }
 
 # Error
