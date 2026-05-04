@@ -52,11 +52,11 @@ impl TdxImageHashTool {
     /// Queries the prover endpoint and returns a complete report.
     pub async fn run(config: TdxImageHashConfig) -> Result<TdxImageHashReport> {
         let attestation = Self::fetch_attestation(&config).await?;
-        let signer_address = Self::signer_address(&attestation.signer_public_key)?;
-        let parsed_quote =
-            TdxQuote::parse(&attestation.quote).wrap_err("failed to parse TDX quote")?;
         let public_key_hash = TdxVerifier::validate_public_key(&attestation.signer_public_key)
             .wrap_err("TDX signer public key is malformed")?;
+        let signer_address = Address::from_slice(&public_key_hash.as_slice()[12..]);
+        let parsed_quote =
+            TdxQuote::parse(&attestation.quote).wrap_err("failed to parse TDX quote")?;
         TdxVerifier::verify_report_data(
             &parsed_quote,
             public_key_hash,
@@ -77,7 +77,7 @@ impl TdxImageHashTool {
         };
 
         let quote_verification = if config.verify_quote {
-            Some(Self::verify_quote(&config, signer_address, &attestation).await?)
+            Some(Self::verify_quote(&config.attestation, signer_address, &attestation).await?)
         } else {
             None
         };
@@ -100,44 +100,40 @@ impl TdxImageHashTool {
         })
     }
 
-    /// Fetches and decodes the selected TDX signer attestation from the prover endpoint.
-    pub async fn fetch_attestation(config: &TdxImageHashConfig) -> Result<TdxSignerAttestation> {
+    async fn fetch_attestation(config: &TdxImageHashConfig) -> Result<TdxSignerAttestation> {
         let client = HttpClientBuilder::default()
             .request_timeout(config.attestation.fetch_timeout)
             .build(config.endpoint.as_str())
             .wrap_err_with(|| format!("failed to build JSON-RPC client for {}", config.endpoint))?;
 
-        let kind = client.attestation_kind().await.wrap_err_with(|| {
-            format!("failed to query attestation kind from {}", config.endpoint)
-        })?;
-        let kind = SignerAttestationKind::from_rpc_name(&kind).map_err(|error| {
-            eyre::eyre!("unsupported attestation kind returned by {}: {error}", config.endpoint)
-        })?;
+        let kind = client.attestation_kind().await.wrap_err("failed to query attestation kind")?;
+        let kind = SignerAttestationKind::from_rpc_name(&kind)
+            .map_err(|error| eyre::eyre!("unsupported attestation kind: {error}"))?;
         if kind != SignerAttestationKind::Tdx {
             bail!("endpoint {} returned {kind:?} attestations, expected TDX", config.endpoint);
         }
 
-        let public_keys = client.signer_public_key().await.wrap_err_with(|| {
-            format!("failed to query signer public keys from {}", config.endpoint)
-        })?;
-        let attestations = client.signer_attestation(None, None).await.wrap_err_with(|| {
-            format!("failed to query signer attestations from {}", config.endpoint)
-        })?;
+        let (public_keys, attestations) = tokio::try_join!(
+            async {
+                client.signer_public_key().await.wrap_err("failed to query signer public keys")
+            },
+            async {
+                client
+                    .signer_attestation(None, None)
+                    .await
+                    .wrap_err("failed to query signer attestations")
+            }
+        )?;
 
-        let public_key = public_keys.get(config.signer_index).ok_or_else(|| {
-            eyre::eyre!(
-                "signer index {} is out of range for {} public keys",
-                config.signer_index,
-                public_keys.len()
-            )
-        })?;
-        let attestation_bytes = attestations.get(config.signer_index).ok_or_else(|| {
-            eyre::eyre!(
-                "signer index {} is out of range for {} attestations",
-                config.signer_index,
-                attestations.len()
-            )
-        })?;
+        let out_of_range = |len: usize, label: &str| {
+            eyre::eyre!("signer index {} is out of range for {len} {label}", config.signer_index)
+        };
+        let public_key = public_keys
+            .get(config.signer_index)
+            .ok_or_else(|| out_of_range(public_keys.len(), "public keys"))?;
+        let attestation_bytes = attestations
+            .get(config.signer_index)
+            .ok_or_else(|| out_of_range(attestations.len(), "attestations"))?;
         let attestation = TdxSignerAttestation::decode(attestation_bytes)
             .wrap_err("failed to decode TDX signer attestation payload")?;
         if attestation.signer_public_key.as_ref() != public_key.as_slice() {
@@ -150,20 +146,12 @@ impl TdxImageHashTool {
         Ok(attestation)
     }
 
-    /// Derives the Ethereum signer address from a TDX uncompressed public key.
-    pub fn signer_address(public_key: &[u8]) -> Result<Address> {
-        let public_key_hash = TdxVerifier::validate_public_key(public_key)
-            .wrap_err("TDX signer public key is malformed")?;
-        Ok(Address::from_slice(&public_key_hash.as_slice()[12..]))
-    }
-
-    /// Verifies the quote and collateral locally and returns journal-derived fields.
-    pub async fn verify_quote(
-        config: &TdxImageHashConfig,
+    async fn verify_quote(
+        attestation_config: &TdxAttestationConfig,
         signer_address: Address,
         attestation: &TdxSignerAttestation,
     ) -> Result<QuoteVerificationReport> {
-        let collateral_provider = TdxCollateralProvider::new(config.attestation.clone())
+        let collateral_provider = TdxCollateralProvider::new(attestation_config.clone())
             .wrap_err("failed to initialize TDX collateral provider")?;
         let collateral = collateral_provider
             .fetch_collateral(&attestation.quote)
@@ -180,9 +168,9 @@ impl TdxImageHashTool {
             quote_timestamp_millis: attestation.quote_timestamp_millis,
             verification_time: Self::now_seconds()?,
             policy: TdxQuotePolicy {
-                max_quote_age_seconds: config.attestation.max_quote_age.as_secs(),
+                max_quote_age_seconds: attestation_config.max_quote_age.as_secs(),
             },
-            allowed_tcb_statuses: config.attestation.allowed_tcb_statuses.clone(),
+            allowed_tcb_statuses: attestation_config.allowed_tcb_statuses.clone(),
         };
         let journal =
             TdxVerifier::verify(&verifier_input).wrap_err("local TDX quote verification failed")?;
@@ -194,34 +182,43 @@ impl TdxImageHashTool {
         })
     }
 
-    /// Queries on-chain registry state for the signer.
-    pub async fn query_registry(
+    async fn query_registry(
         config: &OnchainRegistryConfig,
         signer_address: Address,
     ) -> Result<OnchainRegistryReport> {
         let provider: RootProvider = RootProvider::new_http(config.l1_rpc_url.clone());
         let registry =
             ITEEProverRegistry::ITEEProverRegistryInstance::new(config.registry_address, provider);
-        let signer_image_hash = registry
-            .signerImageHash(signer_address)
-            .call()
-            .await
-            .wrap_err("failed to read signerImageHash")?;
-        let expected_image_hash = registry
-            .getExpectedImageHash()
-            .call()
-            .await
-            .wrap_err("failed to read getExpectedImageHash")?;
-        let is_registered_signer = registry
-            .isRegisteredSigner(signer_address)
-            .call()
-            .await
-            .wrap_err("failed to read isRegisteredSigner")?;
-        let is_valid_signer = registry
-            .isValidSigner(signer_address)
-            .call()
-            .await
-            .wrap_err("failed to read isValidSigner")?;
+        let (signer_image_hash, expected_image_hash, is_registered_signer, is_valid_signer) = tokio::try_join!(
+            async {
+                registry
+                    .signerImageHash(signer_address)
+                    .call()
+                    .await
+                    .wrap_err("failed to read signerImageHash")
+            },
+            async {
+                registry
+                    .getExpectedImageHash()
+                    .call()
+                    .await
+                    .wrap_err("failed to read getExpectedImageHash")
+            },
+            async {
+                registry
+                    .isRegisteredSigner(signer_address)
+                    .call()
+                    .await
+                    .wrap_err("failed to read isRegisteredSigner")
+            },
+            async {
+                registry
+                    .isValidSigner(signer_address)
+                    .call()
+                    .await
+                    .wrap_err("failed to read isValidSigner")
+            },
+        )?;
 
         Ok(OnchainRegistryReport {
             registry_address: config.registry_address,
@@ -232,8 +229,7 @@ impl TdxImageHashTool {
         })
     }
 
-    /// Returns the current Unix timestamp in seconds.
-    pub fn now_seconds() -> Result<u64> {
+    fn now_seconds() -> Result<u64> {
         Ok(SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .wrap_err("system clock is before the Unix epoch")?
