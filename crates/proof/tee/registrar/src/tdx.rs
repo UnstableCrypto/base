@@ -307,8 +307,8 @@ impl TdxAttestationHydrator {
             return Ok(fetch);
         }
 
-        let tcb_info = self.fetch_tcb_info(&platform).await?;
-        let qe_identity = self.fetch_qe_identity().await?;
+        let (tcb_info, qe_identity) =
+            tokio::try_join!(self.fetch_tcb_info(&platform), self.fetch_qe_identity())?;
         let tcb_status = tcb_info
             .tcb_status_for_quote(&parsed_quote, &pck_tcb)
             .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
@@ -367,24 +367,28 @@ impl TdxAttestationHydrator {
         TdxQuote::verify_signature(parsed_quote)
             .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
 
-        CollateralVerifier::verify_signed_collateral(
-            &fetch.collateral.tcb_info,
-            TdxSignedCollateralBody::TcbInfo,
-            fetch.trusted_root_ca_hash,
-            verification_time,
-            &fetch.revocation,
-            TdxVerifierError::TcbInfoInvalid,
-        )
-        .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
-        CollateralVerifier::verify_signed_collateral(
-            &fetch.collateral.qe_identity,
-            TdxSignedCollateralBody::QeIdentity,
-            fetch.trusted_root_ca_hash,
-            verification_time,
-            &fetch.revocation,
-            TdxVerifierError::QeIdentityInvalid,
-        )
-        .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+        for (collateral, body_kind, error_mapper) in [
+            (
+                &fetch.collateral.tcb_info,
+                TdxSignedCollateralBody::TcbInfo,
+                TdxVerifierError::TcbInfoInvalid as fn(String) -> TdxVerifierError,
+            ),
+            (
+                &fetch.collateral.qe_identity,
+                TdxSignedCollateralBody::QeIdentity,
+                TdxVerifierError::QeIdentityInvalid,
+            ),
+        ] {
+            CollateralVerifier::verify_signed_collateral(
+                collateral,
+                body_kind,
+                fetch.trusted_root_ca_hash,
+                verification_time,
+                &fetch.revocation,
+                error_mapper,
+            )
+            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+        }
 
         let pck_leaf = fetch.pck_certificate_chain.last().ok_or_else(|| {
             RegistrarError::TdxAttestation(Box::new(TdxVerifierError::PckCertChainInvalid(
@@ -517,16 +521,16 @@ impl TdxAttestationHydrator {
             expiration = expiration.min(certificate.not_after);
         }
 
-        expiration = expiration.min(Self::validate_signed_collateral_freshness(
-            &fetch.collateral.tcb_info,
-            TdxSignedCollateralBody::TcbInfo,
-            verification_time,
-        )?);
-        expiration = expiration.min(Self::validate_signed_collateral_freshness(
-            &fetch.collateral.qe_identity,
-            TdxSignedCollateralBody::QeIdentity,
-            verification_time,
-        )?);
+        for (collateral, body_kind) in [
+            (&fetch.collateral.tcb_info, TdxSignedCollateralBody::TcbInfo),
+            (&fetch.collateral.qe_identity, TdxSignedCollateralBody::QeIdentity),
+        ] {
+            expiration = expiration.min(Self::validate_signed_collateral_freshness(
+                collateral,
+                body_kind,
+                verification_time,
+            )?);
+        }
 
         for chain in [
             fetch.pck_certificate_chain.as_slice(),
@@ -688,15 +692,15 @@ impl TdxAttestationHydrator {
         };
         let collateral =
             TdxSignedCollateral { raw, signing_chain, signature, issue_time: 0, next_update: 0 };
-        let validity = match body_kind {
+        let error_mapper = match body_kind {
             TdxSignedCollateralBody::TcbInfo => {
-                collateral.signed_validity(body_kind, TdxVerifierError::TcbInfoInvalid)
+                TdxVerifierError::TcbInfoInvalid as fn(String) -> TdxVerifierError
             }
-            TdxSignedCollateralBody::QeIdentity => {
-                collateral.signed_validity(body_kind, TdxVerifierError::QeIdentityInvalid)
-            }
-        }
-        .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
+            TdxSignedCollateralBody::QeIdentity => TdxVerifierError::QeIdentityInvalid,
+        };
+        let validity = collateral
+            .signed_validity(body_kind, error_mapper)
+            .map_err(|e| RegistrarError::TdxAttestation(Box::new(e)))?;
         Ok(TdxSignedCollateral {
             issue_time: validity.issue_time,
             next_update: validity.next_update,
@@ -760,7 +764,7 @@ impl TdxAttestationHydrator {
                 TdxHydrationError::ResponseTooLarge,
             )));
         }
-        Ok(Bytes::from(bytes.to_vec()))
+        Ok(Bytes(bytes))
     }
 
     fn certificate_chain_from_header(
