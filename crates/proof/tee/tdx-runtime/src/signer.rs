@@ -56,7 +56,7 @@ impl TdxSigner {
         Bytes::copy_from_slice(encoded_point.as_bytes())
     }
 
-    /// Returns the Ethereum address derived the same way as Nitro.
+    /// Returns the signer's Ethereum address.
     pub const fn address(&self) -> Address {
         self.signer.address()
     }
@@ -78,8 +78,8 @@ impl TdxSigner {
             return Err(TdxRuntimeError::InvalidPublicKey);
         }
 
-        let hash = keccak256(&public_key[1..65]);
-        Ok(Address::from_slice(&hash.as_slice()[12..]))
+        let hash = keccak256(&public_key[1..]);
+        Ok(Address::from_slice(&hash[12..]))
     }
 }
 
