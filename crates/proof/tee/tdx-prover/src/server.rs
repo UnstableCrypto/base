@@ -53,7 +53,7 @@ impl<P> fmt::Debug for TdxEnclaveService<P> {
 
 /// Host-side TDX prover server exposing the shared JSON-RPC interface.
 pub struct TdxProverServer<P> {
-    enclaves: Vec<TdxEnclaveService<P>>,
+    enclave: TdxEnclaveService<P>,
     proof_request_timeout: Duration,
 }
 
@@ -67,25 +67,7 @@ where
         runtime: Arc<TdxRuntime<P>>,
         proof_request_timeout: Duration,
     ) -> Self {
-        Self::new_multi(config, vec![runtime], proof_request_timeout)
-    }
-
-    /// Create a server with multiple TDX runtimes for multi-enclave deployments.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `runtimes` is empty.
-    pub fn new_multi(
-        config: ProverConfig,
-        runtimes: Vec<Arc<TdxRuntime<P>>>,
-        proof_request_timeout: Duration,
-    ) -> Self {
-        assert!(!runtimes.is_empty(), "at least one runtime is required");
-        let enclaves = runtimes
-            .into_iter()
-            .map(|runtime| TdxEnclaveService::new(config.clone(), runtime))
-            .collect();
-        Self { enclaves, proof_request_timeout }
+        Self { enclave: TdxEnclaveService::new(config, runtime), proof_request_timeout }
     }
 
     /// Start the JSON-RPC HTTP server on the given address.
@@ -102,14 +84,14 @@ where
     /// Build the JSON-RPC module served by this TDX prover.
     pub fn into_rpc_module(self) -> eyre::Result<RpcModule<()>> {
         let mut module = RpcModule::new(());
-        let runtimes = self.enclaves.iter().map(|enclave| Arc::clone(enclave.runtime())).collect();
+        let runtime = Arc::clone(self.enclave.runtime());
 
         module.merge(HealthzRpc::new(env!("CARGO_PKG_VERSION")).into_rpc())?;
         module.merge(
-            ProverRpc::new(TdxProverHandler::new(self.enclaves), self.proof_request_timeout)
+            ProverRpc::new(TdxProverHandler::new(self.enclave), self.proof_request_timeout)
                 .into_rpc(),
         )?;
-        module.merge(TdxSignerRpc::new(runtimes).into_rpc())?;
+        module.merge(TdxSignerRpc::new(vec![runtime]).into_rpc())?;
 
         Ok(module)
     }
@@ -121,27 +103,21 @@ impl<P> fmt::Debug for TdxProverServer<P> {
     }
 }
 
-/// Selects the TDX enclave that should serve a proof request.
+/// Routes proof requests to a TDX enclave service.
 pub struct TdxProverHandler<P> {
-    /// TDX enclave services available for proving.
-    pub enclaves: Vec<TdxEnclaveService<P>>,
+    enclave: TdxEnclaveService<P>,
 }
 
 impl<P> TdxProverHandler<P> {
-    /// Create a proof request handler over all available TDX enclave services.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `enclaves` is empty.
-    pub fn new(enclaves: Vec<TdxEnclaveService<P>>) -> Self {
-        assert!(!enclaves.is_empty(), "at least one enclave is required");
-        Self { enclaves }
+    /// Create a proof request handler over a TDX enclave service.
+    pub const fn new(enclave: TdxEnclaveService<P>) -> Self {
+        Self { enclave }
     }
 }
 
 impl<P> fmt::Debug for TdxProverHandler<P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TdxProverHandler").field("enclave_count", &self.enclaves.len()).finish()
+        f.debug_struct("TdxProverHandler").finish_non_exhaustive()
     }
 }
 
@@ -151,10 +127,11 @@ where
     P: TdxQuoteProvider + fmt::Debug + 'static,
 {
     async fn prove_block(&self, request: ProofRequest) -> Result<ProofResult, ProverRpcError> {
-        // Constructor guarantees at least one enclave.
-        let enclave = &self.enclaves[0];
-
-        enclave.service().prove_block(request).await.map_err(|e| ProverRpcError::new(-32000, e))
+        self.enclave
+            .service()
+            .prove_block(request)
+            .await
+            .map_err(|e| ProverRpcError::new(-32000, e))
     }
 }
 
