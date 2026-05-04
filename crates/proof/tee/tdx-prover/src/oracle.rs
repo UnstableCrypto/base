@@ -22,9 +22,15 @@ pub struct Oracle {
 
 impl Oracle {
     /// Construct an [`Oracle`] from an iterator of `(key, value)` pairs.
+    ///
+    /// Every preimage with a hash-based key type (Keccak256, Sha256) is verified
+    /// against its key before being accepted. Returns an error if any preimage
+    /// fails validation.
     pub fn new(preimages: impl IntoIterator<Item = (PreimageKey, Vec<u8>)>) -> Result<Self> {
         let map: HashMap<PreimageKey, Vec<u8>> = preimages.into_iter().collect();
-        Self::check_preimages(&map)?;
+        for (key, value) in &map {
+            Self::check_preimage(key, value)?;
+        }
         Ok(Self { preimages: Arc::new(RwLock::new(map)) })
     }
 
@@ -34,36 +40,34 @@ impl Oracle {
     }
 
     /// Verify that a preimage's content matches its key for hash-based key types.
-    pub fn check_preimage(key: &PreimageKey, value: &[u8]) -> Result<()> {
-        let expected_hash: Option<[u8; 32]> = match key.key_type() {
-            PreimageKeyType::Keccak256 => Some(keccak256(value).0),
-            PreimageKeyType::Sha256 => Some(sha2::Sha256::digest(value).into()),
+    ///
+    /// Blob and Precompile keys use composite hashing schemes (`keccak256(commitment ++ z)`
+    /// and `keccak256(addr ++ input)` respectively) that cannot be re-derived from the
+    /// stored value alone, so they are accepted as-is and validated during derivation.
+    /// Local and `GlobalGeneric` keys are context-dependent and likewise skip validation.
+    fn check_preimage(key: &PreimageKey, value: &[u8]) -> Result<()> {
+        let computed: [u8; 32] = match key.key_type() {
+            PreimageKeyType::Keccak256 => keccak256(value).0,
+            PreimageKeyType::Sha256 => sha2::Sha256::digest(value).into(),
             PreimageKeyType::Local
             | PreimageKeyType::GlobalGeneric
             | PreimageKeyType::Blob
-            | PreimageKeyType::Precompile => None,
+            | PreimageKeyType::Precompile => return Ok(()),
         };
 
-        if let Some(hash) = expected_hash
-            && key != &PreimageKey::new(hash, key.key_type())
-        {
+        if key != &PreimageKey::new(computed, key.key_type()) {
             return Err(TdxProverError::InvalidPreimage(*key));
         }
         Ok(())
     }
 
-    /// Verify every preimage in the map.
-    pub fn check_preimages(preimages: &HashMap<PreimageKey, Vec<u8>>) -> Result<()> {
-        for (key, value) in preimages {
-            Self::check_preimage(key, value)?;
-        }
-        Ok(())
-    }
-
     /// Consume the oracle and return all captured preimages.
-    pub fn into_preimages(self) -> Result<Vec<(PreimageKey, Vec<u8>)>> {
+    ///
+    /// Returns an error if other references to the internal preimage map still exist;
+    /// callers must drop all clones of the oracle before calling this.
+    pub fn into_preimages(self) -> Result<HashMap<PreimageKey, Vec<u8>>> {
         Arc::try_unwrap(self.preimages)
-            .map(|lock| lock.into_inner().into_iter().collect())
+            .map(RwLock::into_inner)
             .map_err(|_| TdxProverError::Internal("oracle still has outstanding references".into()))
     }
 }
