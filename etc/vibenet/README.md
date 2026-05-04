@@ -178,8 +178,7 @@ etc/vibenet/
   deploy/bootstrap.sh                  one-shot host bootstrap (ubuntu/debian)
   deploy/README.md                     production deployment guide
 
-apps/vibenet-ui/public/              static HTML/JS served by nginx
-
 crates/vibenet/faucet/              base-vibenet-faucet (axum + alloy)
 crates/vibenet/explorer/            vibescan (axum + alloy + sqlite)
+crates/vibenet/ui/public/           static HTML/JS served by nginx
 ```

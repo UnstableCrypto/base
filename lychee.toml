@@ -10,7 +10,7 @@ exclude_path = [
     "crates/utilities/test-utils/contracts/",
     # Runtime HTML and Askama templates contain root-relative routes and
     # template variables that lychee cannot resolve as static local files.
-    "apps/vibenet-ui/public/.*\\.html",
+    "crates/vibenet/ui/public/.*\\.html",
     "crates/vibenet/explorer/templates/",
     "docs/specs/",
     "README\\.md",

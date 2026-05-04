@@ -89,7 +89,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 
-    # Static UI (HTML/JS/CSS mounted from apps/vibenet-ui/public).
+    # Static UI (HTML/JS/CSS mounted from crates/vibenet/ui/public).
     location / {
         limit_req zone=ui_ip burst=30 nodelay;
         add_header Cache-Control "no-store";

@@ -94,7 +94,7 @@ services:
       - vibenet-htpasswd:/etc/nginx/htpasswd-dir:ro
       - vibenet-config:/srv/config:ro
       - vibenet-shared:/srv/shared:ro
-      - ../../apps/vibenet-ui/public:/srv/ui:ro
+      - ../../crates/vibenet/ui/public:/srv/ui:ro
     # nginx:alpine auto-runs envsubst on /etc/nginx/templates/*.template
     # and writes the result to /etc/nginx/conf.d/*.conf before starting.
     # The template no longer references any env vars, but the envsubst step

@@ -21,7 +21,7 @@ vibenet stack is assembled elsewhere:
 
 - [`etc/vibenet/`](../../etc/vibenet) — nginx gateway, docker-compose overlay,
   setup scripts, and host bootstrap for bare-metal deployments.
-- [`apps/vibenet-ui/`](../../apps/vibenet-ui) — static landing page and faucet UI.
+- [`ui/`](./ui) — static landing page and faucet UI.
 - [`etc/docker/Justfile`](../../etc/docker/Justfile) — `just vibe` / `just vibe-down`
   entry points for local and remote lifecycle.
 
