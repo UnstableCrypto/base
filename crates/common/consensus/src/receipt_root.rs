@@ -1,5 +1,7 @@
 //! Receipt root calculation helpers for consensus receipts.
 
+use alloc::boxed::Box;
+
 use alloy_consensus::{Header, TxReceipt};
 use alloy_eips::eip2718::Encodable2718;
 use alloy_primitives::{B256, Bloom, Log, logs_bloom};
@@ -52,8 +54,8 @@ impl ReceiptRoot {
         if actual_logs_bloom != header.logs_bloom {
             return Err(ReceiptRootError::LogsBloomMismatch {
                 block_hash,
-                expected: header.logs_bloom,
-                actual: actual_logs_bloom,
+                expected: Box::new(header.logs_bloom),
+                actual: Box::new(actual_logs_bloom),
             });
         }
 
@@ -82,9 +84,9 @@ pub enum ReceiptRootError {
         /// The block hash whose receipts were checked.
         block_hash: B256,
         /// The logs bloom committed in the header.
-        expected: Bloom,
+        expected: Box<Bloom>,
         /// The logs bloom calculated from the returned receipts.
-        actual: Bloom,
+        actual: Box<Bloom>,
     },
 }
 

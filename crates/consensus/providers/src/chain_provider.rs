@@ -339,8 +339,8 @@ mod tests {
     #[case::logs_bloom_mismatch(
         AlloyChainProviderError::ReceiptRoot(ReceiptRootError::LogsBloomMismatch {
             block_hash: B256::ZERO,
-            expected: Bloom::ZERO,
-            actual: Bloom::repeat_byte(0xff),
+            expected: Box::new(Bloom::ZERO),
+            actual: Box::new(Bloom::repeat_byte(0xff)),
         }),
         is_critical,
     )]
