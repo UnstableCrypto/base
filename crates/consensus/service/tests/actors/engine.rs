@@ -13,7 +13,7 @@ use base_consensus_engine::{
     test_utils::{TestEngineStateBuilder, test_block_info, test_engine_client_builder},
 };
 use base_consensus_node::{
-    EngineDerivationClient, EngineError, EngineProcessingRequest, EngineProcessor,
+    EngineActorRequest, EngineDerivationClient, EngineError, EngineProcessor,
     EngineProcessorOptions, EngineRequestReceiver, NodeMode,
 };
 use base_protocol::{BlockInfo, L2BlockInfo};
@@ -125,7 +125,7 @@ async fn follow_restart_delegated_forkchoice_does_not_finalize_past_actual_safe_
         .expect("bootstrap did not seed unsafe head");
 
     req_tx
-        .send(EngineProcessingRequest::ProcessDelegatedForkchoiceUpdate(Box::new(
+        .send(EngineActorRequest::ProcessDelegatedForkchoiceUpdateRequest(Box::new(
             DelegatedForkchoiceUpdate {
                 safe_l2: delegated_safe,
                 finalized_l2_number: Some(delegated_safe_number),
