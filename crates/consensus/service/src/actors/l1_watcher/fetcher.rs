@@ -7,7 +7,7 @@ use alloy_provider::Provider;
 use alloy_rpc_types_eth::{Block, Filter, Log};
 use alloy_transport::{TransportError, TransportErrorKind};
 use async_trait::async_trait;
-use base_consensus_providers::AlloyChainProvider;
+use base_common_consensus::ReceiptRoot;
 
 /// A narrow trait exposing only the two L1 RPC methods used by [`super::L1WatcherActor`].
 ///
@@ -93,26 +93,23 @@ where
             self.provider.get_block_receipts(BlockId::Hash(block_hash.into())).await?.ok_or_else(
                 || Self::custom_error(format!("L1 block receipts not found: {block_hash:?}")),
             )?;
-        let consensus_receipts = receipts
+        let receipt_envelopes = receipts
             .iter()
-            .map(|receipt| receipt.inner.clone().into_primitives_receipt().as_receipt().cloned())
+            .map(|receipt| receipt.inner.clone().into_primitives_receipt())
+            .collect::<Vec<_>>();
+
+        ReceiptRoot::verify_root_and_logs_bloom(&header, block_hash, &receipt_envelopes)
+            .map_err(|error| Self::custom_error(error.to_string()))?;
+
+        let consensus_receipts = receipt_envelopes
+            .iter()
+            .map(|receipt| receipt.as_receipt().cloned())
             .collect::<Option<Vec<_>>>()
             .ok_or_else(|| {
                 Self::custom_error(format!(
                     "failed to convert L1 block receipts into consensus receipts: {block_hash:?}"
                 ))
             })?;
-        let receipt_envelopes = receipts
-            .iter()
-            .map(|receipt| receipt.inner.clone().into_primitives_receipt())
-            .collect::<Vec<_>>();
-
-        AlloyChainProvider::verify_receipts_root_and_logs_bloom(
-            &header,
-            block_hash,
-            &receipt_envelopes,
-        )
-        .map_err(|error| Self::custom_error(error.to_string()))?;
 
         let tx_hashes_and_receipts = receipts
             .iter()

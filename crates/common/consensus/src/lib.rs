@@ -21,7 +21,7 @@ pub use receipts::{
 };
 
 mod receipt_root;
-pub use receipt_root::ReceiptRoot;
+pub use receipt_root::{ReceiptRoot, ReceiptRootError};
 
 mod transaction;
 #[cfg(feature = "serde")]

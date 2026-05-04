@@ -62,5 +62,6 @@ metrics = [
 
 [dev-dependencies]
 tokio.workspace = true
+rstest.workspace = true
 httpmock.workspace = true
 serde_json = { workspace = true, features = ["std"] }

@@ -2,13 +2,13 @@
 
 use std::{boxed::Box, num::NonZeroUsize, vec::Vec};
 
-use alloy_consensus::{Header, Receipt, TxEnvelope, TxReceipt};
-use alloy_eips::{BlockId, eip2718::Encodable2718};
-use alloy_primitives::{B256, Bloom, Log, logs_bloom};
+use alloy_consensus::{Header, Receipt, TxEnvelope};
+use alloy_eips::BlockId;
+use alloy_primitives::B256;
 use alloy_provider::{Provider, RootProvider};
 use alloy_transport::{RpcError, TransportErrorKind};
 use async_trait::async_trait;
-use base_common_consensus::ReceiptRoot;
+use base_common_consensus::{ReceiptRoot, ReceiptRootError};
 use base_consensus_derive::{ChainProvider, PipelineError, PipelineErrorKind, ResetError};
 use base_protocol::BlockInfo;
 use lru::LruCache;
@@ -106,48 +106,6 @@ impl AlloyChainProvider {
 
         Ok(())
     }
-
-    /// Calculates the receipt root and aggregate logs bloom for a block's receipts.
-    pub fn calculate_receipts_root_and_logs_bloom<T>(receipts: &[T]) -> (B256, Bloom)
-    where
-        T: TxReceipt<Log = Log> + Encodable2718,
-    {
-        let receipts_root = ReceiptRoot::calculate(receipts);
-        let logs_bloom = logs_bloom(receipts.iter().flat_map(|receipt| receipt.logs()));
-
-        (receipts_root, logs_bloom)
-    }
-
-    /// Verifies receipts against the commitments in the block header.
-    pub fn verify_receipts_root_and_logs_bloom<T>(
-        header: &Header,
-        block_hash: B256,
-        receipts: &[T],
-    ) -> Result<(), AlloyChainProviderError>
-    where
-        T: TxReceipt<Log = Log> + Encodable2718,
-    {
-        let (actual_receipts_root, actual_logs_bloom) =
-            Self::calculate_receipts_root_and_logs_bloom(receipts);
-
-        if actual_receipts_root != header.receipts_root {
-            return Err(AlloyChainProviderError::ReceiptsRootMismatch {
-                block_hash,
-                expected: header.receipts_root,
-                actual: actual_receipts_root,
-            });
-        }
-
-        if actual_logs_bloom != header.logs_bloom {
-            return Err(AlloyChainProviderError::LogsBloomMismatch {
-                block_hash,
-                expected: header.logs_bloom,
-                actual: actual_logs_bloom,
-            });
-        }
-
-        Ok(())
-    }
 }
 
 /// An error for the [`AlloyChainProvider`].
@@ -162,28 +120,9 @@ pub enum AlloyChainProviderError {
     /// Failed to convert RPC receipts into consensus receipts.
     #[error("Failed to convert RPC receipts into consensus receipts: {0}")]
     ReceiptsConversion(B256),
-    /// Receipt root does not match the block header.
-    #[error(
-        "Receipt root mismatch for block {block_hash:?}: expected {expected:?}, got {actual:?}"
-    )]
-    ReceiptsRootMismatch {
-        /// The block hash whose receipts were checked.
-        block_hash: B256,
-        /// The receipt root committed in the header.
-        expected: B256,
-        /// The receipt root calculated from the returned receipts.
-        actual: B256,
-    },
-    /// Logs bloom does not match the block header.
-    #[error("Logs bloom mismatch for block {block_hash:?}: expected {expected:?}, got {actual:?}")]
-    LogsBloomMismatch {
-        /// The block hash whose receipts were checked.
-        block_hash: B256,
-        /// The logs bloom committed in the header.
-        expected: Bloom,
-        /// The logs bloom calculated from the returned receipts.
-        actual: Bloom,
-    },
+    /// Receipt commitments do not match the block header.
+    #[error(transparent)]
+    ReceiptRoot(#[from] ReceiptRootError),
 }
 
 impl From<AlloyChainProviderError> for PipelineErrorKind {
@@ -209,12 +148,9 @@ impl From<AlloyChainProviderError> for PipelineErrorKind {
                     "Failed to convert RPC receipts into consensus receipts".to_string(),
                 ))
             }
-            AlloyChainProviderError::ReceiptsRootMismatch { .. }
-            | AlloyChainProviderError::LogsBloomMismatch { .. } => {
-                Self::Temporary(PipelineError::Provider(
-                    "RPC receipts do not match L1 header commitments".to_string(),
-                ))
-            }
+            AlloyChainProviderError::ReceiptRoot(_) => Self::Critical(PipelineError::Provider(
+                "RPC receipts do not match L1 header commitments".to_string(),
+            )),
         }
     }
 }
@@ -291,18 +227,19 @@ impl ChainProvider for AlloyChainProvider {
         })?
         .ok_or(AlloyChainProviderError::BlockNotFound(hash.into()))?;
 
+        let receipt_envelopes = receipts
+            .into_iter()
+            .map(|receipt| receipt.inner.into_primitives_receipt())
+            .collect::<Vec<_>>();
+
         if !self.trust_rpc {
             let header = self.header_by_hash(hash).await?;
-            let receipt_envelopes = receipts
-                .iter()
-                .map(|receipt| receipt.inner.clone().into_primitives_receipt())
-                .collect::<Vec<_>>();
-            Self::verify_receipts_root_and_logs_bloom(&header, hash, &receipt_envelopes)?;
+            ReceiptRoot::verify_root_and_logs_bloom(&header, hash, &receipt_envelopes)?;
         }
 
-        let consensus_receipts = receipts
-            .into_iter()
-            .map(|r| r.inner.into_primitives_receipt().as_receipt().cloned())
+        let consensus_receipts = receipt_envelopes
+            .iter()
+            .map(|receipt| receipt.as_receipt().cloned())
             .collect::<Option<Vec<_>>>()
             .ok_or(AlloyChainProviderError::ReceiptsConversion(hash))?;
 
@@ -358,101 +295,61 @@ impl ChainProvider for AlloyChainProvider {
 
 #[cfg(test)]
 mod tests {
-    use alloy_consensus::{EthereumReceipt, ReceiptEnvelope, TxType};
-    use alloy_primitives::{Address, B256, Bloom, Bytes, Log, LogData, b256};
+    use alloy_primitives::Bloom;
+    use rstest::rstest;
 
     use super::*;
 
-    fn receipt_with_log() -> ReceiptEnvelope {
-        EthereumReceipt {
-            tx_type: TxType::Legacy,
-            success: true,
-            cumulative_gas_used: 21_000,
-            logs: vec![Log {
-                address: Address::repeat_byte(0x11),
-                data: LogData::new_unchecked(
-                    vec![b256!(
-                        "0x1111111111111111111111111111111111111111111111111111111111111111"
-                    )],
-                    Bytes::from_static(&[0x22]),
-                ),
-            }],
-        }
-        .into()
+    fn is_temporary(kind: &PipelineErrorKind) -> bool {
+        matches!(kind, PipelineErrorKind::Temporary(_))
     }
 
-    fn header_matching_receipts(receipts: &[ReceiptEnvelope]) -> Header {
-        let (receipts_root, logs_bloom) =
-            AlloyChainProvider::calculate_receipts_root_and_logs_bloom(receipts);
-
-        Header { receipts_root, logs_bloom, ..Default::default() }
+    fn is_reset(kind: &PipelineErrorKind) -> bool {
+        matches!(kind, PipelineErrorKind::Reset(_))
     }
 
-    #[test]
-    fn verify_receipts_root_and_logs_bloom_accepts_matching_header() {
-        let receipts = vec![receipt_with_log()];
-        let header = header_matching_receipts(&receipts);
-
-        AlloyChainProvider::verify_receipts_root_and_logs_bloom(&header, B256::ZERO, &receipts)
-            .expect("matching receipts should verify");
+    fn is_critical(kind: &PipelineErrorKind) -> bool {
+        matches!(kind, PipelineErrorKind::Critical(_))
     }
 
-    #[test]
-    fn verify_receipts_root_and_logs_bloom_rejects_root_mismatch() {
-        let receipts = vec![receipt_with_log()];
-        let mut header = header_matching_receipts(&receipts);
-        header.receipts_root = B256::repeat_byte(0xff);
+    #[rstest]
+    #[case::transport(
+        AlloyChainProviderError::Transport(alloy_transport::RpcError::Transport(
+            alloy_transport::TransportErrorKind::Custom("timeout".into()),
+        )),
+        is_temporary,
+    )]
+    #[case::receipts_conversion(
+        AlloyChainProviderError::ReceiptsConversion(Default::default()),
+        is_temporary
+    )]
+    #[case::hash_block_not_found(
+        AlloyChainProviderError::BlockNotFound(B256::default().into()),
+        is_reset,
+    )]
+    #[case::number_block_not_found(AlloyChainProviderError::BlockNotFound(0u64.into()), is_temporary)]
+    #[case::receipt_commitment_mismatch(
+        AlloyChainProviderError::ReceiptRoot(ReceiptRootError::RootMismatch {
+            block_hash: B256::ZERO,
+            expected: B256::ZERO,
+            actual: B256::repeat_byte(0xff),
+        }),
+        is_critical,
+    )]
+    #[case::logs_bloom_mismatch(
+        AlloyChainProviderError::ReceiptRoot(ReceiptRootError::LogsBloomMismatch {
+            block_hash: B256::ZERO,
+            expected: Bloom::ZERO,
+            actual: Bloom::repeat_byte(0xff),
+        }),
+        is_critical,
+    )]
+    fn test_from_alloy_chain_provider_error(
+        #[case] error: AlloyChainProviderError,
+        #[case] matches_expected_kind: fn(&PipelineErrorKind) -> bool,
+    ) {
+        let kind = PipelineErrorKind::from(error);
 
-        let err =
-            AlloyChainProvider::verify_receipts_root_and_logs_bloom(&header, B256::ZERO, &receipts)
-                .expect_err("mismatched receipt root should fail");
-
-        assert!(matches!(err, AlloyChainProviderError::ReceiptsRootMismatch { .. }));
-    }
-
-    #[test]
-    fn verify_receipts_root_and_logs_bloom_rejects_bloom_mismatch() {
-        let receipts = vec![receipt_with_log()];
-        let mut header = header_matching_receipts(&receipts);
-        header.logs_bloom = Bloom::ZERO;
-
-        let err =
-            AlloyChainProvider::verify_receipts_root_and_logs_bloom(&header, B256::ZERO, &receipts)
-                .expect_err("mismatched logs bloom should fail");
-
-        assert!(matches!(err, AlloyChainProviderError::LogsBloomMismatch { .. }));
-    }
-
-    #[test]
-    fn test_from_alloy_chain_provider_error() {
-        // Transport errors are transient — retry makes sense.
-        let kind: PipelineErrorKind =
-            AlloyChainProviderError::Transport(alloy_transport::RpcError::Transport(
-                alloy_transport::TransportErrorKind::Custom("timeout".into()),
-            ))
-            .into();
-        assert!(matches!(kind, PipelineErrorKind::Temporary(_)));
-
-        // ReceiptsConversion is a transient decode failure.
-        let kind: PipelineErrorKind =
-            AlloyChainProviderError::ReceiptsConversion(Default::default()).into();
-        assert!(matches!(kind, PipelineErrorKind::Temporary(_)));
-
-        // Hash-based BlockNotFound: the block was reorged out. Retrying will never succeed
-        // — the pipeline must reset. Without this, the safe head stalls on L1 reorgs.
-        let kind: PipelineErrorKind =
-            AlloyChainProviderError::BlockNotFound(B256::default().into()).into();
-        assert!(
-            matches!(kind, PipelineErrorKind::Reset(_)),
-            "hash-based BlockNotFound must map to Reset (block reorged out)"
-        );
-
-        // Number-based BlockNotFound: the next L1 block hasn't been mined yet. This is
-        // transient — the pipeline must wait, not reset.
-        let kind: PipelineErrorKind = AlloyChainProviderError::BlockNotFound(0u64.into()).into();
-        assert!(
-            matches!(kind, PipelineErrorKind::Temporary(_)),
-            "number-based BlockNotFound must stay Temporary (block not yet produced)"
-        );
+        assert!(matches_expected_kind(&kind));
     }
 }
