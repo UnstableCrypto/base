@@ -148,6 +148,16 @@ impl TdxAttestationProverInput {
             .map_err(|e| ProverError::InputDecode(e.to_string()))?;
         Ok(Self { verifier_input: TdxVerifierInput::try_from(abi)? })
     }
+
+    /// ABI-decodes a prover input and verifies it targets `signer_address`.
+    pub fn decode_for_signer(buf: &[u8], signer_address: Address) -> Result<Self> {
+        let input = Self::decode(buf)?;
+        let actual = input.expected_signer();
+        if actual != signer_address {
+            return Err(ProverError::SignerMismatch { expected: signer_address, actual });
+        }
+        Ok(input)
+    }
 }
 
 impl fmt::Debug for TdxAttestationProverInput {

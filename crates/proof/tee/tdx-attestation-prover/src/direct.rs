@@ -9,7 +9,7 @@ use base_proof_tee_attestation::{
 };
 use base_proof_tee_tdx_verifier::{TDXVerifierJournal, TdxVerifier, TdxVerifierInput};
 
-use crate::{ProverError, Result, TdxAttestationProverInput};
+use crate::{Result, TdxAttestationProverInput};
 
 /// Default proof bytes used by the native direct prover.
 pub const DIRECT_DEV_PROOF_BYTES: &[u8] = b"base-tdx-direct-dev-proof-v1";
@@ -55,28 +55,13 @@ impl DirectProver {
     }
 
     /// Generates a TDX attestation proof from an explicit verifier input.
-    pub async fn generate_proof(&self, input: &TdxVerifierInput) -> Result<TeeAttestationProof> {
+    pub fn generate_proof(&self, input: &TdxVerifierInput) -> Result<TeeAttestationProof> {
         let journal = self.verifier.verify(input)?;
         Ok(TeeAttestationProof {
             kind: TeeAttestationKind::Tdx,
             output: Bytes::from(TdxVerifier::encode_journal(&journal)),
             proof_bytes: self.proof_bytes.clone(),
         })
-    }
-
-    /// Decodes a provider payload and verifies it targets `signer_address`.
-    pub fn decode_input_for_signer(
-        attestation_bytes: &[u8],
-        signer_address: Address,
-    ) -> Result<TdxAttestationProverInput> {
-        let input = TdxAttestationProverInput::decode(attestation_bytes)?;
-        if input.expected_signer() != signer_address {
-            return Err(ProverError::SignerMismatch {
-                expected: signer_address,
-                actual: input.expected_signer(),
-            });
-        }
-        Ok(input)
     }
 }
 
@@ -102,8 +87,9 @@ impl TeeAttestationProofProvider for DirectProver {
         attestation_bytes: &[u8],
         signer_address: Address,
     ) -> base_proof_tee_attestation::Result<TeeAttestationProof> {
-        let input = Self::decode_input_for_signer(attestation_bytes, signer_address)?;
-        Ok(self.generate_proof(input.verifier_input()).await?)
+        let input =
+            TdxAttestationProverInput::decode_for_signer(attestation_bytes, signer_address)?;
+        Ok(self.generate_proof(input.verifier_input())?)
     }
 }
 
@@ -116,7 +102,6 @@ mod tests {
         TdxCertificateRevocationList, TdxCollateral, TdxQuotePolicy, TdxRevocationEvidence,
         TdxSignedCollateral,
     };
-    use rstest::rstest;
 
     use super::*;
 
@@ -136,7 +121,11 @@ mod tests {
         }
     }
 
-    struct MockTdxVerifierContract;
+    fn mock_verify(output: &[u8], proof_bytes: &[u8]) -> TDXVerifierJournal {
+        assert!(!proof_bytes.is_empty());
+        <TDXVerifierJournal as SolValue>::abi_decode_validate(output)
+            .expect("mock verifier must decode ABI journal output")
+    }
 
     fn certificate(byte: u8) -> TdxCertificate {
         TdxCertificate {
@@ -186,14 +175,6 @@ mod tests {
         }
     }
 
-    impl MockTdxVerifierContract {
-        fn verify(&self, output: &[u8], proof_bytes: &[u8]) -> TDXVerifierJournal {
-            assert!(!proof_bytes.is_empty());
-            <TDXVerifierJournal as SolValue>::abi_decode_validate(output)
-                .expect("mock verifier must decode ABI journal output")
-        }
-    }
-
     fn journal() -> TDXVerifierJournal {
         TDXVerifierJournal {
             result: TDXVerificationResult::Success,
@@ -220,7 +201,6 @@ mod tests {
         )
     }
 
-    #[rstest]
     #[tokio::test]
     async fn dev_mode_proving_returns_proof_and_abi_encoded_journal() {
         let input = TdxAttestationProverInput::new(verifier_input());
@@ -248,15 +228,13 @@ mod tests {
             .generate_proof_for_signer(&input.encode(), input.expected_signer())
             .await
             .unwrap();
-        let mock = MockTdxVerifierContract;
 
         assert_eq!(proof.kind, TeeAttestationKind::Tdx);
-        let decoded = mock.verify(&proof.output, &proof.proof_bytes);
+        let decoded = mock_verify(&proof.output, &proof.proof_bytes);
 
         assert_eq!(decoded.signer, input.expected_signer());
     }
 
-    #[rstest]
     #[tokio::test]
     async fn provider_rejects_mismatched_signer() {
         let input = TdxAttestationProverInput::new(verifier_input());

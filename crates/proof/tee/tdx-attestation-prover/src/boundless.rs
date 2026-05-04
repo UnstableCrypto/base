@@ -320,13 +320,8 @@ impl TeeAttestationProofProvider for BoundlessProver {
         attestation_bytes: &[u8],
         signer_address: Address,
     ) -> base_proof_tee_attestation::Result<TeeAttestationProof> {
-        let input = TdxAttestationProverInput::decode(attestation_bytes)?;
-        if input.expected_signer() != signer_address {
-            return Err(Box::new(ProverError::SignerMismatch {
-                expected: signer_address,
-                actual: input.expected_signer(),
-            }));
-        }
+        let input =
+            TdxAttestationProverInput::decode_for_signer(attestation_bytes, signer_address)?;
 
         let (client, params) = self.build_client_and_params(&input).await?;
         let recovery_is_blocked = self
@@ -354,9 +349,8 @@ impl TeeAttestationProofProvider for BoundlessProver {
                 Ok(status) => status,
                 Err(e) => {
                     if Self::is_request_not_locked_error(&e) && !recovery_is_blocked {
-                        let proof = self
-                            .wait_and_fetch(&client, request_id_u256, loop_expiry)
-                            .await;
+                        let proof =
+                            self.wait_and_fetch(&client, request_id_u256, loop_expiry).await;
                         if let Ok(proof) = proof {
                             if self.recovered_proof_is_usable(&proof, signer_address) {
                                 return Ok(proof);

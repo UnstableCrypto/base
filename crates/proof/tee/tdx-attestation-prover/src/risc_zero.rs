@@ -64,21 +64,6 @@ impl RiscZeroProver {
             proof_bytes: Bytes::from(seal),
         })
     }
-
-    /// Decodes a provider payload and verifies it targets `signer_address`.
-    pub fn decode_input_for_signer(
-        attestation_bytes: &[u8],
-        signer_address: Address,
-    ) -> Result<TdxAttestationProverInput> {
-        let input = TdxAttestationProverInput::decode(attestation_bytes)?;
-        if input.expected_signer() != signer_address {
-            return Err(ProverError::SignerMismatch {
-                expected: signer_address,
-                actual: input.expected_signer(),
-            });
-        }
-        Ok(input)
-    }
 }
 
 impl fmt::Debug for RiscZeroProver {
@@ -97,7 +82,8 @@ impl TeeAttestationProofProvider for RiscZeroProver {
         attestation_bytes: &[u8],
         signer_address: Address,
     ) -> base_proof_tee_attestation::Result<TeeAttestationProof> {
-        let input = Self::decode_input_for_signer(attestation_bytes, signer_address)?;
+        let input =
+            TdxAttestationProverInput::decode_for_signer(attestation_bytes, signer_address)?;
         Ok(self.generate_proof(input.verifier_input()).await?)
     }
 }
