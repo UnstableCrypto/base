@@ -82,7 +82,15 @@ RISC0_SKIP_BUILD_KERNELS=1 cargo run \
 
 The image ID is a hash of the ELF binary. For the same source code to always
 produce the same image ID, the ELF must be byte-identical across builds.
-Two things ensure this:
+Three things ensure this:
+
+### Toolchain pinning
+
+Different compiler versions produce different machine code, so the exact
+risc0 toolchain version matters. The expected version is pinned in the
+Justfile (`expected_risc0_commit`), and `just build` will refuse to proceed
+if the installed toolchain doesn't match. Install the correct version with
+`rzup install`.
 
 ### Dependency pinning
 
