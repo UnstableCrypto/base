@@ -89,4 +89,4 @@ impl TdxVerifierError {
 }
 
 /// Convenience result alias for TDX verifier operations.
-pub type Result<T, E = TdxVerifierError> = std::result::Result<T, E>;
+pub type Result<T> = std::result::Result<T, TdxVerifierError>;
