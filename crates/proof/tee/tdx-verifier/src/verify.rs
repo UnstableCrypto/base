@@ -25,9 +25,12 @@ impl TdxVerifier {
             input.verification_time,
             &input.revocation,
         )
-        .map_err(|e| match e {
-            TdxVerifierError::RootCaNotTrusted => TdxVerifierError::RootCaNotTrusted,
-            other => TdxVerifierError::PckCertChainInvalid(other.to_string()),
+        .map_err(|e| {
+            if matches!(e, TdxVerifierError::RootCaNotTrusted) {
+                e
+            } else {
+                TdxVerifierError::PckCertChainInvalid(e.to_string())
+            }
         })?;
 
         TdxQuote::verify_qe_report(&quote, &pck_leaf_key)?;
@@ -81,21 +84,13 @@ impl TdxVerifier {
         }
         Self::verify_report_data(&quote, public_key_hash, input.quote_timestamp_millis)?;
 
-        let pck_cert_hash = input
-            .pck_certificate_chain
-            .last()
-            .ok_or_else(|| {
-                TdxVerifierError::PckCertChainInvalid("certificate chain is empty".into())
-            })?
-            .hash();
-
         Ok(TDXVerifierJournal {
             result: TDXVerificationResult::Success,
             tcbStatus: tcb_status,
             timestamp: input.quote_timestamp_millis,
             collateralExpiration: Self::collateral_expiration(input)?,
             rootCaHash: input.trusted_root_ca_hash,
-            pckCertHash: pck_cert_hash,
+            pckCertHash: pck_leaf.hash(),
             tcbInfoHash: input.collateral.tcb_info.hash(),
             qeIdentityHash: input.collateral.qe_identity.hash(),
             publicKey: input.expected_public_key.clone(),
@@ -1406,8 +1401,7 @@ mod tests {
         input.collateral.tcb_info.raw = Bytes::from(serde_json::to_vec(&document).unwrap());
         resign_tcb_info(&mut input);
 
-        let error =
-            TdxVerifier::verify(&input).expect_err("TDX module signer mismatch must fail");
+        let error = TdxVerifier::verify(&input).expect_err("TDX module signer mismatch must fail");
         assert_eq!(error.result() as u8, TDXVerificationResult::TcbInfoInvalid as u8);
     }
 
@@ -1453,8 +1447,7 @@ mod tests {
         let mut input = fixture().input;
         input.collateral.tcb_info.signing_chain[2] = collateral_cert_with_key_usage(0x20);
 
-        let error =
-            TdxVerifier::verify(&input).expect_err("wrong collateral key usage must fail");
+        let error = TdxVerifier::verify(&input).expect_err("wrong collateral key usage must fail");
         assert_eq!(error.result() as u8, TDXVerificationResult::TcbInfoInvalid as u8);
     }
 
@@ -1475,8 +1468,7 @@ mod tests {
         input.collateral.tcb_info.raw = Bytes::from(raw.into_bytes());
         resign_tcb_info(&mut input);
 
-        let error =
-            TdxVerifier::verify(&input).expect_err("TCB info platform mismatch must fail");
+        let error = TdxVerifier::verify(&input).expect_err("TCB info platform mismatch must fail");
         assert_eq!(error.result() as u8, TDXVerificationResult::TcbInfoInvalid as u8);
     }
 
