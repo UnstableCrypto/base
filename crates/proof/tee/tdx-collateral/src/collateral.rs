@@ -1145,13 +1145,10 @@ mod tests {
                 attestation_key_type: 2,
                 tee_type: 0x81,
                 reserved: [0; 4],
-                qe_svn: None,
-                pce_svn: None,
             },
             header_bytes: Bytes::new(),
             report_body: Bytes::new(),
             tee_tcb_svn: [0; 16],
-            mrseam: [0; 48],
             mrsigner_seam: [0; 48],
             seam_attributes: [0; 8],
             mrtd: [0; 48],
@@ -1167,7 +1164,6 @@ mod tests {
             qe_authentication_data: Bytes::new(),
             certification_data_type: PCK_CERT_CHAIN_CERTIFICATION_DATA_TYPE,
             certification_data: Bytes::new(),
-            attestation_key_data: Bytes::new(),
         }
     }
 

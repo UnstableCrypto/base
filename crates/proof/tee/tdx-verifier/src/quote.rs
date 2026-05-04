@@ -20,9 +20,6 @@ pub const TDX_REPORT_BODY_LEN: usize = 584;
 /// Offset of MRTD in the TDX report body.
 pub const MRTD_OFFSET: usize = 136;
 
-/// Offset of MRSEAM in the TDX report body.
-pub const MRSEAM_OFFSET: usize = 16;
-
 /// Offset of MRSIGNERSEAM in the TDX report body.
 pub const MRSIGNERSEAM_OFFSET: usize = 64;
 
@@ -115,10 +112,6 @@ pub struct TdxQuoteHeader {
     pub tee_type: u32,
     /// Reserved bytes in the v4 quote header.
     pub reserved: [u8; 4],
-    /// Quoting enclave SVN, unset for v4 quotes.
-    pub qe_svn: Option<u16>,
-    /// PCE SVN, unset for v4 quotes.
-    pub pce_svn: Option<u16>,
 }
 
 /// Parsed TDX quote fields required by the contract journal.
@@ -132,8 +125,6 @@ pub struct ParsedTdxQuote {
     pub report_body: Bytes,
     /// TEE TCB SVN used to select the matching signed TCB info level.
     pub tee_tcb_svn: [u8; TDX_TEE_TCB_SVN_LEN],
-    /// MRSEAM measurement for the TDX module loaded by SEAM.
-    pub mrseam: [u8; TDX_MEASUREMENT_LEN],
     /// MRSIGNERSEAM measurement for the TDX module signer.
     pub mrsigner_seam: [u8; TDX_MEASUREMENT_LEN],
     /// SEAM attributes for the loaded TDX module.
@@ -164,8 +155,6 @@ pub struct ParsedTdxQuote {
     pub certification_data_type: u16,
     /// Quote certification data carried by the quote auth section.
     pub certification_data: Bytes,
-    /// Additional attestation key data carried by the quote auth section.
-    pub attestation_key_data: Bytes,
 }
 
 impl ParsedTdxQuote {
@@ -205,12 +194,10 @@ impl TdxQuote {
 
         let header_bytes = &raw_quote[..TDX_QUOTE_HEADER_LEN];
         let header = TdxQuoteHeader {
-            version: Self::read_u16_le(header_bytes, 0)?,
-            attestation_key_type: Self::read_u16_le(header_bytes, 2)?,
-            tee_type: Self::read_u32_le(header_bytes, 4)?,
+            version: u16::from_le_bytes(Self::read_array(header_bytes, 0)?),
+            attestation_key_type: u16::from_le_bytes(Self::read_array(header_bytes, 2)?),
+            tee_type: u32::from_le_bytes(Self::read_array(header_bytes, 4)?),
             reserved: Self::read_array(header_bytes, 8)?,
-            qe_svn: None,
-            pce_svn: None,
         };
         if header.version != 4 {
             return Err(TdxVerifierError::InvalidQuote(format!(
@@ -236,7 +223,7 @@ impl TdxQuote {
         let report_body = &raw_quote[report_start..report_end];
 
         let sig_len_offset = report_end;
-        let sig_len = Self::read_u32_le(raw_quote, sig_len_offset)? as usize;
+        let sig_len = u32::from_le_bytes(Self::read_array(raw_quote, sig_len_offset)?) as usize;
         let sig_data_start = sig_len_offset + 4;
         let sig_data_end = sig_data_start.checked_add(sig_len).ok_or_else(|| {
             TdxVerifierError::InvalidQuote("signature data length overflows".into())
@@ -266,13 +253,14 @@ impl TdxQuote {
                 "signature data is missing ECDSA signature auxiliary data header".into(),
             ));
         }
-        let aux_data_type = Self::read_u16_le(sig_data, aux_data_type_offset)?;
+        let aux_data_type = u16::from_le_bytes(Self::read_array(sig_data, aux_data_type_offset)?);
         if aux_data_type != ECDSA_SIG_AUX_DATA_CERTIFICATION_DATA_TYPE {
             return Err(TdxVerifierError::InvalidQuote(format!(
                 "unsupported ECDSA signature auxiliary data type {aux_data_type}"
             )));
         }
-        let aux_data_len = Self::read_u32_le(sig_data, aux_data_size_offset)? as usize;
+        let aux_data_len =
+            u32::from_le_bytes(Self::read_array(sig_data, aux_data_size_offset)?) as usize;
         let aux_data_end = aux_data_start.checked_add(aux_data_len).ok_or_else(|| {
             TdxVerifierError::InvalidQuote("ECDSA signature auxiliary data length overflows".into())
         })?;
@@ -283,13 +271,13 @@ impl TdxQuote {
         }
         let aux_data = &sig_data[aux_data_start..aux_data_end];
 
-        let qe_report_start = 0;
-        let qe_report_end = qe_report_start + QE_REPORT_LEN;
+        let qe_report_end = QE_REPORT_LEN;
         let qe_report_signature_start = qe_report_end;
         let qe_report_signature_end = qe_report_signature_start + ECDSA_P256_SIGNATURE_LEN;
         let qe_authentication_data_size_offset = qe_report_signature_end;
         let qe_authentication_data_len =
-            Self::read_u16_le(aux_data, qe_authentication_data_size_offset)? as usize;
+            u16::from_le_bytes(Self::read_array(aux_data, qe_authentication_data_size_offset)?)
+                as usize;
         let qe_authentication_data_start =
             qe_authentication_data_size_offset + QE_AUTHENTICATION_DATA_SIZE_LEN;
         let qe_authentication_data_end =
@@ -305,9 +293,11 @@ impl TdxQuote {
                 "signature data is missing certification data header".into(),
             ));
         }
-        let certification_data_type = Self::read_u16_le(aux_data, certification_data_type_offset)?;
+        let certification_data_type =
+            u16::from_le_bytes(Self::read_array(aux_data, certification_data_type_offset)?);
         let certification_data_len =
-            Self::read_u32_le(aux_data, certification_data_size_offset)? as usize;
+            u32::from_le_bytes(Self::read_array(aux_data, certification_data_size_offset)?)
+                as usize;
         let certification_data_end =
             certification_data_start.checked_add(certification_data_len).ok_or_else(|| {
                 TdxVerifierError::InvalidQuote("certification data length overflows".into())
@@ -330,7 +320,6 @@ impl TdxQuote {
             header_bytes: Bytes::copy_from_slice(header_bytes),
             report_body: Bytes::copy_from_slice(report_body),
             tee_tcb_svn: Self::read_array(report_body, 0)?,
-            mrseam: Self::read_array(report_body, MRSEAM_OFFSET)?,
             mrsigner_seam: Self::read_array(report_body, MRSIGNERSEAM_OFFSET)?,
             seam_attributes: Self::read_array(report_body, SEAM_ATTRIBUTES_OFFSET)?,
             mrtd: Self::read_array(report_body, MRTD_OFFSET)?,
@@ -341,7 +330,7 @@ impl TdxQuote {
             report_data,
             quote_signature: Bytes::copy_from_slice(&sig_data[..quote_signature_end]),
             attestation_public_key: Bytes::from(attestation_public_key),
-            qe_report: Bytes::copy_from_slice(&aux_data[qe_report_start..qe_report_end]),
+            qe_report: Bytes::copy_from_slice(&aux_data[..qe_report_end]),
             qe_report_signature: Bytes::copy_from_slice(
                 &aux_data[qe_report_signature_start..qe_report_signature_end],
             ),
@@ -351,9 +340,6 @@ impl TdxQuote {
             certification_data_type,
             certification_data: Bytes::copy_from_slice(
                 &aux_data[certification_data_start..certification_data_end],
-            ),
-            attestation_key_data: Bytes::copy_from_slice(
-                &aux_data[qe_authentication_data_start..qe_authentication_data_end],
             ),
         })
     }
@@ -381,13 +367,7 @@ impl TdxQuote {
             &parsed.qe_report,
             &parsed.qe_report_signature,
             TdxVerifierError::PckCertChainInvalid("QE report signature verification failed".into()),
-        )
-        .map_err(|e| match e {
-            TdxVerifierError::QuoteSignatureInvalid(message) => {
-                TdxVerifierError::PckCertChainInvalid(message)
-            }
-            other => other,
-        })?;
+        )?;
 
         let mut hasher = Sha256::new();
         hasher.update(&parsed.attestation_public_key[1..]);
@@ -408,39 +388,11 @@ impl TdxQuote {
         Ok(())
     }
 
-    /// Reads a little-endian u16 from `bytes`.
-    pub fn read_u16_le(bytes: &[u8], offset: usize) -> Result<u16> {
-        let slice = bytes
-            .get(offset..offset + 2)
-            .ok_or_else(|| TdxVerifierError::InvalidQuote("u16 read out of bounds".into()))?;
-        Ok(u16::from_le_bytes([slice[0], slice[1]]))
-    }
-
-    /// Reads a little-endian u32 from `bytes`.
-    pub fn read_u32_le(bytes: &[u8], offset: usize) -> Result<u32> {
-        let slice = bytes
-            .get(offset..offset + 4)
-            .ok_or_else(|| TdxVerifierError::InvalidQuote("u32 read out of bounds".into()))?;
-        Ok(u32::from_le_bytes([slice[0], slice[1], slice[2], slice[3]]))
-    }
-
-    /// Reads a little-endian u64 from `bytes`.
-    pub fn read_u64_le(bytes: &[u8], offset: usize) -> Result<u64> {
-        let slice = bytes
-            .get(offset..offset + 8)
-            .ok_or_else(|| TdxVerifierError::InvalidQuote("u64 read out of bounds".into()))?;
-        Ok(u64::from_le_bytes([
-            slice[0], slice[1], slice[2], slice[3], slice[4], slice[5], slice[6], slice[7],
-        ]))
-    }
-
     /// Reads a fixed-size array from `bytes`.
     pub fn read_array<const N: usize>(bytes: &[u8], offset: usize) -> Result<[u8; N]> {
-        let slice = bytes
+        bytes
             .get(offset..offset + N)
-            .ok_or_else(|| TdxVerifierError::InvalidQuote("array read out of bounds".into()))?;
-        let mut out = [0u8; N];
-        out.copy_from_slice(slice);
-        Ok(out)
+            .and_then(|slice| slice.try_into().ok())
+            .ok_or_else(|| TdxVerifierError::InvalidQuote("array read out of bounds".into()))
     }
 }

@@ -1149,12 +1149,10 @@ mod tests {
     }
 
     #[test]
-    fn quote_v4_header_exposes_reserved_bytes_without_svns() {
+    fn quote_v4_header_exposes_reserved_bytes() {
         let quote = TdxQuote::parse(&fixture().input.quote).unwrap();
 
         assert_eq!(quote.header.reserved, [7, 0, 9, 0]);
-        assert_eq!(quote.header.qe_svn, None);
-        assert_eq!(quote.header.pce_svn, None);
     }
 
     #[test]
