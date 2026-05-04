@@ -2,6 +2,7 @@
 
 use alloy_consensus::Header;
 use alloy_eips::{BlockId, BlockNumHash};
+use alloy_primitives::B256;
 use alloy_provider::Provider;
 use alloy_rpc_types_eth::{Block, Filter, Log};
 use alloy_transport::{TransportError, TransportErrorKind};
@@ -48,6 +49,19 @@ impl<P> AlloyL1BlockFetcher<P> {
     pub fn custom_error(message: impl Into<String>) -> TransportError {
         alloy_transport::RpcError::Transport(TransportErrorKind::Custom(message.into().into()))
     }
+
+    /// Verifies that a fetched header is the requested block hash.
+    pub fn verify_header_hash(header: &Header, expected_hash: B256) -> Result<(), TransportError> {
+        let actual_hash = header.hash_slow();
+        if actual_hash != expected_hash {
+            return Err(Self::custom_error(format!(
+                "L1 header hash mismatch: expected {:?}, got {:?}",
+                expected_hash, actual_hash
+            )));
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -74,6 +88,7 @@ where
             .await?
             .ok_or_else(|| Self::custom_error(format!("L1 block not found: {block_hash:?}")))?;
         let header: Header = block.header.clone().into_consensus();
+        Self::verify_header_hash(&header, block_hash)?;
         let receipts =
             self.provider.get_block_receipts(BlockId::Hash(block_hash.into())).await?.ok_or_else(
                 || Self::custom_error(format!("L1 block receipts not found: {block_hash:?}")),
@@ -118,13 +133,8 @@ where
         if !self.trust_rpc
             && let (BlockId::Hash(expected_hash), Some(block)) = (id, &block)
         {
-            let actual_hash = block.header.clone().into_consensus().hash_slow();
-            if actual_hash != expected_hash.block_hash {
-                return Err(Self::custom_error(format!(
-                    "L1 header hash mismatch: expected {:?}, got {:?}",
-                    expected_hash.block_hash, actual_hash
-                )));
-            }
+            let header = block.header.clone().into_consensus();
+            Self::verify_header_hash(&header, expected_hash.block_hash)?;
         }
 
         Ok(block)
