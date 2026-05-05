@@ -1,7 +1,7 @@
 use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
-use base_zk_db::{ProofRequestRepo, SessionType};
+use base_zk_db::{ProofRequestRepo, SUBMIT_SNARK_TASK, SUBMIT_STARK_TASK, SessionType};
 use base_zk_outbox::{OutboxTask, TaskQueue};
 use tokio::{sync::Mutex, task::JoinHandle};
 use tracing::{Instrument, error, info};
@@ -11,9 +11,6 @@ use crate::{
     metrics,
     worker::prover_worker::ProverWorker,
 };
-
-const SUBMIT_SNARK_TASK: &str = "submit_snark";
-const SUBMIT_STARK_TASK: &str = "submit_stark";
 
 /// Pool that creates `ProverWorker` instances and implements `TaskQueue`.
 ///

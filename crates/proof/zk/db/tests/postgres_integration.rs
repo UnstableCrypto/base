@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use base_zk_db::{
     CreateProofRequest, MarkOutboxError, MarkOutboxProcessed, ProofRequestRepo, ProofStatus,
-    ProofType, SessionStatus, SessionType, UpdateProofSession, UpdateReceipt,
+    ProofType, RetryOutcome, SessionStatus, SessionType, UpdateProofSession, UpdateReceipt,
 };
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use uuid::Uuid;
@@ -567,12 +567,15 @@ async fn test_concurrent_snark_enqueue_is_serialized() {
     .await
     .unwrap();
 
-    let first = repo.enqueue_snark_outbox_if_needed(req_id);
-    let second = repo.enqueue_snark_outbox_if_needed(req_id);
+    let first = repo.enqueue_snark_outbox_if_needed(req_id, 3);
+    let second = repo.enqueue_snark_outbox_if_needed(req_id, 3);
     let (first, second) = tokio::join!(first, second);
 
     assert_eq!(
-        [first.unwrap(), second.unwrap()].into_iter().filter(|inserted| *inserted).count(),
+        [first.unwrap(), second.unwrap()]
+            .into_iter()
+            .filter(|outcome| *outcome == RetryOutcome::Retried)
+            .count(),
         1,
         "exactly one caller should enqueue the SNARK stage"
     );
@@ -613,6 +616,42 @@ async fn test_submitting_session_heartbeat_only_touches_submitting() {
         .unwrap()
     );
     assert!(!repo.touch_submitting_session(claimed.proof_session_id).await.unwrap());
+}
+
+#[tokio::test]
+#[ignore = "requires a running Postgres with the prover schema (set DATABASE_URL); run with `cargo nextest run --run-ignored all -p base-zk-db --test postgres_integration --test-threads=1`"]
+async fn test_running_transition_persists_backend_id_when_request_is_terminal() {
+    let pool = test_pool().await;
+    let repo = test_repo(pool.clone());
+
+    let id = repo.create(compressed_request()).await.unwrap();
+    let claimed = repo
+        .create_submitting_stage_for_outbox(id, SessionType::Stark)
+        .await
+        .unwrap()
+        .expect("stage should be claimed");
+
+    sqlx::query("UPDATE proof_requests SET status = 'FAILED' WHERE id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let backend_id = format!("accepted-terminal-{}", Uuid::new_v4());
+    let updated = repo
+        .mark_submitting_session_running(claimed.proof_session_id, &backend_id, None)
+        .await
+        .unwrap();
+
+    assert!(!updated);
+
+    let session = repo.get_session_by_backend_id(&backend_id).await.unwrap().unwrap();
+    assert_eq!(session.status, SessionStatus::Failed);
+    assert!(session.completed_at.is_some());
+    assert_eq!(
+        session.error_message.as_deref(),
+        Some("Backend accepted session after proof request became terminal")
+    );
 }
 
 #[tokio::test]
@@ -683,7 +722,60 @@ async fn test_snark_enqueue_allows_failed_snark_attempts() {
     .await
     .unwrap();
 
-    assert!(repo.enqueue_snark_outbox_if_needed(req_id).await.unwrap());
+    assert_eq!(
+        repo.enqueue_snark_outbox_if_needed(req_id, 3).await.unwrap(),
+        RetryOutcome::Retried
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires a running Postgres with the prover schema (set DATABASE_URL); run with `cargo nextest run --run-ignored all -p base-zk-db --test postgres_integration --test-threads=1`"]
+async fn test_snark_enqueue_fails_request_after_retry_budget() {
+    let pool = test_pool().await;
+    let repo = test_repo(pool.clone());
+
+    let req_id = repo.create(snark_request()).await.unwrap();
+    let stark_backend_id = format!("stark-budget-{}", Uuid::new_v4());
+    setup_running_session(&repo, req_id, SessionType::Stark, &stark_backend_id).await;
+    repo.complete_session_and_update_receipt(
+        &stark_backend_id,
+        UpdateReceipt {
+            id: req_id,
+            stark_receipt: Some(vec![0x01]),
+            snark_receipt: None,
+            status: ProofStatus::Running,
+            error_message: None,
+        },
+        None,
+    )
+    .await
+    .unwrap();
+
+    let failed_snark_backend_id = format!("snark-budget-{}", Uuid::new_v4());
+    setup_running_session(&repo, req_id, SessionType::Snark, &failed_snark_backend_id).await;
+    repo.update_proof_session(UpdateProofSession {
+        backend_session_id: failed_snark_backend_id,
+        status: SessionStatus::Failed,
+        error_message: Some("retryable failure".to_string()),
+        metadata: None,
+    })
+    .await
+    .unwrap();
+
+    sqlx::query("UPDATE proof_requests SET retry_count = 3 WHERE id = $1")
+        .bind(req_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        repo.enqueue_snark_outbox_if_needed(req_id, 3).await.unwrap(),
+        RetryOutcome::PermanentlyFailed
+    );
+
+    let request = repo.get(req_id).await.unwrap().unwrap();
+    assert_eq!(request.status, ProofStatus::Running);
+    assert!(request.error_message.is_none());
 }
 
 #[tokio::test]

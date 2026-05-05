@@ -13,7 +13,7 @@ use base_proof_succinct_elfs::RANGE_ELF_EMBEDDED;
 use base_proof_succinct_host_utils::get_agg_proof_stdin;
 use base_zk_client::ProveBlockRequest;
 use base_zk_db::{
-    ProofRequest, ProofRequestRepo, ProofSession, ProofStatus, ProofType,
+    ProofRequest, ProofRequestRepo, ProofSession, ProofStatus, ProofType, RetryOutcome,
     SessionStatus as DbSessionStatus, SessionType, UpdateProofSession, UpdateReceipt,
 };
 use serde_json::json;
@@ -197,6 +197,7 @@ impl ProvingBackend for NetworkBackend {
         &self,
         proof_request: &ProofRequest,
         repo: &ProofRequestRepo,
+        max_retries: i32,
     ) -> anyhow::Result<ProofProcessingResult> {
         let sessions = repo.get_sessions_for_request(proof_request.id).await?;
 
@@ -237,7 +238,15 @@ impl ProvingBackend for NetworkBackend {
                     proof_request_id = %proof_request.id,
                     "STARK completed, triggering stage-2 aggregation proof via SP1 Network"
                 );
-                repo.enqueue_snark_outbox_if_needed(proof_request.id).await?;
+                match repo.enqueue_snark_outbox_if_needed(proof_request.id, max_retries).await? {
+                    RetryOutcome::PermanentlyFailed => {
+                        return Ok(ProofProcessingResult {
+                            status: ProofStatus::Failed,
+                            error_message: Some("SNARK stage exceeded retry budget".to_string()),
+                        });
+                    }
+                    RetryOutcome::Retried | RetryOutcome::Skipped => {}
+                }
             }
         }
 

@@ -278,6 +278,7 @@ pub trait ProvingBackend: Send + Sync {
         &self,
         proof_request: &ProofRequest,
         repo: &ProofRequestRepo,
+        max_retries: i32,
     ) -> anyhow::Result<ProofProcessingResult>;
 
     /// Fetches latest backend session status for a stored session reference.
@@ -368,6 +369,7 @@ mod tests {
             &self,
             _proof_request: &ProofRequest,
             _repo: &ProofRequestRepo,
+            _max_retries: i32,
         ) -> anyhow::Result<ProofProcessingResult> {
             unimplemented!()
         }

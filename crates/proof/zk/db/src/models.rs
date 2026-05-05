@@ -5,6 +5,11 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+/// Outbox task type for initial STARK submission.
+pub const SUBMIT_STARK_TASK: &str = "submit_stark";
+/// Outbox task type for follow-up SNARK submission.
+pub const SUBMIT_SNARK_TASK: &str = "submit_snark";
+
 /// Status of a proof request
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "VARCHAR", rename_all = "SCREAMING_SNAKE_CASE")]

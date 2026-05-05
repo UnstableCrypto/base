@@ -30,9 +30,13 @@ impl ProofRequestManager {
     ///
     /// Uses guarded DB transitions for terminal states so that only the first
     /// caller to transition the request actually succeeds. This prevents
-    /// double-counting metrics when `StatusPoller` and `GetProof` RPC race on
-    /// the same proof request.
-    pub async fn sync_and_update_proof_status(&self, proof_request: &ProofRequest) -> Result<()> {
+    /// double-counting metrics when multiple poller ticks race on the same
+    /// proof request.
+    pub async fn sync_and_update_proof_status(
+        &self,
+        proof_request: &ProofRequest,
+        max_retries: i32,
+    ) -> Result<()> {
         let prev_status = proof_request.status;
         let proof_type_label = metrics::proof_type_label(proof_request.proof_type);
 
@@ -41,7 +45,7 @@ impl ProofRequestManager {
 
         // 2. Let backend drive the proof request (sync sessions, create new sessions, determine
         //    status)
-        let result = backend.process_proof_request(proof_request, &self.repo).await?;
+        let result = backend.process_proof_request(proof_request, &self.repo, max_retries).await?;
 
         // 3. Update proof request status based on backend's result.
         //    Both terminal paths use guarded transitions so that only the first
@@ -135,7 +139,7 @@ impl ProofRequestManager {
     }
 }
 
-fn has_required_receipts(proof_request: &ProofRequest) -> bool {
+const fn has_required_receipts(proof_request: &ProofRequest) -> bool {
     match proof_request.proof_type {
         ProofType::OpSuccinctSp1ClusterCompressed => proof_request.stark_receipt.is_some(),
         ProofType::OpSuccinctSp1ClusterSnarkGroth16 => {
@@ -173,6 +177,7 @@ mod tests {
             &self,
             _proof_request: &ProofRequest,
             _repo: &ProofRequestRepo,
+            _max_retries: i32,
         ) -> anyhow::Result<ProofProcessingResult> {
             Ok(self.result.clone())
         }

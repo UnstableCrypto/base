@@ -4,12 +4,9 @@ use uuid::Uuid;
 use crate::{
     ClaimedProofRequest, CreateOutboxEntry, CreateProofRequest, MarkOutboxError,
     MarkOutboxProcessed, OutboxEntry, ProofRequest, ProofSession, ProofStatus, ProofType,
-    RetryOutcome, SessionStatus, SessionType, StuckProofSubmission, UpdateProofSession,
-    UpdateReceipt,
+    RetryOutcome, SUBMIT_SNARK_TASK, SUBMIT_STARK_TASK, SessionStatus, SessionType,
+    StuckProofSubmission, UpdateProofSession, UpdateReceipt,
 };
-
-const SUBMIT_STARK_TASK: &str = "submit_stark";
-const SUBMIT_SNARK_TASK: &str = "submit_snark";
 
 /// Repository for proof request database operations
 #[derive(Clone, Debug)]
@@ -291,7 +288,22 @@ impl ProofRequestRepo {
         .await?;
 
         if request_result.rows_affected() == 0 {
-            tx.rollback().await?;
+            sqlx::query(
+                r#"
+                UPDATE proof_sessions
+                SET status = $1,
+                    error_message = $2,
+                    completed_at = NOW()
+                WHERE id = $3
+                "#,
+            )
+            .bind(SessionStatus::Failed.as_str())
+            .bind("Backend accepted session after proof request became terminal")
+            .bind(proof_session_id)
+            .execute(&mut *tx)
+            .await?;
+
+            tx.commit().await?;
             return Ok(false);
         }
 
@@ -367,12 +379,19 @@ impl ProofRequestRepo {
     }
 
     /// Enqueue the SNARK stage once the STARK receipt has been persisted.
-    pub async fn enqueue_snark_outbox_if_needed(&self, id: Uuid) -> Result<bool> {
+    ///
+    /// Failed SNARK sessions are retryable, but bounded by the proof request's
+    /// existing `retry_count` and the caller-provided retry limit.
+    pub async fn enqueue_snark_outbox_if_needed(
+        &self,
+        id: Uuid,
+        max_retries: i32,
+    ) -> Result<RetryOutcome> {
         let mut tx = self.pool.begin().await?;
 
-        let locked_request: Option<Uuid> = sqlx::query_scalar(
+        let locked_request = sqlx::query(
             r#"
-            SELECT id
+            SELECT retry_count
             FROM proof_requests
             WHERE id = $1
             FOR UPDATE
@@ -382,45 +401,78 @@ impl ProofRequestRepo {
         .fetch_optional(&mut *tx)
         .await?;
 
-        if locked_request.is_none() {
+        let Some(locked_request) = locked_request else {
             tx.commit().await?;
-            return Ok(false);
-        }
+            return Ok(RetryOutcome::Skipped);
+        };
 
-        let should_enqueue = sqlx::query_scalar::<_, bool>(
+        let retry_count: i32 = locked_request.get("retry_count");
+
+        let enqueue_state = sqlx::query(
             r#"
-            SELECT EXISTS (
-                SELECT 1
-                FROM proof_requests
-                WHERE id = $1
-                  AND proof_type = 'op_succinct_sp1_cluster_snark_groth16'
-                  AND stark_receipt IS NOT NULL
-                  AND snark_receipt IS NULL
-                  AND status = 'RUNNING'
-            )
-            AND NOT EXISTS (
-                SELECT 1
-                FROM proof_sessions
-                WHERE proof_request_id = $1
-                  AND session_type = 'SNARK'
-                  AND status IN ('SUBMITTING', 'RUNNING', 'COMPLETED')
-            )
-            AND NOT EXISTS (
-                SELECT 1
-                FROM proof_request_outbox
-                WHERE proof_request_id = $1
-                  AND processed = FALSE
-                  AND request_params->>'task_type' = 'submit_snark'
-            )
+            SELECT
+                EXISTS (
+                    SELECT 1
+                    FROM proof_sessions
+                    WHERE proof_request_id = $1
+                      AND session_type = 'SNARK'
+                      AND status = 'FAILED'
+                ) AS has_failed_snark,
+                EXISTS (
+                    SELECT 1
+                    FROM proof_requests
+                    WHERE id = $1
+                      AND proof_type = 'op_succinct_sp1_cluster_snark_groth16'
+                      AND stark_receipt IS NOT NULL
+                      AND snark_receipt IS NULL
+                      AND status = 'RUNNING'
+                )
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM proof_sessions
+                    WHERE proof_request_id = $1
+                      AND session_type = 'SNARK'
+                      AND status IN ('SUBMITTING', 'RUNNING', 'COMPLETED')
+                )
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM proof_request_outbox
+                    WHERE proof_request_id = $1
+                      AND processed = FALSE
+                      AND request_params->>'task_type' = 'submit_snark'
+                ) AS should_enqueue
             "#,
         )
         .bind(id)
         .fetch_one(&mut *tx)
         .await?;
 
+        let has_failed_snark: bool = enqueue_state.get("has_failed_snark");
+        let should_enqueue: bool = enqueue_state.get("should_enqueue");
+
         if !should_enqueue {
             tx.commit().await?;
-            return Ok(false);
+            return Ok(RetryOutcome::Skipped);
+        }
+
+        if has_failed_snark && retry_count >= max_retries {
+            tx.commit().await?;
+            return Ok(RetryOutcome::PermanentlyFailed);
+        }
+
+        if has_failed_snark {
+            sqlx::query(
+                r#"
+                UPDATE proof_requests
+                SET retry_count = retry_count + 1,
+                    error_message = NULL
+                WHERE id = $1
+                  AND status = 'RUNNING'
+                "#,
+            )
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
         }
 
         sqlx::query(
@@ -435,7 +487,7 @@ impl ProofRequestRepo {
         .await?;
 
         tx.commit().await?;
-        Ok(true)
+        Ok(RetryOutcome::Retried)
     }
 
     /// Get a proof request by ID

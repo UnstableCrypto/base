@@ -69,7 +69,7 @@ impl StatusPoller {
                 );
                 if let Err(e) = self
                     .manager
-                    .sync_and_update_proof_status(proof_request)
+                    .sync_and_update_proof_status(proof_request, self.max_proof_retries)
                     .instrument(poll_span)
                     .await
                 {
