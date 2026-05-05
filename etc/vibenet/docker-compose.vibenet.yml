@@ -11,15 +11,13 @@
 #   - vibenet-faucet: axum service, private to the docker network.
 #   - vibenet-setup: one-shot. Sweeps anvil balances -> faucet on L2, then
 #     deploys demo contracts and writes /shared/contracts.json.
-#   - proxyd: per-method rate limits as a second line of defense.
+#   - proxyd: per-method rate limits.
   #   - vibescan: in-house block explorer. Indexes address -> tx mappings in
   #     sqlite and reads full bodies from base-client on demand. Listens on
   #     :8080 internally; nginx terminates the `explorer.vibes.base.org`
   #     server block to it.
 #
-# In production, Cloudflare proxies public traffic to this container's `:443`
-# TLS listener (enabled via the `docker-compose.public.yml` overlay). See
-# `etc/vibenet/deploy/README.md` for the end-to-end architecture.
+# Public TLS can be layered with `docker-compose.public.yml`.
 
 services:
   # --- Prefund the faucet on L1 via the existing setup-l1 anvil genesis ----
@@ -62,9 +60,8 @@ services:
   nginx-gateway:
     image: nginx:1.27-alpine
     container_name: vibenet-nginx
-    # Loopback-only host ports for local dev. In production the public `:443`
-    # TLS listener is added by `docker-compose.public.yml` and published to
-    # the Cloudflare-reachable IP; these 1808x bindings stay loopback-only.
+    # Loopback-only host ports for local dev. The optional public `:443`
+    # listener is added by `docker-compose.public.yml`.
     #   ${VIBENET_HOST_PORT}          -> UI / admin              (:8080)
     #   ${VIBENET_RPC_HOST_PORT}      -> RPC / WS                 (:8081)
     #   ${VIBENET_EXPLORER_HOST_PORT} -> vibescan explorer         (:8082)

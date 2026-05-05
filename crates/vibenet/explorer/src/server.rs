@@ -466,7 +466,13 @@ async fn search(State(state): State<Arc<AppState>>, Query(q): Query<SearchQ>) ->
 async fn api_stats(State(state): State<Arc<AppState>>) -> Response {
     match state.storage.stats().await {
         Ok(stats) => {
-            let head = state.rpc.block_number().await.unwrap_or(0);
+            let head = match state.rpc.block_number().await {
+                Ok(head) => head,
+                Err(err) => {
+                    tracing::warn!(error = %err, "failed to load chain head for stats");
+                    0
+                }
+            };
             Json(stats_to_json(&StatsBlock::new(stats, head))).into_response()
         }
         Err(err) => error_json(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()),

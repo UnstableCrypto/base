@@ -22,7 +22,7 @@
 #
 # VIBENET_PUBLIC_BIND_ADDR is the host IP :443 is published on. Leave unset
 # on laptops; set to the Cloudflare-reachable public IP on prod.
-# VIBENET_PUBLIC_BIND_ADDR=64.130.37.133
+# VIBENET_PUBLIC_BIND_ADDR=
 
 # === Faucet ===
 # Address that funds every public drip. Prefunded with 10M ETH in the L1

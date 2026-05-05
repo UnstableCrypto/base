@@ -78,7 +78,7 @@ transfer-leader to='':
 conductor:
     cargo run --quiet -p basectl -- conductor
 
-# Vibenet: public devnet fronted by Cloudflare. Single sequencer + nginx
+# Vibenet: public devnet - single sequencer + nginx
 # gateway + faucet + contract deployer. Requires etc/vibenet/vibenet-env
 # (copy from vibenet-env.example and fill in secrets before running).
 #

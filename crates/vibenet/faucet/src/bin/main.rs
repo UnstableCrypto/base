@@ -20,12 +20,12 @@ async fn main() -> Result<()> {
     let state = FaucetState::new(config)?;
     let server = FaucetServer::bind(state).await?;
 
-    tokio::select! {
-        res = server.serve() => res?,
-        _ = shutdown_signal() => {
+    server
+        .serve(async {
+            shutdown_signal().await;
             info!("shutdown signal received");
-        }
-    }
+        })
+        .await?;
 
     Ok(())
 }

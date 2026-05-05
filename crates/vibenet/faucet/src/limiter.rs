@@ -17,7 +17,13 @@ const SWEEP_THRESHOLD: usize = 10_000;
 /// vibenet, which wipes chain state on every redeploy anyway.
 #[derive(Debug)]
 pub struct Limiter<K: Eq + Hash> {
-    inner: Mutex<HashMap<K, Instant>>,
+    inner: Mutex<HashMap<K, CooldownEntry>>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct CooldownEntry {
+    last: Instant,
+    cooldown: Duration,
 }
 
 impl<K: Eq + Hash + Clone> Limiter<K> {
@@ -36,17 +42,17 @@ impl<K: Eq + Hash + Clone> Limiter<K> {
         };
         let now = Instant::now();
         if map.len() > SWEEP_THRESHOLD {
-            map.retain(|_, last| now.duration_since(*last) < cooldown);
+            map.retain(|_, entry| now.duration_since(entry.last) < entry.cooldown);
         }
 
-        if let Some(last) = map.get(&key) {
-            let elapsed = now.duration_since(*last);
+        if let Some(entry) = map.get(&key) {
+            let elapsed = now.duration_since(entry.last);
             if elapsed < cooldown {
                 return Some(cooldown - elapsed);
             }
         }
 
-        map.insert(key, now);
+        map.insert(key, CooldownEntry { last: now, cooldown });
         None
     }
 

@@ -1,6 +1,6 @@
 # proxyd config for vibenet - per-method rate limits applied after the
-# per-IP limits in the nginx gateway. Shape copied from the
-# `eip-8130-v2` branch; routes eth_sendRawTransaction to the builder and
+# per-IP limits in the nginx gateway. 
+# routes eth_sendRawTransaction to the builder and
 # everything else to the client.
 
 [server]

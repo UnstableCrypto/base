@@ -1,18 +1,14 @@
 # nginx gateway for vibenet.
 #
-# In production, Cloudflare fronts the host on the public hostnames listed
-# below and connects to this gateway's :443 TLS listener (declared in the
-# sibling `vibenet-public.conf.template`, enabled by the `public` overlay).
 # This file declares the plaintext internal listeners used on the docker
-# network and for local dev:
+# network and for local dev. The optional public TLS listener lives in the
+# sibling `vibenet-public.conf.template`.
 #   - vibes.base.org             -> UI + admin + config + contracts
 #   - rpc.vibes.base.org         -> / -> proxyd -> base-client
 #   - explorer.vibes.base.org    -> vibescan (in-house explorer)
 #   - faucet.vibes.base.org      -> vibenet-faucet at /
 #
-# The RPC is intentionally open (no URL-path API key). Abuse is mitigated by
-# nginx per-IP rate limits here, Cloudflare per-IP rate limits at the edge,
-# and proxyd's per-method limits.
+# The RPC is open; rate limits are configured here and in proxyd.
 #
 # For local dev each server block also listens on a dedicated port so you can
 # hit them without /etc/hosts tricks:
@@ -22,15 +18,9 @@
 #   - http://localhost:18082/      -> vibescan explorer
 #   - http://localhost:18083/      -> faucet
 #
-# Rate limiting uses the real client IP from the `X-Forwarded-For` header
-# that Cloudflare attaches. The loopback 1808x host ports are only reachable
-# from localhost so they can't be spoofed from outside.
+# Rate limiting uses client IP metadata from `X-Forwarded-For`.
 
-# Trust X-Forwarded-For from any upstream. In prod the only network path
-# that reaches this container is via Cloudflare's proxy terminating on the
-# :443 listener; the 1808x host bindings are loopback-only. Tighten to
-# Cloudflare's published IP ranges if this container is ever exposed
-# without Cloudflare in front.
+# Trust `X-Forwarded-For` from the configured upstream gateway.
 set_real_ip_from 0.0.0.0/0;
 real_ip_header X-Forwarded-For;
 real_ip_recursive on;
@@ -104,7 +94,7 @@ server {
 # =============================================================================
 server {
     # Host-routed: `Host: rpc.vibes.base.org` on 8080 from inside the
-    # docker network (Cloudflare reaches nginx via the :443 public listener).
+    # docker network.
     listen 8080;
     # Local-dev path: any Host on 8081 (only server on that port, so it's
     # the implicit default). This lets `curl http://localhost:18081/` work
@@ -113,9 +103,7 @@ server {
     server_name rpc.vibes.base.org;
 
     # HTTP JSON-RPC. The RPC hostname is single-purpose, so POST `/` is the
-    # endpoint (`cast -r https://rpc.vibes.base.org`). There is no URL
-    # path API key - abuse is mitigated by nginx per-IP rate limits,
-    # Cloudflare rate limits, and proxyd's per-method limits.
+    # endpoint (`cast -r https://rpc.vibes.base.org`).
     location = / {
         limit_req zone=rpc_ip burst=30 nodelay;
         proxy_pass http://proxyd:8080/;
@@ -151,7 +139,7 @@ server {
 # itself talks to base-client over the docker network.
 server {
     # Host-routed: `Host: explorer.vibes.base.org` on 8080 from inside the
-    # docker network (Cloudflare reaches nginx via the :443 public listener).
+    # docker network.
     listen 8080;
     # Local-dev path: any Host on 8082 (only server on that port).
     listen 8082;
@@ -169,16 +157,15 @@ server {
 # =============================================================================
 # faucet.vibes.base.org - vibenet-faucet UI + API
 # =============================================================================
-# Dedicated hostname for the faucet so its routes, rate limits, and
-# Cloudflare rules can be reasoned about independently. The UI links here
-# externally rather than serving faucet routes under the UI hostname.
+# Dedicated hostname for the faucet. The UI links here externally rather
+# than serving faucet routes under the UI hostname.
 #
 # This block serves the faucet's static single-page UI (faucet.html +
 # faucet.js from /srv/ui, shared with the main UI volume) and proxies the
 # three API endpoints the faucet service exposes.
 server {
     # Host-routed: `Host: faucet.vibes.base.org` on 8080 from inside the
-    # docker network (Cloudflare reaches nginx via the :443 public listener).
+    # docker network.
     listen 8080;
     # Local-dev path: any Host on 8083 (only server on that port).
     listen 8083;

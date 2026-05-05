@@ -55,8 +55,7 @@ export CHAIN_ID GENESIS_TIME_HEX BALANCE
 
 envsubst < "$TEMPLATE_DIR/l1-el-genesis.json.template" > "$OUTPUT_DIR/el/genesis.json"
 
-# Inject faucet address with a large starting balance (pattern from
-# eip-8130-v2 branch). Enabled whenever FAUCET_ADDR is set.
+# Inject faucet address with a large starting balance. Enabled whenever FAUCET_ADDR is set.
 if [ -n "${FAUCET_ADDR:-}" ]; then
   FAUCET_BALANCE="0x84595161401484a000000"  # 10,000,000 ETH
   echo "Injecting FAUCET_ADDR $FAUCET_ADDR into L1 genesis with 10M ETH..."
@@ -68,10 +67,6 @@ if [ -n "${FAUCET_ADDR:-}" ]; then
 fi
 
 # NOTE: L1 intentionally keeps the standard anvil account allocs funded.
-# L1 is an internal data-availability chain, not exposed via the vibenet
-# ingress, and the DEPLOYER / BATCHER / PROPOSER roles map onto anvil
-# accounts that op-deployer and the batcher need for gas.
-# Anvil accounts on L2 are swept into the faucet by vibenet-setup at startup.
 
 jq '.config' "$OUTPUT_DIR/el/genesis.json" > "$OUTPUT_DIR/el/chain-config.json"
 

@@ -117,8 +117,8 @@ impl Indexer {
             // blocks + receipts in parallel but insert serially so the
             // cursor advances monotonically.
             let window_size = self.backfill_concurrency.max(1) as u64;
-            let window: Vec<u64> = (next..=head.min(next + window_size - 1)).collect();
-            let window_len = window.len() as u64;
+            let window_end = head.min(next.saturating_add(window_size - 1));
+            let window: Vec<u64> = (next..=window_end).collect();
 
             let fetched = futures::stream::iter(window.iter().copied())
                 .map(|n| {
@@ -147,7 +147,10 @@ impl Indexer {
                 self.storage.insert_block(write).await?;
             }
 
-            next += window_len;
+            if window_end == u64::MAX {
+                break;
+            }
+            next = window_end + 1;
 
             // Refresh head periodically so we exit the loop as soon as the
             // chain stops producing blocks during dev.
@@ -350,7 +353,7 @@ fn build_block_write(block: &BaseBlock, receipts: &[BaseReceipt]) -> Result<Bloc
                 let token = log.address();
                 let from = topic_to_address(&topics[1]);
                 let to = topic_to_address(&topics[2]);
-                let li = log.log_index.map(|i| i as i64).unwrap_or(-1);
+                let li = log.log_index.and_then(|i| i64::try_from(i).ok()).unwrap_or(-1);
 
                 activity.push(ActivityWrite {
                     address: from,

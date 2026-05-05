@@ -1,7 +1,7 @@
 // base vibenet faucet page.
 //
-// Served from faucet.vibes.base.org in prod (its own Cloudflare-fronted
-// hostname) and from http://localhost:18083 for local dev. Calls the
+// Served from faucet.vibes.base.org in prod and from
+// http://localhost:18083 for local dev. Calls the
 // faucet service at same-origin /status, /drip, and /drip-usdv. The drip
 // form has two submit buttons ("Drip ETH" / "Mint USDV"); the clicked
 // button's `value` picks which asset to drip. USDV drips go to a separate

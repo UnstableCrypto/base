@@ -1,6 +1,7 @@
 //! HTTP server wiring for the vibenet faucet.
 
 use std::{
+    future::Future,
     net::{IpAddr, SocketAddr},
     str::FromStr,
 };
@@ -23,26 +24,25 @@ use tokio::net::TcpListener;
 use tracing::{info, warn};
 
 use crate::{
+    Contracts,
     config::TrustedProxy,
-    contracts,
     state::{Asset, FaucetState},
 };
 
 // Minimal ABI for the USDV token. We only need `mint(address,uint256)` -
 // the rest of the ERC-20 interface is exercised by users directly.
 sol! {
-    #[allow(missing_docs)]
+    /// Minimal ABI for the public-mint USDV token.
     interface IUSDV {
+        /// Mint tokens to a destination address.
         function mint(address to, uint256 amount) external;
     }
 }
 
-/// Header nginx attaches with the real client IP it derived from
-/// `X-Forwarded-For` after `real_ip` processing. Used as the primary signal.
+/// Header attached by the gateway with the real client IP. Used as the primary signal.
 const X_REAL_IP: &str = "x-real-ip";
 
-/// Legacy header from the Cloudflare-tunnel era, kept as a fallback so old
-/// deployments that still inject it continue to bucket correctly.
+/// Legacy forwarded-IP header, kept as a fallback for older deployments.
 const CF_CONNECTING_IP: &str = "cf-connecting-ip";
 
 /// Top-level wrapper that owns the Tokio listener and the router.
@@ -62,9 +62,10 @@ impl FaucetServer {
         Ok(Self { listener, router })
     }
 
-    /// Serve requests until the process is shut down.
-    pub async fn serve(self) -> Result<()> {
+    /// Serve requests until the shutdown signal fires.
+    pub async fn serve(self, shutdown: impl Future<Output = ()> + Send + 'static) -> Result<()> {
         axum::serve(self.listener, self.router.into_make_service_with_connect_info::<SocketAddr>())
+            .with_graceful_shutdown(shutdown)
             .await?;
         Ok(())
     }
@@ -106,7 +107,7 @@ async fn status(State(state): State<FaucetState>) -> Result<Json<StatusResponse>
     // Contracts.json is produced by the one-shot setup container. If the
     // file is missing or the key is absent we silently omit the USDV row -
     // status is a polling endpoint and should never spam on that path.
-    let usdv_address = contracts::lookup(&state.config.contracts_path, "usdv").await.ok().flatten();
+    let usdv_address = Contracts::lookup(&state.config.contracts_path, "usdv").await.ok().flatten();
 
     Ok(Json(StatusResponse {
         address: state.config.address,
@@ -199,7 +200,7 @@ async fn drip_usdv(
     // volume and changes when vibenet-setup reruns (e.g. `just vibe` after
     // a branch switch); re-reading keeps the faucet in sync without a
     // restart. Reads are cheap (a few kB file) and only on the mint path.
-    let token = contracts::lookup(&state.config.contracts_path, "usdv")
+    let token = Contracts::lookup(&state.config.contracts_path, "usdv")
         .await
         .map_err(|e| ApiError::internal(format!("contracts lookup failed: {e}")))?
         .ok_or_else(|| {

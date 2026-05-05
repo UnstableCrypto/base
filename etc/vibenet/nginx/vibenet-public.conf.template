@@ -1,25 +1,7 @@
-# Public TLS listener for Cloudflare-fronted production traffic.
+# Public TLS listener for vibenet hostnames.
 #
-# Activated by `etc/vibenet/docker-compose.public.yml`. The overlay mounts
-# this file into /etc/nginx/templates/ so nginx:alpine's entrypoint runs
-# envsubst on it and writes /etc/nginx/conf.d/vibenet-public.conf before
-# starting nginx.
-#
-# Each server block:
-#   - Listens on :443 with a Cloudflare Origin CA certificate (generated
-#     from dashboard -> SSL/TLS -> Origin Server; covers *.vibes.base.org
-#     + vibes.base.org). The cert is trusted by Cloudflare's edge only,
-#     which is fine because public clients never see this leg directly.
-#   - Routes by Host, matching the four public hostnames Cloudflare
-#     forwards: vibes / rpc.vibes / explorer.vibes / faucet.vibes.
-#
-# There is NO shared secret or Authenticated Origin Pulls header check
-# here. Origin identity is enforced at the network layer: ufw only exposes
-# :443 to Cloudflare's published IP ranges (see deploy/bootstrap.sh), and
-# Cloudflare's SSL/TLS mode is set to "Full (strict)" which validates this
-# cert on every connection. If you later want defense-in-depth against
-# edge-bypass attacks, enable Authenticated Origin Pulls in Cloudflare and
-# add `ssl_verify_client on;` + a trusted-CA file here.
+# Activated by `etc/vibenet/docker-compose.public.yml`, which mounts this
+# template and the host TLS files into the nginx container.
 #
 # Rate-limit zones (ui_ip, rpc_ip, faucet_ip), the $connection_upgrade
 # map, and the `limit_req_status 429;` directive are declared in

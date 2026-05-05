@@ -30,7 +30,7 @@ function isLocalHost(host) {
   return host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0";
 }
 
-// Public hostname scheme (Cloudflare-fronted):
+// Public hostname scheme:
 //   vibes.base.org            -> this UI
 //   rpc.vibes.base.org        -> JSON-RPC + WS
 //   explorer.vibes.base.org   -> vibescan

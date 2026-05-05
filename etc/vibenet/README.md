@@ -3,12 +3,9 @@
 A public, ephemeral devnet for showing off in-flight Base features.
 
 - Single L1 (anvil) + single L2 sequencer (same as `just up-single`)
-- Public HTTP gateway fronted by Cloudflare in "Full (strict)" SSL mode;
-  the host exposes exactly one public port (`:443`) with a Cloudflare
-  Origin CA certificate. See [`deploy/README.md`](./deploy/README.md).
-- Per-IP rate limiting at the nginx layer (and at Cloudflare) plus
-  per-method rate limiting at proxyd
-- Open RPC (no API key); abuse mitigated by the per-IP limits above
+- Optional public TLS gateway for the hosted environment
+- Per-IP rate limiting at the nginx layer plus per-method rate limiting at proxyd
+- Open RPC (no API key)
 - One prefunded faucet address; standard anvil accounts are drained
 - Test contracts (`USDV` - public-mint ERC-20, `NFV` - public-mint
   ERC-721) auto-deployed on boot
@@ -27,17 +24,15 @@ A public, ephemeral devnet for showing off in-flight Base features.
 
 ## Quick links
 
-- Deployment guide: [`deploy/README.md`](./deploy/README.md)
 - Host env template: [`vibenet-env.example`](./vibenet-env.example)
 - UI content (editable per branch): [`config/vibenet.yaml`](./config/vibenet.yaml)
 - Contract list (editable per branch): [`setup/contracts.yaml`](./setup/contracts.yaml)
 
 ## Running locally
 
-Vibenet is designed for deployment on a Cloudflare-fronted bare-metal
-host, but you can run the entire stack on your laptop for iteration. Local
-runs skip the `:443` public overlay entirely - `just vibe` only enables it
-on hosts that have the Cloudflare Origin CA cert installed.
+Vibenet can run locally or on a hosted environment. Local runs skip the
+`:443` public overlay entirely - `just vibe` only enables it on hosts that
+have TLS files installed under `/etc/vibenet/tls`.
 
 ```bash
 # One-time: copy the example env and fill in values. FAUCET_PRIVATE_KEY /
@@ -129,10 +124,7 @@ WebSocket:
 new WebSocket("wss://rpc.vibes.base.org/ws");
 ```
 
-Abuse is mitigated by nginx per-IP rate limits (keyed on the real client
-IP from `X-Forwarded-For`, which Cloudflare attaches) plus proxyd's
-per-method limits plus any Cloudflare rate-limiting rules configured at
-the edge.
+Rate limits are configured in nginx and proxyd.
 
 ## Admin panel
 
@@ -164,10 +156,10 @@ etc/vibenet/
   README.md                            (this file)
   vibenet-env.example                  host env template
   docker-compose.vibenet.yml           overlay on etc/docker/docker-compose.yml
-  docker-compose.public.yml            prod-only overlay: :443 TLS listener for Cloudflare
+  docker-compose.public.yml            prod-only overlay: :443 TLS listener
   config/vibenet.yaml                  editable UI content
   nginx/vibenet.conf.template          nginx config (internal docker net + local dev)
-  nginx/vibenet-public.conf.template   prod-only: :443 server blocks with CF Origin CA cert
+  nginx/vibenet-public.conf.template   prod-only: :443 server blocks
   proxyd/proxyd-ratelimit.toml         per-method rate limits
   faucet/Dockerfile                    build image for base-vibenet-faucet
   explorer/Dockerfile                  build image for vibescan
@@ -175,9 +167,6 @@ etc/vibenet/
   setup/contracts.yaml                 list of contracts to deploy
   setup/contracts/                     foundry project: src/*.sol
   setup/deploy-contracts.sh            entrypoint for vibenet-setup
-  deploy/bootstrap.sh                  one-shot host bootstrap (ubuntu/debian)
-  deploy/README.md                     production deployment guide
-
 crates/vibenet/faucet/              base-vibenet-faucet (axum + alloy)
 crates/vibenet/explorer/            vibescan (axum + alloy + sqlite)
 crates/vibenet/ui/public/           static HTML/JS served by nginx
