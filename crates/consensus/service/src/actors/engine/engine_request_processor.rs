@@ -7,7 +7,7 @@ use base_consensus_derive::{ResetSignal, Signal};
 use base_consensus_engine::{
     ConsolidateTask, DelegatedForkchoiceTask, Engine, EngineClient, EngineSyncStateUpdate,
     EngineTask, EngineTaskError, EngineTaskErrorSeverity, EngineTaskErrors, FinalizeTask,
-    InsertTask, InsertTaskResult, Metrics as EngineMetrics, SealTaskError,
+    Metrics as EngineMetrics, SealTaskError,
 };
 use base_protocol::L2BlockInfo;
 use tokio::{
@@ -173,41 +173,10 @@ where
 
     /// Drains the inner [`Engine`] task queue and attempts to update the safe head.
     async fn drain(&mut self) -> Result<(), EngineError> {
-        match self.engine.drain().await {
-            Ok(_) => {
-                trace!(target: "engine", "[ENGINE] tasks drained");
-            }
-            Err(err) => {
-                match err.severity() {
-                    EngineTaskErrorSeverity::Critical => {
-                        error!(target: "engine", ?err, "Critical error draining engine tasks");
-                        return Err(err.into());
-                    }
-                    EngineTaskErrorSeverity::Reset => {
-                        warn!(target: "engine", ?err, "Received reset request");
-                        self.reset().await?;
-                    }
-                    EngineTaskErrorSeverity::Flush => {
-                        // This error is encountered when the payload is marked INVALID
-                        // by the engine api. Post-holocene, the payload is replaced by
-                        // a "deposits-only" block and re-executed. At the same time,
-                        // the channel and any remaining buffered batches are flushed.
-                        warn!(target: "engine", ?err, "Invalid payload, Flushing derivation pipeline.");
-                        match self.derivation_client.send_signal(Signal::FlushChannel).await {
-                            Ok(_) => {
-                                debug!(target: "engine", "Sent flush signal to derivation actor")
-                            }
-                            Err(err) => {
-                                error!(target: "engine", ?err, "Failed to send flush signal to the derivation actor.");
-                                return Err(EngineError::ChannelClosed);
-                            }
-                        }
-                    }
-                    EngineTaskErrorSeverity::Temporary => {
-                        trace!(target: "engine", ?err, "Temporary error draining engine tasks");
-                    }
-                }
-            }
+        if let Err(err) = self.engine.drain().await {
+            self.handle_engine_task_error(err).await?;
+        } else {
+            trace!(target: "engine", "[ENGINE] tasks drained");
         }
 
         self.send_derivation_actor_safe_head_if_updated().await?;
@@ -219,22 +188,59 @@ where
         Ok(())
     }
 
-    fn enqueue_unsafe_payload_insert(
-        &mut self,
-        envelope: BaseExecutionPayloadEnvelope,
-        result_tx: Option<mpsc::Sender<InsertTaskResult>>,
-    ) {
-        self.log_follower_upgrade_activation(&envelope);
-        let task = EngineTask::Insert(Box::new(InsertTask::unsafe_payload_with_result(
-            Arc::clone(&self.client),
-            Arc::clone(&self.rollup),
-            envelope,
-            result_tx,
-        )));
-        self.engine.enqueue(task);
+    async fn handle_engine_task_error(&mut self, err: EngineTaskErrors) -> Result<(), EngineError> {
+        match err.severity() {
+            EngineTaskErrorSeverity::Critical => {
+                error!(target: "engine", ?err, "Critical engine task error");
+                Err(err.into())
+            }
+            EngineTaskErrorSeverity::Reset => {
+                warn!(target: "engine", ?err, "Received reset request");
+                self.reset().await
+            }
+            EngineTaskErrorSeverity::Flush => {
+                // This error is encountered when the payload is marked INVALID by the engine API.
+                // Post-Holocene, the payload is replaced by a deposits-only block and
+                // re-executed. At the same time, buffered batches are flushed.
+                warn!(target: "engine", ?err, "Invalid payload, flushing derivation pipeline");
+                match self.derivation_client.send_signal(Signal::FlushChannel).await {
+                    Ok(_) => {
+                        debug!(target: "engine", "Sent flush signal to derivation actor");
+                        Ok(())
+                    }
+                    Err(err) => {
+                        error!(target: "engine", ?err, "Failed to send flush signal to the derivation actor");
+                        Err(EngineError::ChannelClosed)
+                    }
+                }
+            }
+            EngineTaskErrorSeverity::Temporary => {
+                trace!(target: "engine", ?err, "Temporary engine task error");
+                Ok(())
+            }
+        }
     }
 
-    fn handle_external_unsafe_l2_block(&mut self, envelope: BaseExecutionPayloadEnvelope) {
+    async fn insert_external_unsafe_payload(
+        &mut self,
+        envelope: BaseExecutionPayloadEnvelope,
+    ) -> Result<(), EngineError> {
+        self.log_follower_upgrade_activation(&envelope);
+        if let Err(err) = self
+            .engine
+            .insert_unsafe_payload(Arc::clone(&self.client), Arc::clone(&self.rollup), envelope)
+            .await
+        {
+            self.handle_engine_task_error(EngineTaskErrors::Insert(err)).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn handle_external_unsafe_l2_block(
+        &mut self,
+        envelope: BaseExecutionPayloadEnvelope,
+    ) -> Result<(), EngineError> {
         let block_number = envelope.execution_payload.block_number();
         let sync_state = self.engine.state().sync_state;
         let unsafe_head = sync_state.unsafe_head();
@@ -245,10 +251,10 @@ where
                 block_number,
                 block_hash = %envelope.execution_payload.block_hash(),
                 parent_hash = %envelope.execution_payload.parent_hash(),
-                "Validator enqueuing external unsafe payload"
+                "Validator inserting external unsafe payload"
             );
-            self.enqueue_unsafe_payload_insert(envelope, None);
-            return;
+            self.insert_external_unsafe_payload(envelope).await?;
+            return Ok(());
         }
 
         let block_gap = block_number.checked_sub(unsafe_head.block_info.number);
@@ -262,10 +268,10 @@ where
                 parent_hash = %envelope.execution_payload.parent_hash(),
                 block_gap = ?block_gap,
                 max_external_unsafe_gap = EngineProcessorOptions::MAX_SEQUENCER_EXTERNAL_UNSAFE_GAP,
-                "Sequencer enqueuing external unsafe payload within gap limit"
+                "Sequencer inserting external unsafe payload within gap limit"
             );
-            self.enqueue_unsafe_payload_insert(envelope, None);
-            return;
+            self.insert_external_unsafe_payload(envelope).await?;
+            return Ok(());
         }
 
         info!(
@@ -279,18 +285,45 @@ where
             unsafe_head_hash = %unsafe_head.block_info.hash,
             "Sequencer dropped external unsafe payload outside gap limit"
         );
+
+        Ok(())
     }
 
-    fn handle_local_unsafe_l2_block(&mut self, request: InsertUnsafePayloadRequest) {
+    async fn handle_local_unsafe_l2_block(
+        &mut self,
+        request: InsertUnsafePayloadRequest,
+    ) -> Result<(), EngineError> {
         let InsertUnsafePayloadRequest { envelope, result_tx } = request;
         debug!(
             target: "engine",
             block_number = envelope.execution_payload.block_number(),
             block_hash = %envelope.execution_payload.block_hash(),
             parent_hash = %envelope.execution_payload.parent_hash(),
-            "Enqueuing local sequencer unsafe payload"
+            "Inserting local sequencer unsafe payload"
         );
-        self.enqueue_unsafe_payload_insert(envelope, result_tx);
+        self.log_follower_upgrade_activation(&envelope);
+        let should_ack = result_tx.is_some();
+        let result = if should_ack {
+            self.engine
+                .insert_local_unsafe_payload(
+                    Arc::clone(&self.client),
+                    Arc::clone(&self.rollup),
+                    envelope,
+                )
+                .await
+        } else {
+            self.engine
+                .insert_unsafe_payload(Arc::clone(&self.client), Arc::clone(&self.rollup), envelope)
+                .await
+        };
+
+        if let Some(result_tx) = result_tx {
+            if result_tx.send(result).await.is_err() {
+                warn!(target: "engine", "Sending insert result failed");
+            }
+        }
+
+        Ok(())
     }
 
     async fn mark_el_sync_complete_and_notify_derivation_actor(
@@ -402,7 +435,7 @@ where
     ///
     /// Seeds engine state from reth's current head so `op_syncStatus` never returns
     /// zeros, but intentionally skips sending a forkchoice update.  `el_sync_finished`
-    /// is left `false` and will be set by the first gossip `InsertTask` FCU.
+    /// is left `false` and will be set by the first gossip insert FCU.
     async fn bootstrap_validator(&mut self, head: Option<L2BlockInfo>) {
         let Some(head) = head else { return };
         let seed = EngineSyncStateUpdate { unsafe_head: Some(head), ..Default::default() };
@@ -679,10 +712,10 @@ where
                         self.engine.enqueue(task);
                     }
                     EngineActorRequest::ProcessUnsafeL2BlockRequest(envelope) => {
-                        self.handle_external_unsafe_l2_block(*envelope);
+                        self.handle_external_unsafe_l2_block(*envelope).await?;
                     }
                     EngineActorRequest::ProcessLocalUnsafeL2BlockRequest(envelope) => {
-                        self.handle_local_unsafe_l2_block(*envelope);
+                        self.handle_local_unsafe_l2_block(*envelope).await?;
                     }
                     EngineActorRequest::ResetRequest(reset_request) => {
                         // Do not reset the engine while the EL is still syncing. A Reset sends a
@@ -735,12 +768,13 @@ where
 mod tests {
     use std::sync::Arc;
 
-    use alloy_eips::{BlockId, BlockNumHash, BlockNumberOrTag, NumHash};
+    use alloy_eips::{BlockId, BlockNumHash, BlockNumberOrTag, NumHash, eip2718::Encodable2718};
     use alloy_primitives::{Address, B256, Bloom, U256};
     use alloy_rpc_types_engine::{
         ExecutionPayloadV1, ForkchoiceUpdated, PayloadStatus, PayloadStatusEnum,
     };
     use alloy_rpc_types_eth::Block as RpcBlock;
+    use base_common_consensus::{BaseTxEnvelope, TxDeposit};
     use base_common_genesis::{ChainGenesis, RollupConfig, SystemConfig};
     use base_common_rpc_types::Transaction as BaseTransaction;
     use base_common_rpc_types_engine::{BaseExecutionPayload, BaseExecutionPayloadEnvelope};
@@ -748,7 +782,7 @@ mod tests {
         Engine, EngineState,
         test_utils::{TestEngineStateBuilder, test_block_info, test_engine_client_builder},
     };
-    use base_protocol::{BlockInfo, L2BlockInfo};
+    use base_protocol::{BlockInfo, L1BlockInfoBedrock, L2BlockInfo};
     use rstest::rstest;
     use tokio::sync::{mpsc, watch};
 
@@ -788,6 +822,18 @@ mod tests {
         }
     }
 
+    fn valid_payload_status() -> PayloadStatus {
+        PayloadStatus { status: PayloadStatusEnum::Valid, latest_valid_hash: None }
+    }
+
+    fn l1_info_deposit_tx() -> Vec<u8> {
+        BaseTxEnvelope::from(TxDeposit {
+            input: L1BlockInfoBedrock::default().encode_calldata(),
+            ..Default::default()
+        })
+        .encoded_2718()
+    }
+
     fn l2_head(number: u64, hash: B256) -> L2BlockInfo {
         L2BlockInfo {
             block_info: BlockInfo { number, hash, ..Default::default() },
@@ -816,7 +862,7 @@ mod tests {
                 extra_data: Default::default(),
                 base_fee_per_gas: U256::ZERO,
                 block_hash,
-                transactions: vec![],
+                transactions: vec![l1_info_deposit_tx().into()],
             }),
         }
     }
@@ -826,14 +872,16 @@ mod tests {
         el_sync_finished: bool,
         unsafe_head: L2BlockInfo,
         safe_head: Option<L2BlockInfo>,
-    ) -> (
-        EngineProcessor<
-            base_consensus_engine::test_utils::MockEngineClient,
-            MockEngineDerivationClient,
-        >,
-        watch::Receiver<usize>,
-    ) {
-        let client = Arc::new(test_engine_client_builder().build());
+    ) -> EngineProcessor<
+        base_consensus_engine::test_utils::MockEngineClient,
+        MockEngineDerivationClient,
+    > {
+        let client = Arc::new(
+            test_engine_client_builder()
+                .with_new_payload_v2_response(valid_payload_status())
+                .with_fork_choice_updated_v3_response(valid_fcu())
+                .build(),
+        );
         let config = Arc::new(RollupConfig::default());
         let derivation_client = MockEngineDerivationClient::new();
         let mut initial_state_builder = TestEngineStateBuilder::new()
@@ -844,7 +892,7 @@ mod tests {
         }
         let initial_state = initial_state_builder.build();
         let (state_tx, _) = watch::channel(initial_state);
-        let (queue_tx, queue_rx) = watch::channel(0usize);
+        let (queue_tx, _) = watch::channel(0usize);
         let engine = Engine::new(initial_state, state_tx, queue_tx);
         let unsafe_head_tx = if node_mode.is_sequencer() {
             let (tx, _) = watch::channel(L2BlockInfo::default());
@@ -853,52 +901,49 @@ mod tests {
             None
         };
 
-        (
-            EngineProcessor::new(
-                client,
-                config,
-                derivation_client,
-                engine,
-                EngineProcessorOptions {
-                    node_mode,
-                    unsafe_head_tx,
-                    conductor: None,
-                    sequencer_stopped: false,
-                },
-            ),
-            queue_rx,
+        EngineProcessor::new(
+            client,
+            config,
+            derivation_client,
+            engine,
+            EngineProcessorOptions {
+                node_mode,
+                unsafe_head_tx,
+                conductor: None,
+                sequencer_stopped: false,
+            },
         )
     }
 
     #[rstest]
-    #[case::sequencer_enqueues_contiguous_external_payload(
+    #[case::sequencer_inserts_contiguous_external_payload(
         NodeMode::Sequencer,
         true,
         l2_head(10, B256::with_last_byte(10)),
         None,
         false,
         unsafe_payload(11, B256::with_last_byte(10), B256::with_last_byte(11)),
-        1
+        true
     )]
-    #[case::sequencer_enqueues_near_tip_external_payload_when_safe_is_behind(
+    #[case::sequencer_inserts_near_tip_external_payload_when_safe_is_behind(
         NodeMode::Sequencer,
         true,
         l2_head(1_940_222, B256::with_last_byte(22)),
         Some(l2_head(1_940_222, B256::with_last_byte(22))),
         false,
         unsafe_payload(1_940_265, B256::with_last_byte(64), B256::with_last_byte(65)),
-        1
+        true
     )]
-    #[case::sequencer_enqueues_observed_restart_gap_external_payload(
+    #[case::sequencer_inserts_observed_restart_gap_external_payload(
         NodeMode::Sequencer,
         true,
         l2_head(1_939_909, B256::with_last_byte(9)),
         None,
         false,
         unsafe_payload(1_940_000, B256::with_last_byte(99), B256::with_last_byte(100)),
-        1
+        true
     )]
-    #[case::sequencer_enqueues_external_payload_at_gap_boundary(
+    #[case::sequencer_inserts_external_payload_at_gap_boundary(
         NodeMode::Sequencer,
         true,
         l2_head(1_000, B256::with_last_byte(10)),
@@ -909,7 +954,7 @@ mod tests {
             B256::with_last_byte(50),
             B256::with_last_byte(51),
         ),
-        1
+        true
     )]
     #[case::sequencer_drops_external_payload_beyond_gap_boundary(
         NodeMode::Sequencer,
@@ -922,7 +967,7 @@ mod tests {
             B256::with_last_byte(50),
             B256::with_last_byte(51),
         ),
-        0
+        false
     )]
     #[case::sequencer_drops_deep_sync_external_payload(
         NodeMode::Sequencer,
@@ -931,7 +976,7 @@ mod tests {
         None,
         false,
         unsafe_payload(1_936_802, B256::with_last_byte(50), B256::with_last_byte(51)),
-        0
+        false
     )]
     #[case::sequencer_drops_stale_external_payload(
         NodeMode::Sequencer,
@@ -940,16 +985,16 @@ mod tests {
         None,
         false,
         unsafe_payload(10, B256::with_last_byte(9), B256::with_last_byte(10)),
-        0
+        false
     )]
-    #[case::sequencer_enqueues_external_next_block_with_parent_mismatch(
+    #[case::sequencer_inserts_external_next_block_with_parent_mismatch(
         NodeMode::Sequencer,
         true,
         l2_head(10, B256::with_last_byte(10)),
         None,
         false,
         unsafe_payload(11, B256::with_last_byte(99), B256::with_last_byte(11)),
-        1
+        true
     )]
     #[case::sequencer_cl_sync_preserves_local_unsafe_payload_insertion(
         NodeMode::Sequencer,
@@ -958,16 +1003,16 @@ mod tests {
         Some(l2_head(9, B256::with_last_byte(9))),
         true,
         unsafe_payload(11, B256::with_last_byte(10), B256::with_last_byte(11)),
-        1
+        true
     )]
-    #[case::local_sequencer_inserts_old_unsafe_payload_without_gap_limit(
+    #[case::local_sequencer_processes_old_unsafe_payload_without_gap_limit(
         NodeMode::Sequencer,
         true,
         l2_head(10_000, B256::with_last_byte(10)),
         None,
         true,
         unsafe_payload(6_400, B256::with_last_byte(99), B256::with_last_byte(100)),
-        1
+        false
     )]
     #[case::validator_preserves_immediate_unsafe_payload_insertion(
         NodeMode::Validator,
@@ -976,30 +1021,48 @@ mod tests {
         None,
         false,
         unsafe_payload(12, B256::with_last_byte(11), B256::with_last_byte(12)),
-        1
+        true
     )]
-    fn unsafe_payload_processing_updates_queue(
+    #[tokio::test]
+    async fn unsafe_payload_processing_inserts_or_drops_payload(
         #[case] node_mode: NodeMode,
         #[case] el_sync_finished: bool,
         #[case] unsafe_head: L2BlockInfo,
         #[case] safe_head: Option<L2BlockInfo>,
         #[case] local_payload: bool,
         #[case] envelope: BaseExecutionPayloadEnvelope,
-        #[case] expected_queue_len: usize,
+        #[case] expect_unsafe_head_advance: bool,
     ) {
-        let (mut processor, queue_rx) =
+        let expected_unsafe_head = if expect_unsafe_head_advance {
+            L2BlockInfo::from_payload_and_genesis(
+                envelope.execution_payload.clone(),
+                envelope.parent_beacon_block_root,
+                &RollupConfig::default().genesis,
+            )
+            .expect("test payload should convert to L2BlockInfo")
+        } else {
+            unsafe_head
+        };
+
+        let mut processor =
             unsafe_payload_processor(node_mode, el_sync_finished, unsafe_head, safe_head);
 
         if local_payload {
-            processor.handle_local_unsafe_l2_block(InsertUnsafePayloadRequest {
-                envelope,
-                result_tx: None,
-            });
+            processor
+                .handle_local_unsafe_l2_block(InsertUnsafePayloadRequest {
+                    envelope,
+                    result_tx: None,
+                })
+                .await
+                .expect("local unsafe payload handling should not fail");
         } else {
-            processor.handle_external_unsafe_l2_block(envelope);
+            processor
+                .handle_external_unsafe_l2_block(envelope)
+                .await
+                .expect("external unsafe payload handling should not fail");
         }
 
-        assert_eq!(*queue_rx.borrow(), expected_queue_len);
+        assert_eq!(processor.engine.state().sync_state.unsafe_head(), expected_unsafe_head);
     }
 
     /// Verifies that when a standalone sequencer (no conductor) is beyond genesis and reth
@@ -1303,7 +1366,7 @@ mod tests {
     /// The validator path must not probe reth — doing so would trivially return Valid
     /// (reth has its own head from the snapshot), prematurely setting `el_sync_finished`
     /// and triggering the engine reset that sends non-zero safe/finalized.  Instead,
-    /// `el_sync_finished` is left false and will be set by the first gossip `InsertTask`
+    /// `el_sync_finished` is left false and will be set by the first gossip insert
     /// FCU.
     #[tokio::test]
     async fn bootstrap_beyond_genesis_validator_seeds_without_probing_el_sync() {
@@ -1344,7 +1407,7 @@ mod tests {
         drop(req_tx);
         let _ = handle.await;
 
-        // el_sync_finished must remain false — only a gossip InsertTask FCU may set it.
+        // el_sync_finished must remain false; only a gossip insert FCU may set it.
         let state = state_rx.borrow();
         assert!(
             !state.el_sync_finished,
