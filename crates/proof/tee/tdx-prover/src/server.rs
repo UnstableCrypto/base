@@ -214,15 +214,10 @@ mod tests {
 
     use base_proof_host::{ProverRequestHandler, ProverRpcError};
     use base_proof_primitives::{EnclaveApiServer, ProofRequest, ProofResult, ProverApiServer};
-    use base_proof_tee_tdx_runtime::TdxSigner;
     use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
 
     use super::*;
     use crate::MeasuredMockTdxQuoteProvider;
-
-    const TEST_KEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-    const SECOND_TEST_KEY: &str =
-        "0x59c6995e998f97a5a004497e5da276ed8c36d492db6c00f2f4e4f0a575a199d4";
 
     struct FailingProverHandler;
 
@@ -233,21 +228,20 @@ mod tests {
         }
     }
 
-    fn test_runtime(key: &str) -> Arc<TdxRuntime<MeasuredMockTdxQuoteProvider>> {
-        let signer = TdxSigner::from_hex(key).unwrap();
-        Arc::new(TdxRuntime::new(signer, MeasuredMockTdxQuoteProvider::local_mock()))
+    fn test_runtime() -> Arc<TdxRuntime<MeasuredMockTdxQuoteProvider>> {
+        Arc::new(TdxRuntime::new(MeasuredMockTdxQuoteProvider::local_mock()))
     }
 
     fn test_rpc() -> TdxSignerRpc<MeasuredMockTdxQuoteProvider> {
-        TdxSignerRpc::new(vec![test_runtime(TEST_KEY)])
+        TdxSignerRpc::new(vec![test_runtime()])
     }
 
     fn multi_test_rpc() -> TdxSignerRpc<MeasuredMockTdxQuoteProvider> {
-        TdxSignerRpc::new(vec![test_runtime(TEST_KEY), test_runtime(SECOND_TEST_KEY)])
+        TdxSignerRpc::new(vec![test_runtime(), test_runtime()])
     }
 
     #[tokio::test]
-    async fn signer_public_key_serves_tdx_signer_key() {
+    async fn signer_public_key_serves_tdx_signer_identity() {
         let rpc = test_rpc();
         let result = EnclaveApiServer::signer_public_key(&rpc).await.unwrap();
 
@@ -304,7 +298,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn signer_public_key_serves_all_tdx_signer_keys() {
+    async fn signer_public_key_serves_all_tdx_signer_identities() {
         let rpc = multi_test_rpc();
         let result = EnclaveApiServer::signer_public_key(&rpc).await.unwrap();
 

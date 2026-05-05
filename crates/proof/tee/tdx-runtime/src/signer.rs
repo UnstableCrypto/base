@@ -4,7 +4,7 @@ use alloy_primitives::{Address, Bytes, keccak256};
 use alloy_signer::SignerSync;
 use alloy_signer_local::PrivateKeySigner;
 use k256::ecdsa::SigningKey;
-use rand_08::CryptoRng;
+use rand_08::rngs::OsRng;
 
 use crate::{Result, TdxRuntimeError};
 
@@ -23,25 +23,10 @@ pub struct TdxSigner {
 }
 
 impl TdxSigner {
-    /// Generates a fresh signer key using the supplied CSPRNG.
-    pub fn generate<R: CryptoRng + rand_08::RngCore>(rng: &mut R) -> Self {
-        let signing_key = SigningKey::random(rng);
+    /// Generates a fresh signer key using OS randomness inside the TDX guest.
+    pub fn generate() -> Self {
+        let signing_key = SigningKey::random(&mut OsRng);
         Self { signer: PrivateKeySigner::from_signing_key(signing_key) }
-    }
-
-    /// Loads a signer from a 32-byte secp256k1 private key.
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        let signing_key = SigningKey::from_slice(bytes)
-            .map_err(|error| TdxRuntimeError::SignerKey(error.to_string()))?;
-        Ok(Self { signer: PrivateKeySigner::from_signing_key(signing_key) })
-    }
-
-    /// Loads a signer from hex, optionally prefixed with `0x`.
-    pub fn from_hex(hex_key: &str) -> Result<Self> {
-        let hex_key = hex_key.strip_prefix("0x").unwrap_or(hex_key);
-        let bytes = alloy_primitives::hex::decode(hex_key)
-            .map_err(|error| TdxRuntimeError::Hex(error.to_string()))?;
-        Self::from_bytes(&bytes)
     }
 
     /// Returns the signer's public identity.
@@ -91,16 +76,11 @@ impl fmt::Debug for TdxSigner {
 
 #[cfg(test)]
 mod tests {
-    use alloy_primitives::address;
-    use rand_08::rngs::OsRng;
-
     use super::*;
-
-    const TEST_KEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
     #[test]
     fn generated_signer_has_uncompressed_public_key() {
-        let signer = TdxSigner::generate(&mut OsRng);
+        let signer = TdxSigner::generate();
         let public_key = signer.public_key();
 
         assert_eq!(public_key.len(), 65);
@@ -108,12 +88,11 @@ mod tests {
     }
 
     #[test]
-    fn loaded_signer_derives_expected_nitro_compatible_identity() {
-        let signer = TdxSigner::from_hex(TEST_KEY).unwrap();
+    fn generated_signer_derives_nitro_compatible_identity() {
+        let signer = TdxSigner::generate();
         let identity = signer.identity();
 
         assert_eq!(identity.public_key.len(), 65);
-        assert_eq!(identity.address, address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"));
         assert_eq!(
             TdxSigner::address_from_public_key(&identity.public_key).unwrap(),
             identity.address
@@ -122,19 +101,17 @@ mod tests {
 
     #[test]
     fn signer_debug_does_not_expose_private_key_material() {
-        let signer = TdxSigner::from_hex(TEST_KEY).unwrap();
+        let signer = TdxSigner::generate();
         let debug = format!("{signer:?}");
 
         assert!(debug.contains("TdxSigner"));
         assert!(debug.contains("address"));
-        assert!(
-            !debug.contains("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
-        );
+        assert!(!debug.contains("signer:"));
     }
 
     #[test]
     fn signer_produces_65_byte_signature() {
-        let signer = TdxSigner::from_hex(TEST_KEY).unwrap();
+        let signer = TdxSigner::generate();
         let signature = signer.sign(b"proof journal bytes").unwrap();
 
         assert_eq!(signature.len(), 65);

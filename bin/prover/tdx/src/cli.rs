@@ -6,9 +6,7 @@ use base_cli_utils::{LogConfig, RuntimeManager};
 use base_common_chains::Registry;
 use base_proof_host::ProverConfig;
 use base_proof_tee_tdx_prover::{MeasuredMockTdxQuoteProvider, TdxProverServer};
-use base_proof_tee_tdx_runtime::{
-    ConfigfsTdxQuoteProvider, TdxQuoteProvider, TdxRuntime, TdxSigner,
-};
+use base_proof_tee_tdx_runtime::{ConfigfsTdxQuoteProvider, TdxQuoteProvider, TdxRuntime};
 use clap::{Parser, Subcommand};
 use eyre::eyre;
 use tracing::info;
@@ -72,10 +70,6 @@ struct ProverServerArgs {
     /// Maximum seconds for a single proof request before it is aborted.
     #[arg(long, env = "PROOF_REQUEST_TIMEOUT_SECS", default_value = "1740", value_parser = clap::value_parser!(u64).range(1..))]
     proof_request_timeout_secs: u64,
-
-    /// Optional secp256k1 signer private key. Generates an ephemeral key when omitted.
-    #[arg(long, env = "BASE_TDX_SIGNER_KEY")]
-    signer_key: Option<String>,
 }
 
 impl ProverServerArgs {
@@ -100,25 +94,14 @@ impl ProverServerArgs {
         })
     }
 
-    fn signer(&self) -> eyre::Result<TdxSigner> {
-        self.signer_key.as_deref().map_or_else(
-            || Ok(TdxSigner::generate(&mut rand_08::rngs::OsRng)),
-            |key| {
-                TdxSigner::from_hex(key)
-                    .map_err(|error| eyre!("failed to load TDX signer key: {error}"))
-            },
-        )
-    }
-
     async fn run<P>(self, provider: P) -> eyre::Result<()>
     where
         P: TdxQuoteProvider + fmt::Debug + 'static,
     {
-        let signer = self.signer()?;
         let listen_addr = self.listen_addr;
         let timeout = Duration::from_secs(self.proof_request_timeout_secs);
         let config = self.into_prover_config()?;
-        let runtime = Arc::new(TdxRuntime::new(signer, provider));
+        let runtime = Arc::new(TdxRuntime::new(provider));
         let server = TdxProverServer::new(config, runtime, timeout);
 
         let handle = server.run(listen_addr).await?;

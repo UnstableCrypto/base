@@ -2,8 +2,8 @@
 
 Runtime helpers for Intel TDX signer identity and quote collection.
 
-The crate owns secp256k1 signer key generation/loading inside the guest,
-derives the uncompressed signer public key and Ethereum address, builds the
+The crate owns secp256k1 signer key generation inside the guest, derives the
+uncompressed signer public key and Ethereum address, builds the
 `TDREPORT.REPORTDATA` value expected by the TDX verifier, and collects quotes
 through a narrow provider trait.
 

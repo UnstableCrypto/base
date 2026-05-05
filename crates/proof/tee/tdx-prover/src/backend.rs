@@ -236,17 +236,13 @@ where
 mod tests {
     use alloy_primitives::{address, b256};
     use base_proof_primitives::ProofJournal;
-    use base_proof_tee_tdx_runtime::TdxSigner;
     use k256::ecdsa::{Signature, VerifyingKey, signature::hazmat::PrehashVerifier};
 
     use super::*;
     use crate::MeasuredMockTdxQuoteProvider;
 
-    const TEST_KEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-
     fn test_backend() -> TdxBackend<MeasuredMockTdxQuoteProvider> {
-        let signer = TdxSigner::from_hex(TEST_KEY).unwrap();
-        let runtime = TdxRuntime::new(signer, MeasuredMockTdxQuoteProvider::local_mock());
+        let runtime = TdxRuntime::new(MeasuredMockTdxQuoteProvider::local_mock());
         TdxBackend::new(Arc::new(runtime))
     }
 

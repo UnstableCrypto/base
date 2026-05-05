@@ -34,9 +34,9 @@ pub struct TdxRuntime<P> {
 }
 
 impl<P> TdxRuntime<P> {
-    /// Creates a runtime from a signer and quote provider.
-    pub const fn new(signer: TdxSigner, quote_provider: P) -> Self {
-        Self { signer, quote_provider }
+    /// Creates a runtime with a fresh signer and quote provider.
+    pub fn new(quote_provider: P) -> Self {
+        Self { signer: TdxSigner::generate(), quote_provider }
     }
 
     /// Returns the public signer identity.
@@ -109,13 +109,11 @@ mod tests {
     use super::*;
     use crate::{ConfigfsTdxQuoteProvider, MockTdxQuoteProvider, TdxReportData};
 
-    const TEST_KEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
     const TIMESTAMP_MILLIS: u64 = 1_711_111_111_000;
 
     fn test_runtime() -> TdxRuntime<MockTdxQuoteProvider> {
-        let signer = TdxSigner::from_hex(TEST_KEY).unwrap();
         let quote_provider = MockTdxQuoteProvider::new(Bytes::from_static(b"fixture-tdx-quote"));
-        TdxRuntime::new(signer, quote_provider)
+        TdxRuntime::new(quote_provider)
     }
 
     #[test]
@@ -152,17 +150,14 @@ mod tests {
 
         assert!(debug.contains("TdxRuntime"));
         assert!(debug.contains("signer_address"));
-        assert!(
-            !debug.contains("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
-        );
+        assert!(!debug.contains("signer:"));
     }
 
     #[test]
     #[ignore = "requires a real TDX guest with Linux TSM/configfs mounted"]
     fn real_tdx_guest_smoke_test_collects_quote_for_generated_signer() {
-        let signer = TdxSigner::generate(&mut rand_08::rngs::OsRng);
         let provider = ConfigfsTdxQuoteProvider::new("base-tdx-runtime-smoke");
-        let runtime = TdxRuntime::new(signer, provider);
+        let runtime = TdxRuntime::new(provider);
 
         let signer_quote = runtime.signer_quote().unwrap();
 

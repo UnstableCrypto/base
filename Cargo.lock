@@ -5602,7 +5602,6 @@ dependencies = [
  "base-proof-tee-tdx-runtime",
  "clap",
  "eyre",
- "rand 0.8.6",
  "serde",
  "tokio",
  "tracing",

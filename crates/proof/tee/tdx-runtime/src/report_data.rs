@@ -58,12 +58,11 @@ mod tests {
     use super::*;
     use crate::TdxSigner;
 
-    const TEST_KEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
     const TIMESTAMP_MILLIS: u64 = 1_711_111_111_000;
 
     #[test]
     fn report_data_binds_public_key_prefix_and_app_suffix() {
-        let signer = TdxSigner::from_hex(TEST_KEY).unwrap();
+        let signer = TdxSigner::generate();
         let public_key = signer.public_key();
         let report_data = TdxReportData::for_public_key(&public_key, TIMESTAMP_MILLIS).unwrap();
 

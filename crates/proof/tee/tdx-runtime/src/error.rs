@@ -5,12 +5,6 @@ use thiserror::Error;
 /// Errors produced by TDX runtime signer and quote collection code.
 #[derive(Debug, Error)]
 pub enum TdxRuntimeError {
-    /// Failed to parse or create a secp256k1 signing key.
-    #[error("failed to parse TDX signer key: {0}")]
-    SignerKey(String),
-    /// Failed to parse hex-encoded input.
-    #[error("failed to parse hex input: {0}")]
-    Hex(String),
     /// The signer public key is not an uncompressed 65-byte secp256k1 key.
     #[error("invalid signer public key")]
     InvalidPublicKey,
