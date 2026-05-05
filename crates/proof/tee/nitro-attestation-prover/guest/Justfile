@@ -1,8 +1,14 @@
+# Justfile for the Nitro verifier guest ELF build.
+#
+# These recipes are invoked by the Dockerfile (see README.md). Do not run
+# them directly on the host — production builds must use Docker to guarantee
+# reproducibility across machines.
+
 # Guest binary name (hyphens become underscores in the compiled binary)
 guest := "base-proof-tee-nitro-verifier-guest"
 
 # Expected risc0 toolchain version. Update these when bumping the toolchain.
-# Install with `rzup install rust <version>`, verify with `rustc +risc0 --version`.
+# Must match the version installed in the Dockerfile.
 expected_risc0_rust := "1.91.1"
 expected_risc0_commit := "30e2186d0"
 

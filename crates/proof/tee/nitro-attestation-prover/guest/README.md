@@ -11,80 +11,111 @@ check` invocations for everyone who doesn't have that toolchain installed.
 
 ## Quick start
 
-Build the ELF, bundle it into R0BF format, and compute the image ID in one step:
+Build the Docker image (once), then build the ELF and bundle it:
 
 ```sh
-just bundle
+# From the repository root:
+
+# 1. Build the builder image (once)
+docker build --platform=linux/amd64 \
+    -t nitro-guest-builder \
+    crates/proof/tee/nitro-attestation-prover/guest
+
+# 2. Build ELF, bundle into R0BF, and compute image ID
+docker run --rm --platform=linux/amd64 \
+    -v "$(pwd)":/build/base \
+    nitro-guest-builder
+
+# 3. Verify the ELF hash
+shasum -a 256 crates/proof/tee/nitro-attestation-prover/guest/\
+    target/riscv32im-risc0-zkvm-elf/release/base-proof-tee-nitro-verifier-guest
 ```
 
 The output shows the **image ID** and writes the bundled R0BF file to
 `target/base-proof-tee-nitro-verifier-guest.r0bf`.
 
+### Apple Silicon note
+
+The risc0 toolchain only publishes x86_64 Linux binaries, so the Docker
+image build runs under QEMU emulation and can be slow. To speed it up,
+pre-download the ~500MB toolchain tarball on the host before building the
+image:
+
+```sh
+gh release download r0.1.91.1 --repo risc0/rust \
+    --pattern "rust-toolchain-x86_64-unknown-linux-gnu.tar.gz" \
+    --dir crates/proof/tee/nitro-attestation-prover/guest
+```
+
+The Dockerfile detects and uses the pre-downloaded file automatically.
+The tarball is git-ignored and can be deleted after the image is built.
+
 ## Full workflow
 
-### 1. Install the risc0 toolchain
+### 1. Build and bundle
 
 ```sh
-just install-toolchain
+docker run --rm --platform=linux/amd64 \
+    -v /path/to/base-repo:/build/base \
+    nitro-guest-builder
 ```
 
-This installs the exact risc0 Rust toolchain version pinned in the Justfile.
-`just build` will verify the version before compiling.
-
-### 2. Build and bundle
-
-```sh
-just bundle
-```
-
-This runs two steps:
+This runs two steps inside the container:
 - **Build**: compiles the guest ELF with `cargo +risc0` for `riscv32im-risc0-zkvm-elf`
 - **Bundle**: combines the raw ELF with the risc0 v1compat kernel into R0BF
   (RISC Zero Binary Format) and computes the image ID
 
-We use a two-step approach (manual build + `compute-image-id` tool) rather than
-`cargo risczero bake` because `bake` does not pass `--ignore-rust-version` to
-cargo, and the `base-proof-tee-nitro-verifier` dependency inherits an MSRV from
-the workspace that is newer than the risc0 toolchain's rustc.
-
-### 3. Upload to IPFS
+### 2. Upload to IPFS
 
 Upload the bundled R0BF file (`target/base-proof-tee-nitro-verifier-guest.r0bf`)
 to IPFS (e.g. via Pinata). Note the resulting gateway URL.
 
-### 4. Update configuration
+### 3. Update configuration
 
 Three values must all match the same build:
 
 | Where | Value |
 |---|---|
-| Registrar CLI `--image-id` | Image ID printed by `just bundle` |
-| Registrar CLI `--boundless-verifier-program-url` | IPFS gateway URL from step 3 |
+| Registrar CLI `--image-id` | Image ID printed by the build |
+| Registrar CLI `--boundless-verifier-program-url` | IPFS gateway URL from step 2 |
 | On-chain `TEEProverRegistry` contract | Same image ID, set via admin transaction |
 
-## Individual commands
-
-If you need to run steps separately:
+## Other Docker commands
 
 ```sh
-# Build only (raw ELF)
-just build
+# Build only (raw ELF, no bundling)
+docker run --rm --platform=linux/amd64 \
+    -v /path/to/base-repo:/build/base \
+    nitro-guest-builder build
 
-# Compute image ID from an existing ELF or R0BF file
-RISC0_SKIP_BUILD_KERNELS=1 cargo run \
-    --manifest-path tools/compute-image-id/Cargo.toml -- <path-to-elf-or-r0bf>
+# Dump build environment for debugging reproducibility issues
+docker run --rm --platform=linux/amd64 \
+    -v /path/to/base-repo:/build/base \
+    nitro-guest-builder diagnose
 
-# Compute image ID and write bundled R0BF
-RISC0_SKIP_BUILD_KERNELS=1 cargo run \
-    --manifest-path tools/compute-image-id/Cargo.toml -- <path-to-elf> \
-    --output <output-path.r0bf>
+# Persist the cargo cache across runs (only affects build speed, not the ELF)
+docker run --rm --platform=linux/amd64 \
+    -v /path/to/base-repo:/build/base \
+    -v nitro-guest-builder-cargo:/opt/cargo \
+    nitro-guest-builder
 ```
 
 ## Reproducibility
 
+All builds **must** use Docker. The Dockerfile pins the OS, toolchain binary,
+filesystem paths, and compiler flags to produce byte-identical ELFs regardless
+of the host machine. Do not build natively — different host compilers (e.g.
+macOS ARM vs Linux x86_64) produce different cross-compiled RISC-V output.
+
 The image ID is a hash of the ELF binary. For the same source code to always
 produce the same image ID, the ELF must be byte-identical across builds.
-Five things ensure this:
+The Docker environment ensures this through:
+
+### Fixed toolchain binary
+
+The Dockerfile installs the exact risc0 rust toolchain (pinned version +
+commit hash assertion) at a fixed filesystem path. Every builder gets the
+same `rustc` binary.
 
 ### Single codegen unit
 
@@ -92,14 +123,6 @@ Rust's default release profile uses 16 parallel codegen units. Parallel
 codegen can produce different output depending on thread scheduling, making
 the ELF non-deterministic across machines. `Cargo.toml` sets
 `codegen-units = 1` in the release profile to force single-threaded codegen.
-
-### Toolchain pinning
-
-Different compiler versions produce different machine code, so the exact
-risc0 toolchain version matters. The expected version is pinned in the
-Justfile (`expected_risc0_rust` and `expected_risc0_commit`), and `just build`
-will refuse to proceed if the installed toolchain doesn't match. Install the
-correct version with `just install-toolchain` (or `rzup install rust <version>`).
 
 ### Dependency pinning
 
@@ -109,76 +132,28 @@ deterministic.
 
 ### Path remapping
 
-Rust embeds absolute file paths into the binary for panic messages (e.g.
-`panicked at /Users/you/project/src/foo.rs:42`). These paths change depending
-on where the repository is checked out, which produces a different ELF hash
-and therefore a different image ID — even from identical source code.
-
-The Justfile passes `--remap-path-prefix` flags via `RUSTFLAGS` to normalize
-these paths:
-
-- The repository checkout path is remapped to `/build`
-- The Cargo registry (`$CARGO_HOME`) is remapped to `/registry`
+Rust embeds absolute file paths into the binary for panic messages. The
+Justfile passes `--remap-path-prefix` flags via `RUSTFLAGS` to normalize
+these paths to `/build` and `/registry`.
 
 ### Deterministic metadata hashing
 
-Cargo computes a `-C metadata` hash for each crate that feeds into Rust's
-symbol mangling. For path dependencies (like `base-proof-tee-nitro-verifier`),
-Cargo includes the **absolute filesystem path** in this hash. Different
-checkout locations produce different metadata hashes, which change symbol
-names and produce a different linked ELF — even when all source code, flags,
-and toolchain are identical.
-
-The build uses a `RUSTC_WRAPPER` (`tools/rustc-deterministic-metadata.sh`)
-that intercepts every `rustc` invocation and replaces `-C metadata=<hash>`
-with a deterministic hash computed from the crate name, version, and
-**repo-relative** path (instead of the absolute path). This ensures the same
-metadata across all machines regardless of where the repo is checked out.
-
-**Always use `just build` / `just bundle`** (or Docker, see below) to get
-reproducible builds. Running `cargo +risc0 build` directly will produce a
-working ELF but with machine-specific paths and metadata baked in.
-
-### Docker (recommended for cross-machine verification)
-
-A `Dockerfile` is provided that creates a fully deterministic build
-environment (fixed OS, toolchain paths, and compiler binary). This eliminates
-any remaining host-specific differences (e.g. different rustc binaries on
-macOS vs Linux).
-
-```sh
-# Build the image (once, requires --platform=linux/amd64)
-docker build --platform=linux/amd64 \
-    -t nitro-guest-builder \
-    crates/proof/tee/nitro-attestation-prover/guest
-
-# Run the build
-docker run --rm --platform=linux/amd64 \
-    -v /path/to/base-repo:/build/base \
-    nitro-guest-builder
-
-# Check the hash
-shasum -a 256 crates/proof/tee/nitro-attestation-prover/guest/\
-    target/riscv32im-risc0-zkvm-elf/release/base-proof-tee-nitro-verifier-guest
-```
-
-**Apple Silicon note:** The risc0 toolchain only publishes x86_64 Linux
-binaries, so the Docker build runs under QEMU emulation. To speed up the
-image build, pre-download the ~500MB toolchain on the host:
-
-```sh
-gh release download r0.1.91.1 --repo risc0/rust \
-    --pattern "rust-toolchain-x86_64-unknown-linux-gnu.tar.gz" \
-    --dir crates/proof/tee/nitro-attestation-prover/guest
-```
-
-The Dockerfile will detect and use the pre-downloaded file automatically.
+Cargo includes the absolute filesystem path of path dependencies in its
+`-C metadata` hash, which feeds into symbol mangling. The build uses a
+`RUSTC_WRAPPER` (`tools/rustc-deterministic-metadata.sh`) that replaces
+`-C metadata` with a deterministic hash derived from the crate name,
+version, and repo-relative path.
 
 ### Diagnosing reproducibility issues
 
-If two machines produce different ELF hashes, run `just diagnose` on both
-machines and compare the output. This dumps the git commit, toolchain version,
-rustc binary hash, source file hashes, and other relevant environment info.
+If two machines produce different ELF hashes, run `diagnose` on both
+and compare the output:
+
+```sh
+docker run --rm --platform=linux/amd64 \
+    -v /path/to/base-repo:/build/base \
+    nitro-guest-builder diagnose
+```
 
 ### Bumping versions
 
