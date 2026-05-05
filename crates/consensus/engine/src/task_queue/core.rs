@@ -1,6 +1,6 @@
 //! The [`Engine`] owns execution-layer state and executes engine operations serially.
 
-use std::{collections::BinaryHeap, sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant};
 
 use alloy_eips::eip7685::EMPTY_REQUESTS_HASH;
 use alloy_rpc_types_engine::{
@@ -16,14 +16,14 @@ use base_protocol::{AttributesWithParent, BaseBlockConversionError, L2BlockInfo}
 use thiserror::Error;
 use tokio::{sync::watch::Sender, task::yield_now};
 
-use super::{EngineTaskExt, build_and_seal};
+use super::build_and_seal;
 use crate::{
     BuildTaskError, ConsolidateInput, ConsolidateTaskError, DelegatedForkchoiceTaskError,
     DelegatedForkchoiceUpdate, EngineBuildError, EngineClient, EngineForkchoiceVersion,
-    EngineGetPayloadVersion, EngineState, EngineSyncStateUpdate, EngineTask, EngineTaskError,
+    EngineGetPayloadVersion, EngineState, EngineSyncStateUpdate, EngineTaskError,
     EngineTaskErrorSeverity, FinalizeTaskError, InsertPayloadSafety, InsertTaskError,
     InsertTaskResult, Metrics, SealTaskError, SyncStartError, SynchronizeTask,
-    SynchronizeTaskError, find_starting_forkchoice, task_queue::EngineTaskErrors,
+    SynchronizeTaskError, find_starting_forkchoice,
 };
 
 /// The [`Engine`] state owner.
@@ -34,28 +34,18 @@ use crate::{
 /// Because operations are executed one at a time, they are considered to be atomic operations over
 /// the [`EngineState`], and are given exclusive access to the engine state during execution.
 ///
-/// The legacy task queue remains temporarily for compatibility while the remaining queue machinery
-/// is removed.
 #[derive(Debug)]
-pub struct Engine<EngineClient_: EngineClient> {
+pub struct Engine {
     /// The state of the engine.
     state: EngineState,
     /// A sender that can be used to notify the engine actor of state changes.
     state_sender: Sender<EngineState>,
-    /// A sender that can be used to notify the engine actor of task queue length changes.
-    task_queue_length: Sender<usize>,
-    /// The task queue.
-    tasks: BinaryHeap<EngineTask<EngineClient_>>,
 }
 
-impl<EngineClient_: EngineClient> Engine<EngineClient_> {
-    /// Creates a new [`Engine`] with an empty task queue and the passed initial [`EngineState`].
-    pub fn new(
-        initial_state: EngineState,
-        state_sender: Sender<EngineState>,
-        task_queue_length: Sender<usize>,
-    ) -> Self {
-        Self { state: initial_state, state_sender, task_queue_length, tasks: BinaryHeap::default() }
+impl Engine {
+    /// Creates a new [`Engine`] with the passed initial [`EngineState`].
+    pub const fn new(initial_state: EngineState, state_sender: Sender<EngineState>) -> Self {
+        Self { state: initial_state, state_sender }
     }
 
     /// Returns a reference to the inner [`EngineState`].
@@ -68,13 +58,8 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
         self.state_sender.subscribe()
     }
 
-    /// Returns a receiver that can be used to listen to engine queue length updates.
-    pub fn queue_length_subscribe(&self) -> tokio::sync::watch::Receiver<usize> {
-        self.task_queue_length.subscribe()
-    }
-
     /// Starts a block build directly against the execution layer.
-    pub async fn build(
+    pub async fn build<EngineClient_: EngineClient>(
         &mut self,
         client: Arc<EngineClient_>,
         config: Arc<RollupConfig>,
@@ -126,7 +111,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Starts a block build using the provided engine state.
-    pub async fn build_with_state(
+    pub async fn build_with_state<EngineClient_: EngineClient>(
         state: &EngineState,
         engine_client: &EngineClient_,
         cfg: &RollupConfig,
@@ -157,7 +142,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Fetches a sealed payload from the execution layer without inserting it.
-    pub async fn get_payload(
+    pub async fn get_payload<EngineClient_: EngineClient>(
         &mut self,
         client: Arc<EngineClient_>,
         config: Arc<RollupConfig>,
@@ -183,7 +168,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Fetches a sealed payload using the provided engine state.
-    pub async fn get_payload_with_state(
+    pub async fn get_payload_with_state<EngineClient_: EngineClient>(
         state: &EngineState,
         engine: &EngineClient_,
         cfg: &RollupConfig,
@@ -214,8 +199,8 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
         Self::fetch_payload(cfg, engine, payload_id, payload_attrs).await
     }
 
-    /// Inserts an external unsafe payload, retrying temporary failures like queued insert tasks did.
-    pub async fn insert_unsafe_payload(
+    /// Inserts an external unsafe payload, retrying temporary failures.
+    pub async fn insert_unsafe_payload<EngineClient_: EngineClient>(
         &mut self,
         client: Arc<EngineClient_>,
         config: Arc<RollupConfig>,
@@ -225,7 +210,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Inserts a local sequencer unsafe payload once and returns the insertion result.
-    pub async fn insert_local_unsafe_payload(
+    pub async fn insert_local_unsafe_payload<EngineClient_: EngineClient>(
         &mut self,
         client: Arc<EngineClient_>,
         config: Arc<RollupConfig>,
@@ -255,7 +240,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Inserts a payload and retries temporary failures.
-    pub async fn insert_payload_with_retry(
+    pub async fn insert_payload_with_retry<EngineClient_: EngineClient>(
         &mut self,
         client: Arc<EngineClient_>,
         config: Arc<RollupConfig>,
@@ -310,7 +295,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Inserts a payload into the execution engine using the provided state.
-    pub async fn insert_payload_with_state(
+    pub async fn insert_payload_with_state<EngineClient_: EngineClient>(
         state: &mut EngineState,
         client: Arc<EngineClient_>,
         rollup_config: Arc<RollupConfig>,
@@ -419,7 +404,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Consolidates the safe head directly against the execution layer.
-    pub async fn consolidate(
+    pub async fn consolidate<EngineClient_: EngineClient>(
         &mut self,
         client: Arc<EngineClient_>,
         config: Arc<RollupConfig>,
@@ -474,7 +459,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Consolidates the safe head using the provided engine state.
-    pub async fn consolidate_with_state(
+    pub async fn consolidate_with_state<EngineClient_: EngineClient>(
         state: &mut EngineState,
         client: Arc<EngineClient_>,
         config: Arc<RollupConfig>,
@@ -502,7 +487,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Rebuilds and seals attributes when consolidation cannot use the current unsafe block.
-    pub async fn build_and_seal_safe_payload(
+    pub async fn build_and_seal_safe_payload<EngineClient_: EngineClient>(
         state: &mut EngineState,
         client: Arc<EngineClient_>,
         config: Arc<RollupConfig>,
@@ -515,7 +500,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Reconciles the engine unsafe, local safe, and safe heads to an externally supplied safe head.
-    pub async fn reconcile_to_safe_head(
+    pub async fn reconcile_to_safe_head<EngineClient_: EngineClient>(
         state: &mut EngineState,
         client: Arc<EngineClient_>,
         config: Arc<RollupConfig>,
@@ -564,7 +549,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Reconciles the unsafe chain to the safe input when direct consolidation cannot be used.
-    pub async fn reconcile_unsafe_to_safe(
+    pub async fn reconcile_unsafe_to_safe<EngineClient_: EngineClient>(
         state: &mut EngineState,
         client: Arc<EngineClient_>,
         config: Arc<RollupConfig>,
@@ -581,7 +566,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Consolidates the safe head by checking the current unsafe block against the input.
-    pub async fn consolidate_safe_head(
+    pub async fn consolidate_safe_head<EngineClient_: EngineClient>(
         state: &mut EngineState,
         client: Arc<EngineClient_>,
         config: Arc<RollupConfig>,
@@ -674,7 +659,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
                     return Ok(());
                 }
                 Err(e) => {
-                    warn!(target: "engine", error = ?e, "Failed to construct L2BlockInfo, proceeding to build task");
+                    warn!(target: "engine", error = ?e, "Failed to construct L2BlockInfo, proceeding to safe payload rebuild");
                 }
             }
         }
@@ -689,7 +674,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Applies delegated safe and finalized labels directly against the execution layer.
-    pub async fn delegated_forkchoice(
+    pub async fn delegated_forkchoice<EngineClient_: EngineClient>(
         &mut self,
         client: Arc<EngineClient_>,
         config: Arc<RollupConfig>,
@@ -746,7 +731,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Applies delegated safe and finalized labels using the provided engine state.
-    pub async fn delegated_forkchoice_with_state(
+    pub async fn delegated_forkchoice_with_state<EngineClient_: EngineClient>(
         state: &mut EngineState,
         client: Arc<EngineClient_>,
         config: Arc<RollupConfig>,
@@ -782,7 +767,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Finalizes an L2 block directly against the execution layer.
-    pub async fn finalize(
+    pub async fn finalize<EngineClient_: EngineClient>(
         &mut self,
         client: Arc<EngineClient_>,
         config: Arc<RollupConfig>,
@@ -834,7 +819,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Finalizes an L2 block using the provided engine state.
-    pub async fn finalize_with_state(
+    pub async fn finalize_with_state<EngineClient_: EngineClient>(
         state: &mut EngineState,
         client: Arc<EngineClient_>,
         config: Arc<RollupConfig>,
@@ -904,7 +889,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Sends the forkchoice update that starts an execution-layer build job.
-    pub async fn start_build(
+    pub async fn start_build<EngineClient_: EngineClient>(
         state: &EngineState,
         engine_client: &EngineClient_,
         cfg: &RollupConfig,
@@ -963,7 +948,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     }
 
     /// Fetches the payload from the execution layer using the payload timestamp for versioning.
-    pub async fn fetch_payload(
+    pub async fn fetch_payload<EngineClient_: EngineClient>(
         cfg: &RollupConfig,
         engine: &EngineClient_,
         payload_id: PayloadId,
@@ -1036,25 +1021,14 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
         Ok(payload_envelope)
     }
 
-    /// Enqueues a new [`EngineTask`] for execution.
-    /// Updates the queue length and notifies listeners of the change.
-    pub fn enqueue(&mut self, task: EngineTask<EngineClient_>) {
-        self.tasks.push(task);
-        self.task_queue_length.send_replace(self.tasks.len());
-        Metrics::engine_task_queue_depth().set(self.tasks.len() as f64);
-    }
-
     /// Resets the engine by finding a plausible sync starting point via
     /// [`find_starting_forkchoice`]. The state will be updated to the starting point, and a
-    /// forkchoice update will be enqueued in order to reorg the execution layer.
-    pub async fn reset(
+    /// forkchoice update will be sent in order to reorg the execution layer.
+    pub async fn reset<EngineClient_: EngineClient>(
         &mut self,
         client: Arc<EngineClient_>,
         config: Arc<RollupConfig>,
     ) -> Result<L2BlockInfo, EngineResetError> {
-        // Clear any outstanding tasks to prepare for the reset.
-        self.clear();
-
         let mut start = find_starting_forkchoice(&config, client.as_ref()).await?;
 
         // Retry to synchronize the engine until we succeeds or a critical error occurs.
@@ -1085,7 +1059,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
         }
 
         // Broadcast the updated state so watch-channel subscribers (e.g. op_syncStatus RPC)
-        // see the new forkchoice immediately, without waiting for a task to pass through drain().
+        // see the new forkchoice immediately.
         self.state_sender.send_replace(self.state);
 
         Metrics::engine_reset_count().increment(1);
@@ -1122,7 +1096,7 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
     /// If [`Engine::seed_state`] has already been called with the same `update`,
     /// [`SynchronizeTask`] will detect an identical state and skip the FCU silently,
     /// leaving `el_sync_finished = false`. Always probe before seeding.
-    pub async fn probe_el_sync(
+    pub async fn probe_el_sync<EngineClient_: EngineClient>(
         &mut self,
         client: Arc<EngineClient_>,
         config: Arc<RollupConfig>,
@@ -1131,33 +1105,6 @@ impl<EngineClient_: EngineClient> Engine<EngineClient_> {
         SynchronizeTask::new(client, config, update).execute(&mut self.state).await?;
         self.state_sender.send_replace(self.state);
         Ok(self.state.el_sync_finished)
-    }
-
-    /// Clears the task queue.
-    pub fn clear(&mut self) {
-        self.tasks.clear();
-    }
-
-    /// Attempts to drain the queue by executing all [`EngineTask`]s in-order. If any task returns
-    /// an error along the way, it is not popped from the queue (in case it must be retried) and
-    /// the error is returned.
-    pub async fn drain(&mut self) -> Result<(), EngineTaskErrors> {
-        // Drain tasks in order of priority, halting on errors for a retry to be attempted.
-        while let Some(task) = self.tasks.peek() {
-            // Execute the task
-            task.execute(&mut self.state).await?;
-
-            // Update the state and notify the engine actor.
-            self.state_sender.send_replace(self.state);
-
-            // Pop the task from the queue now that it's been executed.
-            self.tasks.pop();
-
-            self.task_queue_length.send_replace(self.tasks.len());
-            Metrics::engine_task_queue_depth().set(self.tasks.len() as f64);
-        }
-
-        Ok(())
     }
 }
 
@@ -1469,12 +1416,11 @@ mod tests {
         let finalized = test_block_info(80);
 
         let (state_tx, _) = watch::channel(EngineState::default());
-        let (queue_tx, _) = watch::channel(0usize);
         let client = Arc::new(
             test_engine_client_builder().with_fork_choice_updated_v3_response(valid_fcu()).build(),
         );
 
-        let mut engine = Engine::new(EngineState::default(), state_tx, queue_tx);
+        let mut engine = Engine::new(EngineState::default(), state_tx);
         let update = EngineSyncStateUpdate {
             unsafe_head: Some(head),
             local_safe_head: Some(safe),
@@ -1499,14 +1445,13 @@ mod tests {
         let head = test_block_info(100);
 
         let (state_tx, _) = watch::channel(EngineState::default());
-        let (queue_tx, _) = watch::channel(0usize);
         let client = Arc::new(
             test_engine_client_builder()
                 .with_fork_choice_updated_v3_response(syncing_fcu())
                 .build(),
         );
 
-        let mut engine = Engine::new(EngineState::default(), state_tx, queue_tx);
+        let mut engine = Engine::new(EngineState::default(), state_tx);
         let update = EngineSyncStateUpdate { unsafe_head: Some(head), ..Default::default() };
 
         let confirmed = engine
@@ -1531,14 +1476,13 @@ mod tests {
         let head = test_block_info(100);
 
         let (state_tx, _) = watch::channel(EngineState::default());
-        let (queue_tx, _) = watch::channel(0usize);
         let client = Arc::new(
             test_engine_client_builder().with_fork_choice_updated_v3_response(valid_fcu()).build(),
         );
 
         let update = EngineSyncStateUpdate { unsafe_head: Some(head), ..Default::default() };
 
-        let mut engine = Engine::new(EngineState::default(), state_tx, queue_tx);
+        let mut engine = Engine::new(EngineState::default(), state_tx);
         engine.seed_state(update); // seed first — the wrong order
 
         let confirmed = engine

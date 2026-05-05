@@ -1,4 +1,4 @@
-//! Tests for [`FinalizeTask::execute`].
+//! Tests for finalizing an L2 block.
 
 use std::sync::Arc;
 
@@ -10,7 +10,7 @@ use base_common_genesis::{ChainGenesis, RollupConfig};
 use base_common_rpc_types::Transaction as BaseTransaction;
 
 use crate::{
-    EngineTaskExt, FinalizeTask, FinalizeTaskError,
+    Engine, FinalizeTaskError,
     test_utils::{TestEngineStateBuilder, test_block_info, test_engine_client_builder},
 };
 
@@ -22,7 +22,7 @@ const BASE_SEPOLIA_GENESIS_HASH: B256 =
 const BASE_MAINNET_GENESIS_HASH: B256 =
     b256!("f712aa9241cc24369b143cf6dce85f0902a9731e70d66818a3a5845b296c73dd");
 
-/// Construct a minimal default genesis block for testing [`FinalizeTask`].
+/// Construct a minimal default genesis block for testing finalization.
 ///
 /// Returns a default all-zero RPC block (number = 0, no transactions) paired with
 /// the canonical hash produced by `hash_slow()` on its consensus form. Use the
@@ -62,8 +62,13 @@ async fn block_not_safe_returns_error() {
     let mut state =
         TestEngineStateBuilder::new().with_safe_head(head).with_unsafe_head(head).build();
 
-    let task = FinalizeTask::new(Arc::new(client), Arc::new(RollupConfig::default()), 10);
-    let result = task.execute(&mut state).await;
+    let result = Engine::finalize_with_state(
+        &mut state,
+        Arc::new(client),
+        Arc::new(RollupConfig::default()),
+        10,
+    )
+    .await;
 
     assert!(
         matches!(result, Err(FinalizeTaskError::BlockNotSafe)),
@@ -79,8 +84,13 @@ async fn block_not_found_returns_error() {
     let mut state =
         TestEngineStateBuilder::new().with_safe_head(head).with_unsafe_head(head).build();
 
-    let task = FinalizeTask::new(Arc::new(client), Arc::new(RollupConfig::default()), 7);
-    let result = task.execute(&mut state).await;
+    let result = Engine::finalize_with_state(
+        &mut state,
+        Arc::new(client),
+        Arc::new(RollupConfig::default()),
+        7,
+    )
+    .await;
 
     assert!(
         matches!(result, Err(FinalizeTaskError::BlockNotFound(7))),
@@ -105,8 +115,7 @@ async fn from_block_error_on_genesis_hash_mismatch() {
     let mut state =
         TestEngineStateBuilder::new().with_safe_head(head).with_unsafe_head(head).build();
 
-    let task = FinalizeTask::new(Arc::new(client), cfg, 0);
-    let result = task.execute(&mut state).await;
+    let result = Engine::finalize_with_state(&mut state, Arc::new(client), cfg, 0).await;
 
     assert!(
         matches!(result, Err(FinalizeTaskError::FromBlock(_))),
@@ -130,8 +139,7 @@ async fn fcu_failure_propagates_as_forkchoice_update_failed() {
 
     let mut state = TestEngineStateBuilder::new().build();
 
-    let task = FinalizeTask::new(Arc::new(client), cfg, 0);
-    let result = task.execute(&mut state).await;
+    let result = Engine::finalize_with_state(&mut state, Arc::new(client), cfg, 0).await;
 
     assert!(
         matches!(result, Err(FinalizeTaskError::ForkchoiceUpdateFailed(_))),
@@ -158,8 +166,9 @@ async fn success_updates_engine_state_finalized_head() {
     // calls FCU. After execution the finalized_head must reflect the new block.
     let mut state = TestEngineStateBuilder::new().build();
 
-    let task = FinalizeTask::new(Arc::new(client), Arc::clone(&cfg), 0);
-    task.execute(&mut state).await.expect("FinalizeTask should succeed");
+    Engine::finalize_with_state(&mut state, Arc::new(client), Arc::clone(&cfg), 0)
+        .await
+        .expect("finalize should succeed");
 
     assert_eq!(
         state.sync_state.finalized_head().block_info.hash,

@@ -2,10 +2,7 @@
 
 use thiserror::Error;
 
-use crate::{
-    ConsolidateTaskError, EngineTaskError, FinalizeTaskError,
-    task_queue::tasks::task::EngineTaskErrorSeverity,
-};
+use crate::{ConsolidateTaskError, EngineTaskError, EngineTaskErrorSeverity, FinalizeTaskError};
 
 /// An error returned by the delegated follow-node forkchoice task.
 #[derive(Debug, Error)]

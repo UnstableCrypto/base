@@ -3,26 +3,22 @@
 use std::sync::Arc;
 
 use alloy_rpc_types_engine::{INVALID_FORK_CHOICE_STATE_ERROR, PayloadStatusEnum};
-use async_trait::async_trait;
 use base_common_genesis::RollupConfig;
 use derive_more::Constructor;
 use tokio::time::Instant;
 
-use crate::{
-    EngineClient, EngineState, EngineTaskExt, SynchronizeTaskError, state::EngineSyncStateUpdate,
-};
+use crate::{EngineClient, EngineState, SynchronizeTaskError, state::EngineSyncStateUpdate};
 
 /// Internal task for execution layer forkchoice synchronization.
 ///
 /// The [`SynchronizeTask`] performs `engine_forkchoiceUpdated` calls to synchronize
 /// the execution layer's forkchoice state with the rollup node's view. This task
 /// operates without payload attributes and is primarily used internally by other
-/// engine tasks rather than being directly enqueued by users.
+/// direct engine methods rather than being directly used by callers.
 ///
 /// ## Usage Patterns
 ///
-/// - **Internal Synchronization**: Called by direct insert/consolidate processing and
-///   [`FinalizeTask`]
+/// - **Internal Synchronization**: Called by direct insert, consolidate, and finalize processing
 /// - **Engine Reset**: Used during engine resets to establish initial forkchoice state
 /// - **Safe Head Updates**: Synchronizes safe and finalized head changes
 ///
@@ -32,7 +28,6 @@ use crate::{
 /// explicitly handled within direct build processing, eliminating the need for explicit
 /// forkchoice management in most user scenarios.
 ///
-/// [`FinalizeTask`]: crate::FinalizeTask
 #[derive(Debug, Clone, Constructor)]
 pub struct SynchronizeTask<EngineClient_: EngineClient> {
     /// The engine client.
@@ -85,14 +80,8 @@ impl<EngineClient_: EngineClient> SynchronizeTask<EngineClient_> {
             }
         }
     }
-}
-
-#[async_trait]
-impl<EngineClient_: EngineClient> EngineTaskExt for SynchronizeTask<EngineClient_> {
-    type Output = ();
-    type Error = SynchronizeTaskError;
-
-    async fn execute(&self, state: &mut EngineState) -> Result<Self::Output, SynchronizeTaskError> {
+    /// Applies the forkchoice update to the execution layer and engine state.
+    pub async fn execute(&self, state: &mut EngineState) -> Result<(), SynchronizeTaskError> {
         // Apply the sync state update to the engine state.
         let new_sync_state = state.sync_state.apply_update(self.state_update);
 
