@@ -3347,6 +3347,7 @@ dependencies = [
  "base-common-chains",
  "base-common-consensus",
  "base-common-flz",
+ "p384",
  "reth-evm",
  "revm",
  "rstest",

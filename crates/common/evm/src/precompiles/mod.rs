@@ -17,3 +17,9 @@ pub use bls12_381::{
     run_g1_msm_isthmus, run_g1_msm_jovian, run_g2_msm_isthmus, run_g2_msm_jovian,
     run_pairing_isthmus, run_pairing_jovian,
 };
+
+mod secp384r1;
+pub use secp384r1::{
+    P384VERIFY, P384VERIFY_ADDRESS, P384VERIFY_BASE_GAS_FEE, P384VERIFY_INPUT_LEN, p384_verify,
+    verify_impl as p384_verify_impl,
+};

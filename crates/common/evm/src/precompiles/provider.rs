@@ -125,6 +125,24 @@ impl BasePrecompiles {
             precompiles
         })
     }
+
+    // TODO: future Base hardfork that ships `p384verify` would extend Azul:
+    //
+    //     pub fn <next>() -> &'static Precompiles {
+    //         static INSTANCE: OnceLock<Precompiles> = OnceLock::new();
+    //         INSTANCE.get_or_init(|| {
+    //             let mut precompiles = Self::azul().clone();
+    //             precompiles.extend([crate::precompiles::P384VERIFY]);
+    //             precompiles
+    //         })
+    //     }
+    //
+    // Activation is gated on (1) a finalised precompile address, (2) a gas
+    // number from the triangulation methodology in the project P/PS, and
+    // (3) confirmation from the proof-system team that a p384 circuit fits
+    // the per-block proving-cost budget. Until then `P384VERIFY` is exported
+    // from the `precompiles` module for benchmarking and unit tests but is
+    // not registered in any spec.
 }
 
 impl<CTX> PrecompileProvider<CTX> for BasePrecompiles

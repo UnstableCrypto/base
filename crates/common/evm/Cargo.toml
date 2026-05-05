@@ -27,6 +27,9 @@ base-common-consensus = { workspace = true, features = ["evm"] }
 # revm
 revm.workspace = true
 
+# crypto
+p384 = { workspace = true, features = ["ecdsa"] }
+
 # misc
 auto_impl.workspace = true
 thiserror.workspace = true
