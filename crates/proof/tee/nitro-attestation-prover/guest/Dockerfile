@@ -39,8 +39,7 @@
 #
 # After it finishes, hash the ELF on the host:
 #
-#   shasum -a 256 <base-repo>/crates/proof/tee/nitro-attestation-prover/guest/\
-#       target/riscv32im-risc0-zkvm-elf/release/base-proof-tee-nitro-verifier-guest
+#   shasum -a 256 <base-repo>/crates/proof/tee/nitro-attestation-prover/guest/target/riscv32im-risc0-zkvm-elf/release/base-proof-tee-nitro-verifier-guest
 #
 # Optional: persist the cargo cache across runs (only affects build speed,
 # not the ELF) by adding `-v nitro-guest-builder-cargo:/opt/cargo`.

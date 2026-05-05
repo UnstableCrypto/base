@@ -27,8 +27,7 @@ docker run --rm --platform=linux/amd64 \
     nitro-guest-builder
 
 # 3. Verify the ELF hash
-shasum -a 256 crates/proof/tee/nitro-attestation-prover/guest/\
-    target/riscv32im-risc0-zkvm-elf/release/base-proof-tee-nitro-verifier-guest
+shasum -a 256 crates/proof/tee/nitro-attestation-prover/guest/target/riscv32im-risc0-zkvm-elf/release/base-proof-tee-nitro-verifier-guest
 ```
 
 The output shows the **image ID** and writes the bundled R0BF file to
