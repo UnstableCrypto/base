@@ -135,9 +135,44 @@ with a deterministic hash computed from the crate name, version, and
 **repo-relative** path (instead of the absolute path). This ensures the same
 metadata across all machines regardless of where the repo is checked out.
 
-**Always use `just build` / `just bundle`** to get reproducible builds. Running
-`cargo +risc0 build` directly will produce a working ELF but with
-machine-specific paths and metadata baked in.
+**Always use `just build` / `just bundle`** (or Docker, see below) to get
+reproducible builds. Running `cargo +risc0 build` directly will produce a
+working ELF but with machine-specific paths and metadata baked in.
+
+### Docker (recommended for cross-machine verification)
+
+A `Dockerfile` is provided that creates a fully deterministic build
+environment (fixed OS, toolchain paths, and compiler binary). This eliminates
+any remaining host-specific differences (e.g. different rustc binaries on
+macOS vs Linux).
+
+```sh
+# Build the image (once, requires --platform=linux/amd64)
+docker build --platform=linux/amd64 \
+    -t nitro-guest-builder \
+    crates/proof/tee/nitro-attestation-prover/guest
+
+# Run the build
+docker run --rm --platform=linux/amd64 \
+    -v /path/to/base-repo:/build/base \
+    nitro-guest-builder
+
+# Check the hash
+shasum -a 256 crates/proof/tee/nitro-attestation-prover/guest/\
+    target/riscv32im-risc0-zkvm-elf/release/base-proof-tee-nitro-verifier-guest
+```
+
+**Apple Silicon note:** The risc0 toolchain only publishes x86_64 Linux
+binaries, so the Docker build runs under QEMU emulation. To speed up the
+image build, pre-download the ~500MB toolchain on the host:
+
+```sh
+gh release download r0.1.91.1 --repo risc0/rust \
+    --pattern "rust-toolchain-x86_64-unknown-linux-gnu.tar.gz" \
+    --dir crates/proof/tee/nitro-attestation-prover/guest
+```
+
+The Dockerfile will detect and use the pre-downloaded file automatically.
 
 ### Diagnosing reproducibility issues
 
