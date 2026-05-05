@@ -84,7 +84,7 @@ RISC0_SKIP_BUILD_KERNELS=1 cargo run \
 
 The image ID is a hash of the ELF binary. For the same source code to always
 produce the same image ID, the ELF must be byte-identical across builds.
-Four things ensure this:
+Five things ensure this:
 
 ### Single codegen unit
 
@@ -120,9 +120,30 @@ these paths:
 - The repository checkout path is remapped to `/build`
 - The Cargo registry (`$CARGO_HOME`) is remapped to `/registry`
 
+### Deterministic metadata hashing
+
+Cargo computes a `-C metadata` hash for each crate that feeds into Rust's
+symbol mangling. For path dependencies (like `base-proof-tee-nitro-verifier`),
+Cargo includes the **absolute filesystem path** in this hash. Different
+checkout locations produce different metadata hashes, which change symbol
+names and produce a different linked ELF — even when all source code, flags,
+and toolchain are identical.
+
+The build uses a `RUSTC_WRAPPER` (`tools/rustc-deterministic-metadata.sh`)
+that intercepts every `rustc` invocation and replaces `-C metadata=<hash>`
+with a deterministic hash computed from the crate name, version, and
+**repo-relative** path (instead of the absolute path). This ensures the same
+metadata across all machines regardless of where the repo is checked out.
+
 **Always use `just build` / `just bundle`** to get reproducible builds. Running
 `cargo +risc0 build` directly will produce a working ELF but with
-machine-specific paths baked in.
+machine-specific paths and metadata baked in.
+
+### Diagnosing reproducibility issues
+
+If two machines produce different ELF hashes, run `just diagnose` on both
+machines and compare the output. This dumps the git commit, toolchain version,
+rustc binary hash, source file hashes, and other relevant environment info.
 
 ### Bumping versions
 
