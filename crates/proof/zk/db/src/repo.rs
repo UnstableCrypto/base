@@ -2,10 +2,14 @@ use sqlx::{PgPool, Result, Row};
 use uuid::Uuid;
 
 use crate::{
-    CreateOutboxEntry, CreateProofRequest, CreateProofSession, MarkOutboxError,
+    ClaimedProofRequest, CreateOutboxEntry, CreateProofRequest, MarkOutboxError,
     MarkOutboxProcessed, OutboxEntry, ProofRequest, ProofSession, ProofStatus, ProofType,
-    RetryOutcome, SessionStatus, SessionType, UpdateProofSession, UpdateReceipt,
+    RetryOutcome, SessionStatus, SessionType, StuckProofSubmission, UpdateProofSession,
+    UpdateReceipt,
 };
+
+const SUBMIT_STARK_TASK: &str = "submit_stark";
+const SUBMIT_SNARK_TASK: &str = "submit_snark";
 
 /// Repository for proof request database operations
 #[derive(Clone, Debug)]
@@ -155,6 +159,239 @@ impl ProofRequestRepo {
         Ok(id)
     }
 
+    /// Create a durable SUBMITTING stage from an outbox task.
+    ///
+    /// Returns `Ok(None)` when an equivalent active or completed stage already
+    /// exists, allowing the outbox row to be marked processed idempotently.
+    pub async fn create_submitting_stage_for_outbox(
+        &self,
+        proof_request_id: Uuid,
+        session_type: SessionType,
+    ) -> Result<Option<ClaimedProofRequest>> {
+        let mut tx = self.pool.begin().await?;
+
+        let existing_stage: Option<i64> = sqlx::query_scalar(
+            r#"
+            SELECT id
+            FROM proof_sessions
+            WHERE proof_request_id = $1
+              AND session_type = $2
+              AND status IN ('SUBMITTING', 'RUNNING', 'COMPLETED')
+            LIMIT 1
+            "#,
+        )
+        .bind(proof_request_id)
+        .bind(session_type.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        if existing_stage.is_some() {
+            tx.commit().await?;
+            return Ok(None);
+        }
+
+        let request_row = sqlx::query(
+            r#"
+            UPDATE proof_requests
+            SET status = CASE WHEN $2 = 'STARK' THEN 'PENDING' ELSE status END,
+                error_message = NULL
+            WHERE id = $1
+              AND status NOT IN ('SUCCEEDED', 'FAILED')
+            RETURNING id, start_block_number, number_of_blocks_to_prove,
+                      sequence_window, proof_type, stark_receipt, snark_receipt,
+                      status, error_message, prover_address, l1_head,
+                      intermediate_root_interval,
+                      created_at, updated_at, completed_at, retry_count
+            "#,
+        )
+        .bind(proof_request_id)
+        .bind(session_type.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let Some(request_row) = request_row else {
+            tx.commit().await?;
+            return Ok(None);
+        };
+
+        let session_id: i64 = sqlx::query_scalar(
+            r#"
+            INSERT INTO proof_sessions (
+                proof_request_id, session_type, backend_session_id, status, metadata
+            )
+            VALUES ($1, $2, NULL, $3, NULL)
+            RETURNING id
+            "#,
+        )
+        .bind(proof_request_id)
+        .bind(session_type.as_str())
+        .bind(SessionStatus::Submitting.as_str())
+        .fetch_one(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+
+        Ok(Some(ClaimedProofRequest {
+            proof_request: row_to_proof_request(&request_row)?,
+            proof_session_id: session_id,
+            session_type,
+        }))
+    }
+
+    /// Mark a SUBMITTING stage as RUNNING after the backend accepts it.
+    pub async fn mark_submitting_session_running(
+        &self,
+        proof_session_id: i64,
+        backend_session_id: &str,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+
+        let request_id: Option<Uuid> = sqlx::query_scalar(
+            r#"
+            UPDATE proof_sessions
+            SET backend_session_id = $1,
+                status = $2,
+                metadata = COALESCE($3, metadata)
+            WHERE id = $4
+              AND status = 'SUBMITTING'
+            RETURNING proof_request_id
+            "#,
+        )
+        .bind(backend_session_id)
+        .bind(SessionStatus::Running.as_str())
+        .bind(&metadata)
+        .bind(proof_session_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let Some(request_id) = request_id else {
+            tx.rollback().await?;
+            return Ok(false);
+        };
+
+        sqlx::query(
+            r#"
+            UPDATE proof_requests
+            SET status = $1
+            WHERE id = $2
+              AND status NOT IN ('SUCCEEDED', 'FAILED')
+            "#,
+        )
+        .bind(ProofStatus::Running.as_str())
+        .bind(request_id)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(true)
+    }
+
+    /// Fail a SUBMITTING stage before it reaches the backend.
+    pub async fn fail_submitting_session_and_request(
+        &self,
+        proof_session_id: i64,
+        proof_request_id: Uuid,
+        error_message: String,
+    ) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+
+        let result = sqlx::query(
+            r#"
+            UPDATE proof_sessions
+            SET status = $1,
+                error_message = $2,
+                completed_at = NOW()
+            WHERE id = $3
+              AND status = 'SUBMITTING'
+            "#,
+        )
+        .bind(SessionStatus::Failed.as_str())
+        .bind(&error_message)
+        .bind(proof_session_id)
+        .execute(&mut *tx)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            tx.rollback().await?;
+            return Ok(false);
+        }
+
+        sqlx::query(
+            r#"
+            UPDATE proof_requests
+            SET status = $1,
+                error_message = $2,
+                completed_at = NOW()
+            WHERE id = $3
+              AND status NOT IN ('SUCCEEDED', 'FAILED')
+            "#,
+        )
+        .bind(ProofStatus::Failed.as_str())
+        .bind(&error_message)
+        .bind(proof_request_id)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(true)
+    }
+
+    /// Enqueue the SNARK stage once the STARK receipt has been persisted.
+    pub async fn enqueue_snark_outbox_if_needed(&self, id: Uuid) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+
+        let should_enqueue = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM proof_requests
+                WHERE id = $1
+                  AND proof_type = 'op_succinct_sp1_cluster_snark_groth16'
+                  AND stark_receipt IS NOT NULL
+                  AND snark_receipt IS NULL
+                  AND status = 'RUNNING'
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM proof_sessions
+                WHERE proof_request_id = $1
+                  AND session_type = 'SNARK'
+                  AND status IN ('SUBMITTING', 'RUNNING', 'COMPLETED')
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM proof_request_outbox
+                WHERE proof_request_id = $1
+                  AND processed = FALSE
+                  AND request_params->>'task_type' = 'submit_snark'
+            )
+            "#,
+        )
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        if !should_enqueue {
+            tx.commit().await?;
+            return Ok(false);
+        }
+
+        sqlx::query(
+            r#"
+            INSERT INTO proof_request_outbox (proof_request_id, request_params)
+            VALUES ($1, jsonb_build_object('task_type', $2))
+            "#,
+        )
+        .bind(id)
+        .bind(SUBMIT_SNARK_TASK)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(true)
+    }
+
     /// Get a proof request by ID
     pub async fn get(&self, id: Uuid) -> Result<Option<ProofRequest>> {
         let row = sqlx::query(
@@ -211,104 +448,6 @@ impl ProofRequestRepo {
         let updated = result.rows_affected() > 0;
 
         Ok(updated)
-    }
-
-    /// Atomically claim a task by transitioning it from CREATED to PENDING.
-    /// Returns true if the task was successfully claimed (was in CREATED state).
-    /// Returns false if the task was already claimed or doesn't exist.
-    pub async fn atomic_claim_task(&self, id: Uuid) -> Result<bool> {
-        let result = sqlx::query(
-            r#"
-            UPDATE proof_requests
-            SET status = $1
-            WHERE id = $2 AND status = $3
-            "#,
-        )
-        .bind(ProofStatus::Pending.as_str())
-        .bind(id)
-        .bind(ProofStatus::Created.as_str())
-        .execute(&self.pool)
-        .await?;
-
-        let claimed = result.rows_affected() > 0;
-
-        Ok(claimed)
-    }
-
-    /// Atomically create a proof session and transition proof request PENDING → RUNNING.
-    /// Returns `Ok(Some(session_id))` if the request was in PENDING state.
-    /// Returns `Ok(None)` if the request was NOT in PENDING state (race lost).
-    pub async fn transition_pending_to_running(
-        &self,
-        session: CreateProofSession,
-    ) -> Result<Option<i64>> {
-        let mut tx = self.pool.begin().await?;
-
-        let result = sqlx::query(
-            r#"
-            UPDATE proof_requests
-            SET status = $1
-            WHERE id = $2 AND status = $3
-            "#,
-        )
-        .bind(ProofStatus::Running.as_str())
-        .bind(session.proof_request_id)
-        .bind(ProofStatus::Pending.as_str())
-        .execute(&mut *tx)
-        .await?;
-
-        if result.rows_affected() == 0 {
-            tx.rollback().await?;
-            return Ok(None);
-        }
-
-        let row = sqlx::query(
-            r#"
-            INSERT INTO proof_sessions (
-                proof_request_id, session_type, backend_session_id, status, metadata
-            )
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id
-            "#,
-        )
-        .bind(session.proof_request_id)
-        .bind(session.session_type.as_str())
-        .bind(&session.backend_session_id)
-        .bind(SessionStatus::Running.as_str())
-        .bind(&session.metadata)
-        .fetch_one(&mut *tx)
-        .await?;
-
-        let session_id: i64 = row.get("id");
-        tx.commit().await?;
-
-        Ok(Some(session_id))
-    }
-
-    /// Transition proof request PENDING → FAILED with error message.
-    /// Returns true if the transition succeeded (was PENDING).
-    pub async fn transition_pending_to_failed(
-        &self,
-        id: Uuid,
-        error_message: String,
-    ) -> Result<bool> {
-        let result = sqlx::query(
-            r#"
-            UPDATE proof_requests
-            SET status = $1,
-                error_message = $2,
-                completed_at = NOW()
-            WHERE id = $3 AND status = $4
-            "#,
-        )
-        .bind(ProofStatus::Failed.as_str())
-        .bind(&error_message)
-        .bind(id)
-        .bind(ProofStatus::Pending.as_str())
-        .execute(&self.pool)
-        .await?;
-
-        Ok(result.rows_affected() > 0)
     }
 
     /// Transition proof request RUNNING → FAILED with optional error message.
@@ -491,29 +630,6 @@ impl ProofRequestRepo {
 
     // ========== Proof Session Methods ==========
 
-    /// Create a new proof session
-    pub async fn create_proof_session(&self, session: CreateProofSession) -> Result<i64> {
-        let row = sqlx::query(
-            r#"
-            INSERT INTO proof_sessions (
-                proof_request_id, session_type, backend_session_id, status, metadata
-            )
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id
-            "#,
-        )
-        .bind(session.proof_request_id)
-        .bind(session.session_type.as_str())
-        .bind(&session.backend_session_id)
-        .bind(SessionStatus::Running.as_str())
-        .bind(&session.metadata)
-        .fetch_one(&self.pool)
-        .await?;
-
-        let id: i64 = row.get("id");
-        Ok(id)
-    }
-
     /// Get a proof session by backend session ID
     pub async fn get_session_by_backend_id(
         &self,
@@ -613,7 +729,7 @@ impl ProofRequestRepo {
               AND NOT EXISTS (
                   SELECT 1 FROM proof_sessions ps
                   WHERE ps.proof_request_id = pr.id
-                    AND ps.status = 'RUNNING'
+                    AND ps.status IN ('SUBMITTING', 'RUNNING')
               )
             ORDER BY pr.created_at ASC
             "#,
@@ -623,6 +739,180 @@ impl ProofRequestRepo {
         .await?;
 
         rows.iter().map(row_to_proof_request).collect()
+    }
+
+    /// Get SUBMITTING sessions that never reached the backend.
+    pub async fn get_stuck_submissions(
+        &self,
+        stuck_timeout_mins: i32,
+    ) -> Result<Vec<StuckProofSubmission>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                pr.id, pr.start_block_number, pr.number_of_blocks_to_prove,
+                pr.sequence_window, pr.proof_type, pr.stark_receipt, pr.snark_receipt,
+                pr.status, pr.error_message, pr.prover_address, pr.l1_head,
+                pr.intermediate_root_interval,
+                pr.created_at, pr.updated_at, pr.completed_at, pr.retry_count,
+                ps.id AS session_id, ps.session_type, ps.backend_session_id,
+                ps.status AS session_status, ps.error_message AS session_error_message,
+                ps.metadata, ps.created_at AS session_created_at,
+                ps.completed_at AS session_completed_at
+            FROM proof_sessions ps
+            JOIN proof_requests pr ON pr.id = ps.proof_request_id
+            WHERE ps.status = 'SUBMITTING'
+              AND ps.created_at < NOW() - INTERVAL '1 minute' * $1
+              AND pr.status NOT IN ('SUCCEEDED', 'FAILED')
+            ORDER BY ps.created_at ASC
+            "#,
+        )
+        .bind(stuck_timeout_mins)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.iter().map(row_to_stuck_submission).collect()
+    }
+
+    /// Retry or fail a stale SUBMITTING session.
+    pub async fn retry_or_fail_stuck_submission(
+        &self,
+        proof_session_id: i64,
+        max_retries: i32,
+        error_message: &str,
+    ) -> Result<RetryOutcome> {
+        let mut tx = self.pool.begin().await?;
+
+        let maybe_row = sqlx::query(
+            r#"
+            SELECT pr.id, pr.retry_count, pr.start_block_number,
+                   pr.number_of_blocks_to_prove, pr.sequence_window, pr.proof_type,
+                   pr.prover_address, pr.l1_head, pr.intermediate_root_interval,
+                   ps.session_type, ps.status AS session_status
+            FROM proof_sessions ps
+            JOIN proof_requests pr ON pr.id = ps.proof_request_id
+            WHERE ps.id = $1
+            FOR UPDATE
+            "#,
+        )
+        .bind(proof_session_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let Some(row) = maybe_row else {
+            tx.rollback().await?;
+            return Ok(RetryOutcome::Skipped);
+        };
+
+        if row.get::<&str, _>("session_status") != SessionStatus::Submitting.as_str() {
+            tx.rollback().await?;
+            return Ok(RetryOutcome::Skipped);
+        }
+
+        let proof_request_id: Uuid = row.get("id");
+        let retry_count: i32 = row.get("retry_count");
+
+        if retry_count >= max_retries {
+            let message =
+                format!("{error_message} (max retries exceeded after {retry_count} attempts)");
+            sqlx::query(
+                r#"
+                UPDATE proof_sessions
+                SET status = 'FAILED', error_message = $1, completed_at = NOW()
+                WHERE id = $2
+                "#,
+            )
+            .bind(&message)
+            .bind(proof_session_id)
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                r#"
+                UPDATE proof_requests
+                SET status = 'FAILED', error_message = $1, completed_at = NOW()
+                WHERE id = $2
+                "#,
+            )
+            .bind(&message)
+            .bind(proof_request_id)
+            .execute(&mut *tx)
+            .await?;
+
+            tx.commit().await?;
+            return Ok(RetryOutcome::PermanentlyFailed);
+        }
+
+        sqlx::query(
+            r#"
+            UPDATE proof_sessions
+            SET status = 'FAILED', error_message = $1, completed_at = NOW()
+            WHERE id = $2
+            "#,
+        )
+        .bind(error_message)
+        .bind(proof_session_id)
+        .execute(&mut *tx)
+        .await?;
+
+        let session_type = row.get::<&str, _>("session_type");
+        if session_type == SessionType::Stark.as_str() {
+            let request_params = build_outbox_params(
+                row.get::<i64, _>("start_block_number"),
+                row.get::<i64, _>("number_of_blocks_to_prove"),
+                row.get::<Option<i64>, _>("sequence_window"),
+                row.get::<&str, _>("proof_type"),
+                row.get::<Option<&str>, _>("prover_address"),
+                row.get::<Option<&str>, _>("l1_head"),
+                row.get::<Option<i64>, _>("intermediate_root_interval"),
+            );
+
+            sqlx::query(
+                r#"
+                UPDATE proof_requests
+                SET status = 'CREATED', retry_count = retry_count + 1, error_message = NULL
+                WHERE id = $1
+                "#,
+            )
+            .bind(proof_request_id)
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                r#"
+                INSERT INTO proof_request_outbox (proof_request_id, request_params)
+                VALUES ($1, $2)
+                "#,
+            )
+            .bind(proof_request_id)
+            .bind(&request_params)
+            .execute(&mut *tx)
+            .await?;
+        } else {
+            sqlx::query(
+                r#"
+                UPDATE proof_requests
+                SET retry_count = retry_count + 1, error_message = NULL
+                WHERE id = $1
+                "#,
+            )
+            .bind(proof_request_id)
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                r#"
+                INSERT INTO proof_request_outbox (proof_request_id, request_params)
+                VALUES ($1, jsonb_build_object('task_type', $2))
+                "#,
+            )
+            .bind(proof_request_id)
+            .bind(SUBMIT_SNARK_TASK)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+        Ok(RetryOutcome::Retried)
     }
 
     /// Update a proof session status
@@ -1004,6 +1294,33 @@ fn row_to_proof_session(row: &sqlx::postgres::PgRow) -> Result<ProofSession> {
     })
 }
 
+fn row_to_stuck_submission(row: &sqlx::postgres::PgRow) -> Result<StuckProofSubmission> {
+    let session_status_str: &str = row.get("session_status");
+    let session_status = SessionStatus::try_from(session_status_str).map_err(|e| {
+        sqlx::Error::Protocol(format!("Unknown session status '{session_status_str}': {e}"))
+    })?;
+
+    let session_type_str: &str = row.get("session_type");
+    let session_type = SessionType::try_from(session_type_str).map_err(|e| {
+        sqlx::Error::Protocol(format!("Unknown session type '{session_type_str}': {e}"))
+    })?;
+
+    Ok(StuckProofSubmission {
+        proof_request: row_to_proof_request(row)?,
+        proof_session: ProofSession {
+            id: row.get("session_id"),
+            proof_request_id: row.get("id"),
+            session_type,
+            backend_session_id: row.get("backend_session_id"),
+            status: session_status,
+            error_message: row.get("session_error_message"),
+            metadata: row.get("metadata"),
+            created_at: row.get("session_created_at"),
+            completed_at: row.get("session_completed_at"),
+        },
+    })
+}
+
 /// Build the canonical JSON payload for outbox entries.
 ///
 /// Both [`ProofRequestRepo::create_with_outbox`] and
@@ -1019,6 +1336,7 @@ fn build_outbox_params(
     intermediate_root_interval: Option<i64>,
 ) -> serde_json::Value {
     serde_json::json!({
+        "task_type": SUBMIT_STARK_TASK,
         "start_block_number": start_block_number,
         "number_of_blocks_to_prove": number_of_blocks_to_prove,
         "sequence_window": sequence_window,

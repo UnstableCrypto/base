@@ -270,6 +270,9 @@ pub trait ProvingBackend: Send + Sync {
     /// Starts proving for a block request.
     async fn prove(&self, request: &ProveBlockRequest) -> anyhow::Result<ProveResult>;
 
+    /// Starts SNARK submission for a request with a completed STARK receipt.
+    async fn submit_snark(&self, proof_request: &ProofRequest) -> anyhow::Result<ProveResult>;
+
     /// Processes a queued proof request and returns the next status transition.
     async fn process_proof_request(
         &self,
@@ -356,6 +359,9 @@ mod tests {
             BackendType::OpSuccinct
         }
         async fn prove(&self, _request: &ProveBlockRequest) -> anyhow::Result<ProveResult> {
+            unimplemented!()
+        }
+        async fn submit_snark(&self, _proof_request: &ProofRequest) -> anyhow::Result<ProveResult> {
             unimplemented!()
         }
         async fn process_proof_request(

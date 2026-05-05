@@ -2,7 +2,7 @@ use base_zk_client::{GetProofRequest, GetProofResponse, ProofJobStatus, ReceiptT
 use base_zk_db::ProofStatus;
 use sp1_sdk::SP1ProofWithPublicValues;
 use tonic::{Request, Response, Status};
-use tracing::{Instrument, info};
+use tracing::info;
 use uuid::Uuid;
 
 use crate::{metrics, server::ProverServiceServer};
@@ -93,43 +93,7 @@ impl ProverServiceServer {
         let (proto_status, receipt_bytes, error_message) = match proof_req.status {
             ProofStatus::Created => (ProofJobStatus::Created, vec![], None),
             ProofStatus::Pending => (ProofJobStatus::Pending, vec![], None),
-            ProofStatus::Running => {
-                // Sync sessions and update proof status, with a tracing span so all
-                // nested log lines carry proof_request_id.
-                let sync_span = tracing::info_span!(
-                    "sync_proof_status",
-                    proof_request_id = %proof_request_id,
-                );
-                self.manager
-                    .sync_and_update_proof_status(&proof_req)
-                    .instrument(sync_span)
-                    .await
-                    .map_err(|e| Status::internal(format!("Failed to sync proof status: {e}")))?;
-
-                // Re-query proof request to get updated status
-                let updated_proof_req = self
-                    .repo
-                    .get(proof_request_id)
-                    .await
-                    .map_err(|e| Status::internal(format!("Database error: {e}")))?
-                    .ok_or_else(|| Status::not_found("Proof request not found"))?;
-
-                // Map updated status to response
-                match updated_proof_req.status {
-                    ProofStatus::Succeeded => {
-                        let receipt =
-                            get_receipt_by_type(&updated_proof_req, requested_receipt_type)?;
-                        (ProofJobStatus::Succeeded, receipt, None)
-                    }
-                    ProofStatus::Failed => {
-                        (ProofJobStatus::Failed, vec![], updated_proof_req.error_message)
-                    }
-                    _ => {
-                        // Still RUNNING or PENDING
-                        (ProofJobStatus::Running, vec![], None)
-                    }
-                }
-            }
+            ProofStatus::Running => (ProofJobStatus::Running, vec![], None),
             ProofStatus::Succeeded => {
                 let receipt_buf = get_receipt_by_type(&proof_req, requested_receipt_type)?;
                 (ProofJobStatus::Succeeded, receipt_buf, None)

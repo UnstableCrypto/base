@@ -13,7 +13,7 @@ use base_proof_succinct_elfs::RANGE_ELF_EMBEDDED;
 use base_proof_succinct_host_utils::get_agg_proof_stdin;
 use base_zk_client::ProveBlockRequest;
 use base_zk_db::{
-    CreateProofSession, ProofRequest, ProofRequestRepo, ProofSession, ProofStatus, ProofType,
+    ProofRequest, ProofRequestRepo, ProofSession, ProofStatus, ProofType,
     SessionStatus as DbSessionStatus, SessionType, UpdateProofSession, UpdateReceipt,
 };
 use serde_json::json;
@@ -189,6 +189,10 @@ impl ProvingBackend for NetworkBackend {
         })
     }
 
+    async fn submit_snark(&self, proof_request: &ProofRequest) -> anyhow::Result<ProveResult> {
+        self.submit_aggregation_proof(proof_request).await
+    }
+
     async fn process_proof_request(
         &self,
         proof_request: &ProofRequest,
@@ -204,7 +208,7 @@ impl ProvingBackend for NetworkBackend {
             {
                 warn!(
                     proof_request_id = %proof_request.id,
-                    session_id = %session.backend_session_id,
+                    session_id = ?session.backend_session_id,
                     error = %e,
                     "failed to sync session with SP1 Network"
                 );
@@ -226,22 +230,7 @@ impl ProvingBackend for NetworkBackend {
                     proof_request_id = %proof_request.id,
                     "STARK completed, triggering stage-2 aggregation proof via SP1 Network"
                 );
-                let fresh_proof_request = repo.get(proof_request.id).await?.ok_or_else(|| {
-                    anyhow::anyhow!("proof request not found after STARK completion")
-                })?;
-                if let Err(e) = self.submit_aggregation_proof(&fresh_proof_request, repo).await {
-                    error!(
-                        proof_request_id = %proof_request.id,
-                        error = %e,
-                        "failed to submit aggregation proof"
-                    );
-                    return Ok(ProofProcessingResult {
-                        status: ProofStatus::Failed,
-                        error_message: Some(format!("failed to submit aggregation proof: {e}")),
-                    });
-                }
-                let updated_sessions = repo.get_sessions_for_request(proof_request.id).await?;
-                return Ok(Self::determine_status(proof_request.proof_type, &updated_sessions));
+                repo.enqueue_snark_outbox_if_needed(proof_request.id).await?;
             }
         }
 
@@ -249,7 +238,11 @@ impl ProvingBackend for NetworkBackend {
     }
 
     async fn get_session_status(&self, session: &ProofSession) -> anyhow::Result<SessionStatus> {
-        let proof_id = Self::parse_proof_id(&session.backend_session_id)?;
+        let backend_session_id = session
+            .backend_session_id
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("session is missing backend session ID"))?;
+        let proof_id = Self::parse_proof_id(backend_session_id)?;
         let prover = self.network_prover();
 
         let (status, _proof) = prover
@@ -284,7 +277,11 @@ impl NetworkBackend {
         session: &ProofSession,
         repo: &ProofRequestRepo,
     ) -> anyhow::Result<()> {
-        let proof_id = Self::parse_proof_id(&session.backend_session_id)?;
+        let backend_session_id = session
+            .backend_session_id
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("session is missing backend session ID"))?;
+        let proof_id = Self::parse_proof_id(backend_session_id)?;
         let prover = self.network_prover();
 
         let (status, proof) = match prover.get_proof_status(proof_id).await {
@@ -292,7 +289,7 @@ impl NetworkBackend {
             Err(e) => {
                 warn!(
                     proof_request_id = %proof_request_id,
-                    session_id = %session.backend_session_id,
+                    session_id = %backend_session_id,
                     error = %e,
                     "transient error checking network proof status, will retry"
                 );
@@ -308,7 +305,7 @@ impl NetworkBackend {
 
                 info!(
                     proof_request_id = %proof_request_id,
-                    session_id = %session.backend_session_id,
+                    session_id = %backend_session_id,
                     "proof fulfilled by SP1 Network"
                 );
 
@@ -316,7 +313,7 @@ impl NetworkBackend {
                     bincode::serde::encode_to_vec(&proof_with_pv, bincode::config::standard())?;
 
                 let update = UpdateProofSession {
-                    backend_session_id: session.backend_session_id.clone(),
+                    backend_session_id: backend_session_id.to_string(),
                     status: DbSessionStatus::Completed,
                     error_message: None,
                     metadata: session.metadata.clone(),
@@ -343,7 +340,7 @@ impl NetworkBackend {
 
                 info!(
                     proof_request_id = %proof_request_id,
-                    session_id = %session.backend_session_id,
+                    session_id = %backend_session_id,
                     "proof downloaded and stored"
                 );
             }
@@ -352,13 +349,13 @@ impl NetworkBackend {
                     format!("proof unfulfillable, execution_status={}", status.execution_status());
                 error!(
                     proof_request_id = %proof_request_id,
-                    session_id = %session.backend_session_id,
+                    session_id = %backend_session_id,
                     failure_detail = %reason,
                     "SP1 Network proof generation failed"
                 );
 
                 let update = UpdateProofSession {
-                    backend_session_id: session.backend_session_id.clone(),
+                    backend_session_id: backend_session_id.to_string(),
                     status: DbSessionStatus::Failed,
                     error_message: Some(reason),
                     metadata: session.metadata.clone(),
@@ -368,7 +365,7 @@ impl NetworkBackend {
             _ => {
                 info!(
                     proof_request_id = %proof_request_id,
-                    session_id = %session.backend_session_id,
+                    session_id = %backend_session_id,
                     "SP1 Network proof still running"
                 );
             }
@@ -419,8 +416,7 @@ impl NetworkBackend {
     async fn submit_aggregation_proof(
         &self,
         proof_request: &ProofRequest,
-        repo: &ProofRequestRepo,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<ProveResult> {
         let BackendConfig::Network { network_prover, agg_pk, range_vk, .. } = &self.config else {
             unreachable!("validated in constructor");
         };
@@ -507,21 +503,11 @@ impl NetworkBackend {
             "proof_id": proof_id.to_string(),
         });
 
-        let session = CreateProofSession {
-            proof_request_id: proof_request.id,
-            session_type: SessionType::Snark,
-            backend_session_id: proof_id.to_string(),
+        Ok(ProveResult {
+            session_id: Some(proof_id.to_string()),
             metadata: Some(metadata),
-        };
-
-        repo.create_proof_session(session).await?;
-
-        info!(
-            proof_request_id = %proof_request.id,
-            "created SNARK proof session for aggregation"
-        );
-
-        Ok(())
+            witness_gen_duration_ms: None,
+        })
     }
 }
 
@@ -537,7 +523,7 @@ mod tests {
             id: 1,
             proof_request_id: uuid::Uuid::new_v4(),
             session_type,
-            backend_session_id: "test-session".to_string(),
+            backend_session_id: Some("test-session".to_string()),
             status,
             error_message: None,
             metadata: None,

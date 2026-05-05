@@ -140,6 +140,53 @@ impl StatusPoller {
             }
         }
 
+        let stuck_submissions = self.repo.get_stuck_submissions(self.stuck_timeout_mins).await?;
+
+        for submission in stuck_submissions {
+            let proof_type_label = metrics::proof_type_label(submission.proof_request.proof_type);
+            let error_msg = format!(
+                "{} submission stuck before backend acceptance for {}+ minutes",
+                submission.proof_session.session_type, self.stuck_timeout_mins
+            );
+
+            match self
+                .repo
+                .retry_or_fail_stuck_submission(
+                    submission.proof_session.id,
+                    self.max_proof_retries,
+                    &error_msg,
+                )
+                .await
+            {
+                Ok(RetryOutcome::Retried) => {
+                    info!(
+                        proof_request_id = %submission.proof_request.id,
+                        proof_session_id = submission.proof_session.id,
+                        "Retrying stuck submission with new outbox entry"
+                    );
+                    metrics::inc_retried_requests(proof_type_label);
+                }
+                Ok(RetryOutcome::PermanentlyFailed) => {
+                    error!(
+                        proof_request_id = %submission.proof_request.id,
+                        proof_session_id = submission.proof_session.id,
+                        "Permanently failing stuck submission"
+                    );
+                    metrics::inc_stuck_requests(proof_type_label);
+                    metrics::inc_proof_requests_completed("failed", proof_type_label);
+                }
+                Ok(RetryOutcome::Skipped) => {}
+                Err(e) => {
+                    error!(
+                        proof_request_id = %submission.proof_request.id,
+                        proof_session_id = submission.proof_session.id,
+                        error = %e,
+                        "Failed to retry/fail stuck submission"
+                    );
+                }
+            }
+        }
+
         Ok(())
     }
 }

@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use base_proof_succinct_client_utils::boot::BootInfoStruct;
 use base_zk_client::ProveBlockRequest;
 use base_zk_db::{
-    CreateProofSession, ProofRequest, ProofRequestRepo, ProofSession, ProofStatus, ProofType,
+    ProofRequest, ProofRequestRepo, ProofSession, ProofStatus, ProofType,
     SessionStatus as DbSessionStatus, SessionType, UpdateReceipt,
 };
 use serde_json::json;
@@ -128,6 +128,22 @@ impl ProvingBackend for MockBackend {
         })
     }
 
+    async fn submit_snark(&self, _proof_request: &ProofRequest) -> anyhow::Result<ProveResult> {
+        let session_id = format!("mock-snark-{}", Uuid::new_v4());
+        self.sessions.lock().unwrap().insert(session_id.clone(), ());
+
+        Ok(ProveResult {
+            session_id: Some(session_id),
+            metadata: Some(json!({
+                "mock": true,
+                "proof_output_id": format!("mock-snark-output-{}", Uuid::new_v4()),
+                "deadline_secs": 0u64,
+                "start_time_secs": 0u64,
+            })),
+            witness_gen_duration_ms: None,
+        })
+    }
+
     async fn process_proof_request(
         &self,
         proof_request: &ProofRequest,
@@ -192,15 +208,16 @@ impl ProvingBackend for MockBackend {
                     },
                 };
 
-                repo.complete_session_and_update_receipt(
-                    &session.backend_session_id,
-                    update_receipt,
-                )
-                .await?;
+                let Some(backend_session_id) = session.backend_session_id.as_deref() else {
+                    continue;
+                };
+
+                repo.complete_session_and_update_receipt(backend_session_id, update_receipt)
+                    .await?;
 
                 info!(
                     proof_request_id = %proof_request.id,
-                    session_id = %session.backend_session_id,
+                    session_id = %backend_session_id,
                     session_type = %session.session_type,
                     "MockBackend: instantly completed session"
                 );
@@ -219,30 +236,7 @@ impl ProvingBackend for MockBackend {
                 updated_sessions.iter().any(|s| s.session_type == SessionType::Snark);
 
             if has_stark_completed && !has_snark_session {
-                info!(
-                    proof_request_id = %proof_request.id,
-                    "MockBackend: STARK done, creating SNARK session"
-                );
-
-                let snark_session_id = format!("mock-snark-{}", Uuid::new_v4());
-                let metadata = json!({
-                    "mock": true,
-                    "proof_output_id": format!("mock-snark-output-{}", Uuid::new_v4()),
-                    "deadline_secs": 0u64,
-                    "start_time_secs": 0u64,
-                });
-
-                let session = CreateProofSession {
-                    proof_request_id: proof_request.id,
-                    session_type: SessionType::Snark,
-                    backend_session_id: snark_session_id,
-                    metadata: Some(metadata),
-                };
-
-                repo.create_proof_session(session).await?;
-
-                let final_sessions = repo.get_sessions_for_request(proof_request.id).await?;
-                return Ok(determine_mock_status(proof_request.proof_type, &final_sessions));
+                repo.enqueue_snark_outbox_if_needed(proof_request.id).await?;
             }
         }
 

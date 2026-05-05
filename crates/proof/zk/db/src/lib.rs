@@ -5,9 +5,10 @@ pub use config::DatabaseConfig;
 
 mod models;
 pub use models::{
-    CreateOutboxEntry, CreateProofRequest, CreateProofSession, MarkOutboxError,
+    ClaimedProofRequest, CreateOutboxEntry, CreateProofRequest, MarkOutboxError,
     MarkOutboxProcessed, OutboxEntry, ProofRequest, ProofSession, ProofStatus, ProofType,
-    RetryOutcome, SessionStatus, SessionType, UpdateProofSession, UpdateReceipt,
+    RetryOutcome, SessionStatus, SessionType, StuckProofSubmission, UpdateProofSession,
+    UpdateReceipt,
 };
 
 mod repo;

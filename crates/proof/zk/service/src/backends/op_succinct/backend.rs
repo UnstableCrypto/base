@@ -8,7 +8,7 @@ use base_proof_succinct_elfs::{AGGREGATION_ELF, RANGE_ELF_EMBEDDED};
 use base_proof_succinct_host_utils::get_agg_proof_stdin;
 use base_zk_client::ProveBlockRequest;
 use base_zk_db::{
-    CreateProofSession, ProofRequest, ProofRequestRepo, ProofSession, ProofStatus, ProofType,
+    ProofRequest, ProofRequestRepo, ProofSession, ProofStatus, ProofType,
     SessionStatus as DbSessionStatus, SessionType, UpdateProofSession, UpdateReceipt,
 };
 use serde_json::json;
@@ -184,6 +184,10 @@ impl ProvingBackend for OpSuccinctBackend {
         })
     }
 
+    async fn submit_snark(&self, proof_request: &ProofRequest) -> anyhow::Result<ProveResult> {
+        self.submit_aggregation_proof(proof_request).await
+    }
+
     async fn process_proof_request(
         &self,
         proof_request: &ProofRequest,
@@ -200,7 +204,7 @@ impl ProvingBackend for OpSuccinctBackend {
             {
                 warn!(
                     proof_request_id = %proof_request.id,
-                    session_id = %session.backend_session_id,
+                    session_id = ?session.backend_session_id,
                     error = %e,
                     "failed to sync session with SP1 cluster"
                 );
@@ -224,22 +228,7 @@ impl ProvingBackend for OpSuccinctBackend {
                     proof_request_id = %proof_request.id,
                     "STARK completed, triggering stage-2 aggregation proof (SNARK Groth16)"
                 );
-                let fresh_proof_request = repo.get(proof_request.id).await?.ok_or_else(|| {
-                    anyhow::anyhow!("Proof request not found after STARK completion")
-                })?;
-                if let Err(e) = self.submit_aggregation_proof(&fresh_proof_request, repo).await {
-                    error!(
-                        proof_request_id = %proof_request.id,
-                        error = %e,
-                        "failed to submit aggregation proof"
-                    );
-                    return Ok(ProofProcessingResult {
-                        status: ProofStatus::Failed,
-                        error_message: Some(format!("Failed to submit aggregation proof: {e}")),
-                    });
-                }
-                let updated_sessions = repo.get_sessions_for_request(proof_request.id).await?;
-                return Ok(Self::determine_status(proof_request.proof_type, &updated_sessions));
+                repo.enqueue_snark_outbox_if_needed(proof_request.id).await?;
             }
         }
 
@@ -251,10 +240,14 @@ impl ProvingBackend for OpSuccinctBackend {
         let BackendConfig::OpSuccinct { cluster_client, .. } = &self.config else {
             unreachable!("validated in constructor");
         };
+        let backend_session_id = session
+            .backend_session_id
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("session is missing backend session ID"))?;
 
         let resp = cluster_client
             .get_proof_request(sp1_cluster_common::proto::ProofRequestGetRequest {
-                proof_id: session.backend_session_id.clone(),
+                proof_id: backend_session_id.to_string(),
             })
             .await
             .map_err(|e| anyhow::anyhow!("Failed to get proof request: {e}"))?;
@@ -409,6 +402,10 @@ impl OpSuccinctBackend {
         let BackendConfig::OpSuccinct { artifact_client, .. } = &self.config else {
             unreachable!("validated in constructor");
         };
+        let backend_session_id = session
+            .backend_session_id
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("session is missing backend session ID"))?;
 
         let metadata = session
             .metadata
@@ -426,7 +423,7 @@ impl OpSuccinctBackend {
             Err(e) => {
                 warn!(
                     proof_request_id = %proof_request_id,
-                    session_id = %session.backend_session_id,
+                    session_id = %backend_session_id,
                     error = %e,
                     "transient error checking session status, will retry"
                 );
@@ -438,13 +435,13 @@ impl OpSuccinctBackend {
             SessionStatus::Failed(reason) => {
                 error!(
                     proof_request_id = %proof_request_id,
-                    session_id = %session.backend_session_id,
+                    session_id = %backend_session_id,
                     failure_detail = %reason,
                     "proof generation failed or was cancelled"
                 );
 
                 let update = UpdateProofSession {
-                    backend_session_id: session.backend_session_id.clone(),
+                    backend_session_id: backend_session_id.to_string(),
                     status: DbSessionStatus::Failed,
                     error_message: Some(reason),
                     metadata: session.metadata.clone(),
@@ -453,7 +450,7 @@ impl OpSuccinctBackend {
 
                 info!(
                     proof_request_id = %proof_request_id,
-                    session_id = %session.backend_session_id,
+                    session_id = %backend_session_id,
                     "session marked as failed in database"
                 );
             }
@@ -474,7 +471,7 @@ impl OpSuccinctBackend {
                     Ok(Err(e)) => {
                         error!(
                             proof_request_id = %proof_request_id,
-                            session_id = %session.backend_session_id,
+                            session_id = %backend_session_id,
                             error = %e,
                             "failed to download proof artifact for completed session"
                         );
@@ -483,7 +480,7 @@ impl OpSuccinctBackend {
                     Err(join_err) => {
                         warn!(
                             proof_request_id = %proof_request_id,
-                            session_id = %session.backend_session_id,
+                            session_id = %backend_session_id,
                             error = %join_err,
                             "proof artifact download panicked, will retry next poll"
                         );
@@ -502,7 +499,7 @@ impl OpSuccinctBackend {
 
                 info!(
                     proof_request_id = %proof_request_id,
-                    session_id = %session.backend_session_id,
+                    session_id = %backend_session_id,
                     total_elapsed_secs = ?total_elapsed_secs,
                     "proof completed, downloaded from artifact store"
                 );
@@ -519,7 +516,7 @@ impl OpSuccinctBackend {
                 }
 
                 let update = UpdateProofSession {
-                    backend_session_id: session.backend_session_id.clone(),
+                    backend_session_id: backend_session_id.to_string(),
                     status: DbSessionStatus::Completed,
                     error_message: None,
                     metadata: Some(updated_metadata),
@@ -546,21 +543,21 @@ impl OpSuccinctBackend {
 
                 info!(
                     proof_request_id = %proof_request_id,
-                    session_id = %session.backend_session_id,
+                    session_id = %backend_session_id,
                     "proof downloaded and stored"
                 );
             }
             SessionStatus::Running => {
                 info!(
                     proof_request_id = %proof_request_id,
-                    session_id = %session.backend_session_id,
+                    session_id = %backend_session_id,
                     "proof still running"
                 );
             }
             SessionStatus::NotFound => {
                 warn!(
                     proof_request_id = %proof_request_id,
-                    session_id = %session.backend_session_id,
+                    session_id = %backend_session_id,
                     "session not found in cluster, will retry"
                 );
             }
@@ -614,8 +611,7 @@ impl OpSuccinctBackend {
     async fn submit_aggregation_proof(
         &self,
         proof_request: &ProofRequest,
-        repo: &ProofRequestRepo,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<ProveResult> {
         let BackendConfig::OpSuccinct {
             cluster_rpc,
             artifact_client,
@@ -709,7 +705,6 @@ impl OpSuccinctBackend {
             "aggregation proof (Groth16) submitted to SP1 cluster"
         );
 
-        // 6. Create SNARK session in DB.
         let start_time_secs = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("system time before UNIX epoch")
@@ -724,21 +719,11 @@ impl OpSuccinctBackend {
             "start_time_secs": start_time_secs,
         });
 
-        let session = CreateProofSession {
-            proof_request_id: proof_request.id,
-            session_type: SessionType::Snark,
-            backend_session_id: cluster_proof_request.proof_id,
+        Ok(ProveResult {
+            session_id: Some(cluster_proof_request.proof_id),
             metadata: Some(metadata),
-        };
-
-        repo.create_proof_session(session).await?;
-
-        info!(
-            proof_request_id = %proof_request.id,
-            "created SNARK proof session for aggregation"
-        );
-
-        Ok(())
+            witness_gen_duration_ms: None,
+        })
     }
 }
 
@@ -754,7 +739,7 @@ mod tests {
             id: 1,
             proof_request_id: Uuid::new_v4(),
             session_type,
-            backend_session_id: "test-session".to_string(),
+            backend_session_id: Some("test-session".to_string()),
             status,
             error_message: None,
             metadata: None,

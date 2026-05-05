@@ -1,10 +1,8 @@
 use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
-use base_zk_client::ProveBlockRequest;
-use base_zk_db::{ProofRequestRepo, ProofType};
+use base_zk_db::{ProofRequestRepo, SessionType};
 use base_zk_outbox::{OutboxTask, TaskQueue};
-use serde::Deserialize;
 use tokio::{sync::Mutex, task::JoinHandle};
 use tracing::{Instrument, error, info};
 
@@ -14,39 +12,7 @@ use crate::{
     worker::prover_worker::ProverWorker,
 };
 
-/// Intermediate struct for deserializing from database JSON.
-/// The database stores `proof_type` as a string, but proto expects an integer.
-#[derive(Deserialize)]
-struct ProveBlockRequestParams {
-    start_block_number: u64,
-    number_of_blocks_to_prove: u64,
-    sequence_window: Option<u64>,
-    proof_type: String,
-    prover_address: Option<String>,
-    l1_head: Option<String>,
-    intermediate_root_interval: Option<u64>,
-}
-
-impl ProveBlockRequestParams {
-    /// Convert into proto `ProveBlockRequest` and the parsed [`ProofType`], consuming `self`.
-    fn into_proto(self) -> anyhow::Result<(ProveBlockRequest, ProofType)> {
-        let proof_type =
-            ProofType::try_from(self.proof_type.as_str()).map_err(|e| anyhow::anyhow!(e))?;
-
-        let request = ProveBlockRequest {
-            start_block_number: self.start_block_number,
-            number_of_blocks_to_prove: self.number_of_blocks_to_prove,
-            sequence_window: self.sequence_window,
-            proof_type: proof_type.proto_i32(),
-            session_id: None,
-            prover_address: self.prover_address,
-            l1_head: self.l1_head,
-            intermediate_root_interval: self.intermediate_root_interval,
-        };
-
-        Ok((request, proof_type))
-    }
-}
+const SUBMIT_SNARK_TASK: &str = "submit_snark";
 
 /// Pool that creates `ProverWorker` instances and implements `TaskQueue`.
 ///
@@ -90,29 +56,26 @@ impl ProverWorkerPool {
 impl TaskQueue for ProverWorkerPool {
     async fn submit(&self, task: OutboxTask) -> anyhow::Result<()> {
         let proof_request_id = task.proof_request_id;
+        let task_type = task
+            .params
+            .get("task_type")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("submit_stark");
+        let session_type =
+            if task_type == SUBMIT_SNARK_TASK { SessionType::Snark } else { SessionType::Stark };
 
-        // Deserialize params from JSON (string proof_type) to intermediate struct
-        let params_intermediate: ProveBlockRequestParams = serde_json::from_value(task.params)
-            .map_err(|e| {
-                error!(
-                    proof_request_id = %proof_request_id,
-                    error = %e,
-                    "Failed to deserialize ProveBlockRequestParams"
-                );
-                metrics::inc_outbox_tasks_processed("failed", "unknown");
-                anyhow::anyhow!("Failed to deserialize ProveBlockRequestParams: {e}")
-            })?;
-
-        // Convert to proto (integer proof_type) and extract the parsed ProofType
-        let (params, proof_type) = params_intermediate.into_proto().map_err(|e| {
-            error!(
+        let Some(claimed) =
+            self.repo.create_submitting_stage_for_outbox(proof_request_id, session_type).await?
+        else {
+            info!(
                 proof_request_id = %proof_request_id,
-                error = %e,
-                "Failed to convert to ProveBlockRequest"
+                session_type = %session_type,
+                "Outbox task already has an active stage"
             );
-            metrics::inc_outbox_tasks_processed("failed", "unknown");
-            e
-        })?;
+            return Ok(());
+        };
+
+        let proof_type = claimed.proof_request.proof_type;
         let pt_label = metrics::proof_type_label(proof_type);
         let backend_type: BackendType = proof_type.into();
 
@@ -141,7 +104,7 @@ impl TaskQueue for ProverWorkerPool {
         let backend_name = backend.name();
 
         // Create a new ProverWorker
-        let worker = ProverWorker::new(repo, backend, proof_request_id, params);
+        let worker = ProverWorker::new(repo, backend, claimed);
 
         // Create a tracing span that propagates proof_request_id to ALL nested log
         // calls — including witness generation, L1-head calculation, cluster submission,

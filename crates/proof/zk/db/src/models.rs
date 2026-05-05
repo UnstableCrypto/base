@@ -59,6 +59,8 @@ impl TryFrom<&str> for ProofStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "VARCHAR", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SessionStatus {
+    /// Backend session is being submitted and does not yet have a backend ID.
+    Submitting,
     /// Backend session is actively running.
     Running,
     /// Backend session completed successfully.
@@ -71,6 +73,7 @@ impl SessionStatus {
     /// Convert enum to static string representation
     pub const fn as_str(&self) -> &'static str {
         match self {
+            Self::Submitting => "SUBMITTING",
             Self::Running => "RUNNING",
             Self::Completed => "COMPLETED",
             Self::Failed => "FAILED",
@@ -89,6 +92,7 @@ impl TryFrom<&str> for SessionStatus {
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         match s {
+            "SUBMITTING" => Ok(Self::Submitting),
             "RUNNING" => Ok(Self::Running),
             "COMPLETED" => Ok(Self::Completed),
             "FAILED" => Ok(Self::Failed),
@@ -259,7 +263,7 @@ pub struct ProofSession {
     /// Whether this session produces a STARK or SNARK proof.
     pub session_type: SessionType,
     /// Backend-assigned session identifier.
-    pub backend_session_id: String,
+    pub backend_session_id: Option<String>,
     /// Current session status.
     pub status: SessionStatus,
     /// Error message if the session failed.
@@ -293,17 +297,24 @@ pub struct CreateProofRequest {
     pub intermediate_root_interval: Option<u64>,
 }
 
-/// Parameters for creating a new proof session
+/// A proof request paired with a durable SUBMITTING stage.
 #[derive(Debug, Clone)]
-pub struct CreateProofSession {
-    /// Parent proof request identifier.
-    pub proof_request_id: Uuid,
-    /// Whether this is a STARK or SNARK session.
+pub struct ClaimedProofRequest {
+    /// Proof request to submit.
+    pub proof_request: ProofRequest,
+    /// SUBMITTING session ID.
+    pub proof_session_id: i64,
+    /// Stage type.
     pub session_type: SessionType,
-    /// Backend-assigned session identifier.
-    pub backend_session_id: String,
-    /// Backend-specific metadata (JSON).
-    pub metadata: Option<serde_json::Value>,
+}
+
+/// A stale SUBMITTING session paired with its parent request.
+#[derive(Debug, Clone)]
+pub struct StuckProofSubmission {
+    /// Parent proof request.
+    pub proof_request: ProofRequest,
+    /// Stale proof session.
+    pub proof_session: ProofSession,
 }
 
 /// Parameters for updating a proof session status

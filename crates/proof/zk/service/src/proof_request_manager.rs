@@ -148,6 +148,9 @@ mod tests {
         ) -> anyhow::Result<ProveResult> {
             unimplemented!()
         }
+        async fn submit_snark(&self, _proof_request: &ProofRequest) -> anyhow::Result<ProveResult> {
+            unimplemented!()
+        }
         async fn process_proof_request(
             &self,
             _proof_request: &ProofRequest,
