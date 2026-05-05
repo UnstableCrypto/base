@@ -29,8 +29,10 @@ pub use precompiles::{
     ISTHMUS_G1_MSM_MAX_INPUT_SIZE, ISTHMUS_G2_MSM, ISTHMUS_G2_MSM_MAX_INPUT_SIZE, ISTHMUS_PAIRING,
     ISTHMUS_PAIRING_MAX_INPUT_SIZE, JOVIAN, JOVIAN_G1_MSM, JOVIAN_G1_MSM_MAX_INPUT_SIZE,
     JOVIAN_G2_MSM, JOVIAN_G2_MSM_MAX_INPUT_SIZE, JOVIAN_MAX_INPUT_SIZE, JOVIAN_PAIRING,
-    JOVIAN_PAIRING_MAX_INPUT_SIZE, run_g1_msm_isthmus, run_g1_msm_jovian, run_g2_msm_isthmus,
-    run_g2_msm_jovian, run_pair_granite, run_pair_jovian, run_pairing_isthmus, run_pairing_jovian,
+    JOVIAN_PAIRING_MAX_INPUT_SIZE, P384VERIFY, P384VERIFY_ADDRESS, P384VERIFY_BASE_GAS_FEE,
+    P384VERIFY_INPUT_LEN, p384_verify, p384_verify_impl, run_g1_msm_isthmus, run_g1_msm_jovian,
+    run_g2_msm_isthmus, run_g2_msm_jovian, run_pair_granite, run_pair_jovian, run_pairing_isthmus,
+    run_pairing_jovian,
 };
 
 mod api;
