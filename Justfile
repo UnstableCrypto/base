@@ -198,3 +198,7 @@ bench-proof-mpt:
 # Run basectl TUI dashboard
 basectl:
     cargo run -p basectl --release
+
+# Inspect the zeronet TDX prover signer and contract-compatible image hash
+tdx-zeronet-image-hash *args="":
+    just tee tdx-image-hash http://136.107.166.21:7310 {{ args }}

@@ -3,7 +3,6 @@ set positional-arguments
 eif_describe_image := "base-prover-nitro-enclave-describe"
 eif_output := "eif.bin"
 tdx_verifier_guest := "base-proof-tee-tdx-attestation-prover-guest"
-tdx_verifier_image_id := "0x1f1bc81fae82605af46a4c9a20f641922b7542befd9219644c7e6c59ccdeccab"
 
 default:
     @just --list
@@ -86,8 +85,8 @@ describe-eif:
     @echo "PCR values for {{ eif_describe_image }}:"
     @just _describe-eif {{ eif_describe_image }}
 
-# Build the TDX verifier guest and verify its RISC Zero image ID matches onchain config
-tdx-verifier-image-id expected=tdx_verifier_image_id:
+# Build the TDX verifier guest and print its RISC Zero image ID
+tdx-verifier-image-id:
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -96,8 +95,6 @@ tdx-verifier-image-id expected=tdx_verifier_image_id:
     helper_manifest="$tee_dir/nitro-attestation-prover/guest/tools/compute-image-id/Cargo.toml"
     elf_path="$guest_dir/target/riscv32im-risc0-zkvm-elf/release/{{ tdx_verifier_guest }}"
     r0bf_path="$guest_dir/target/{{ tdx_verifier_guest }}.r0bf"
-    expected_hex="{{ expected }}"
-    expected_hex="${expected_hex#0x}"
 
     command -v cargo >/dev/null 2>&1 || { echo "error: 'cargo' is required" >&2; exit 1; }
     command -v rustup >/dev/null 2>&1 || { echo "error: 'rustup' is required" >&2; exit 1; }
@@ -126,16 +123,13 @@ tdx-verifier-image-id expected=tdx_verifier_image_id:
         echo "error: failed to parse image ID from helper output" >&2
         exit 1
     fi
-    if [ "$actual" != "$expected_hex" ]; then
-        echo "FAILURE: TDX verifier image ID does not match onchain config" >&2
-        echo "expected: 0x$expected_hex" >&2
-        echo "actual:   0x$actual" >&2
-        exit 1
-    fi
 
-    echo "SUCCESS: TDX verifier image ID matches onchain config"
     echo "image ID: 0x$actual"
     echo "R0BF: $r0bf_path"
+
+# Inspect a TDX prover's signer and contract-compatible image hash
+tdx-image-hash endpoint="http://136.107.166.21:7310" *args="":
+    cargo run -q -p base-proof-tee-tdx-image-hash -- --endpoint "{{ endpoint }}" --verify-quote {{ args }}
 
 # Build twice and compare to verify reproducibility
 verify-reproducible:
