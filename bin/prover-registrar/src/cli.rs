@@ -97,18 +97,6 @@ pub(crate) struct Cli {
     #[arg(long, env = cli_env!("NITRO_PROVER_ENDPOINT"))]
     nitro_prover_endpoint: Vec<Url>,
 
-    /// Backwards-compatible Nitro alias for `--nitro-target-group-arn`.
-    #[arg(long, env = cli_env!("TARGET_GROUP_ARN"))]
-    target_group_arn: Option<String>,
-
-    /// Backwards-compatible Nitro alias for `--nitro-aws-region`.
-    #[arg(long, env = cli_env!("AWS_REGION"))]
-    aws_region: Option<String>,
-
-    /// Backwards-compatible Nitro alias for `--nitro-prover-port`.
-    #[arg(long, env = cli_env!("PROVER_PORT"))]
-    prover_port: Option<u16>,
-
     // ── TDX Discovery ────────────────────────────────────────────────────────
     /// TDX prover discovery mode. TDX is enabled when this or another TDX fleet flag is present.
     #[arg(long, env = cli_env!("TDX_DISCOVERY_MODE"))]
@@ -145,29 +133,17 @@ pub(crate) struct Cli {
     #[arg(long, env = cli_env!("NITRO_PROVING_MODE"))]
     nitro_proving_mode: Option<ProvingMode>,
 
-    /// Backwards-compatible Nitro alias for `--nitro-proving-mode`.
-    #[arg(long, env = cli_env!("PROVING_MODE"))]
-    proving_mode: Option<ProvingMode>,
-
     /// Nitro guest program image ID for Boundless mode.
     #[arg(long, env = cli_env!("NITRO_IMAGE_ID"))]
     nitro_image_id: Option<String>,
-
-    /// Backwards-compatible Nitro alias for `--nitro-image-id`.
-    #[arg(long, env = cli_env!("IMAGE_ID"))]
-    image_id: Option<String>,
 
     /// Nitro guest ELF path for direct mode.
     #[arg(long, env = cli_env!("NITRO_ELF_PATH"))]
     nitro_elf_path: Option<PathBuf>,
 
-    /// Backwards-compatible Nitro alias for `--nitro-elf-path`.
-    #[arg(long, env = cli_env!("ELF_PATH"))]
-    elf_path: Option<PathBuf>,
-
-    // ── Boundless ─────────────────────────────────────────────────────────────
+    // ── Nitro Boundless ──────────────────────────────────────────────────────
     #[command(flatten)]
-    boundless: BoundlessArgs,
+    nitro_boundless: NitroBoundlessArgs,
 
     // ── TDX Proving ──────────────────────────────────────────────────────────
     #[command(flatten)]
@@ -243,37 +219,37 @@ pub(crate) enum DiscoveryMode {
     Static,
 }
 
-/// Boundless Network CLI arguments.
+/// Nitro Boundless Network CLI arguments.
 #[derive(Args)]
-struct BoundlessArgs {
+struct NitroBoundlessArgs {
     /// Boundless Network RPC URL.
-    #[arg(long, env = cli_env!("BOUNDLESS_RPC_URL"))]
-    boundless_rpc_url: Option<Url>,
+    #[arg(long, env = cli_env!("NITRO_BOUNDLESS_RPC_URL"))]
+    nitro_boundless_rpc_url: Option<Url>,
 
     /// Hex-encoded private key for Boundless Network proving fees.
-    #[arg(long, env = cli_env!("BOUNDLESS_PRIVATE_KEY"))]
-    boundless_private_key: Option<String>,
+    #[arg(long, env = cli_env!("NITRO_BOUNDLESS_PRIVATE_KEY"))]
+    nitro_boundless_private_key: Option<String>,
 
     /// HTTP(S) URL of the Nitro attestation verifier ELF (e.g. Pinata IPFS gateway URL).
-    #[arg(long, env = cli_env!("BOUNDLESS_VERIFIER_PROGRAM_URL"))]
-    boundless_verifier_program_url: Option<Url>,
+    #[arg(long, env = cli_env!("NITRO_BOUNDLESS_VERIFIER_PROGRAM_URL"))]
+    nitro_boundless_verifier_program_url: Option<Url>,
 
     /// Interval between Boundless fulfillment status checks, in seconds.
-    #[arg(long, env = cli_env!("BOUNDLESS_POLL_INTERVAL_SECS"), default_value_t = 5)]
-    boundless_poll_interval_secs: u64,
+    #[arg(long, env = cli_env!("NITRO_BOUNDLESS_POLL_INTERVAL_SECS"), default_value_t = 5)]
+    nitro_boundless_poll_interval_secs: u64,
 
     /// Proof generation timeout in seconds.
-    #[arg(long, env = cli_env!("BOUNDLESS_TIMEOUT_SECS"), default_value_t = 600)]
-    boundless_timeout_secs: u64,
+    #[arg(long, env = cli_env!("NITRO_BOUNDLESS_TIMEOUT_SECS"), default_value_t = 600)]
+    nitro_boundless_timeout_secs: u64,
 
     /// Maximum number of deterministic request-ID slots to probe when
     /// recovering in-flight proofs after an instance rotation.
     #[arg(
         long,
-        env = cli_env!("BOUNDLESS_MAX_RECOVERY_ATTEMPTS"),
+        env = cli_env!("NITRO_BOUNDLESS_MAX_RECOVERY_ATTEMPTS"),
         default_value_t = DEFAULT_MAX_RECOVERY_ATTEMPTS
     )]
-    boundless_max_recovery_attempts: u32,
+    nitro_boundless_max_recovery_attempts: u32,
 
     /// `NitroEnclaveVerifier` contract address for certificate caching (optional).
     #[arg(long, env = cli_env!("NITRO_VERIFIER_ADDRESS"))]
@@ -284,10 +260,10 @@ struct BoundlessArgs {
     /// `MAX_AGE` to account for clock skew. Defaults to 3300 s (55 minutes).
     #[arg(
         long,
-        env = cli_env!("MAX_ATTESTATION_AGE_SECS"),
+        env = cli_env!("NITRO_MAX_ATTESTATION_AGE_SECS"),
         default_value_t = DEFAULT_MAX_ATTESTATION_AGE_SECS
     )]
-    max_attestation_age_secs: u64,
+    nitro_max_attestation_age_secs: u64,
 }
 
 /// TDX attestation proving CLI arguments.
@@ -679,30 +655,20 @@ impl Cli {
     fn build_nitro_discovery_config(&self) -> std::result::Result<DiscoveryConfig, RegistrarError> {
         match self.nitro_discovery_mode {
             DiscoveryMode::AwsTargetGroup => {
-                let target_group_arn = self
-                    .nitro_target_group_arn
-                    .clone()
-                    .or_else(|| self.target_group_arn.clone())
-                    .ok_or_else(|| {
-                        RegistrarError::Config(
-                            "--nitro-target-group-arn is required for Nitro AWS discovery".into(),
-                        )
-                    })?;
-                let aws_region =
-                    self.nitro_aws_region.clone().or_else(|| self.aws_region.clone()).ok_or_else(
-                        || {
-                            RegistrarError::Config(
-                                "--nitro-aws-region is required for Nitro AWS discovery".into(),
-                            )
-                        },
-                    )?;
+                let target_group_arn = self.nitro_target_group_arn.clone().ok_or_else(|| {
+                    RegistrarError::Config(
+                        "--nitro-target-group-arn is required for Nitro AWS discovery".into(),
+                    )
+                })?;
+                let aws_region = self.nitro_aws_region.clone().ok_or_else(|| {
+                    RegistrarError::Config(
+                        "--nitro-aws-region is required for Nitro AWS discovery".into(),
+                    )
+                })?;
                 Ok(DiscoveryConfig::AwsTargetGroup(AwsDiscoveryConfig {
                     target_group_arn,
                     aws_region,
-                    port: self
-                        .nitro_prover_port
-                        .or(self.prover_port)
-                        .unwrap_or(DEFAULT_PROVER_PORT),
+                    port: self.nitro_prover_port.unwrap_or(DEFAULT_PROVER_PORT),
                 }))
             }
             DiscoveryMode::Static => {
@@ -721,58 +687,59 @@ impl Cli {
     fn build_nitro_proving_config(&self) -> std::result::Result<ProvingConfig, RegistrarError> {
         let proving_mode = self
             .nitro_proving_mode
-            .or(self.proving_mode)
             .ok_or_else(|| RegistrarError::Config("--nitro-proving-mode is required".into()))?;
         match proving_mode {
             ProvingMode::Boundless => {
-                if self.boundless.boundless_timeout_secs == 0 {
+                if self.nitro_boundless.nitro_boundless_timeout_secs == 0 {
                     return Err(RegistrarError::Config(
-                        "--boundless-timeout-secs must be greater than 0".into(),
+                        "--nitro-boundless-timeout-secs must be greater than 0".into(),
                     ));
                 }
 
-                let boundless_key =
-                    self.boundless.boundless_private_key.as_deref().ok_or_else(|| {
-                        RegistrarError::Config("--boundless-private-key is required".into())
+                let boundless_key = self
+                    .nitro_boundless
+                    .nitro_boundless_private_key
+                    .as_deref()
+                    .ok_or_else(|| {
+                        RegistrarError::Config("--nitro-boundless-private-key is required".into())
                     })?;
-                let image_id_hex =
-                    self.nitro_image_id.as_deref().or(self.image_id.as_deref()).ok_or_else(
-                        || RegistrarError::Config("--nitro-image-id is required".into()),
-                    )?;
+                let image_id_hex = self
+                    .nitro_image_id
+                    .as_deref()
+                    .ok_or_else(|| RegistrarError::Config("--nitro-image-id is required".into()))?;
 
                 Ok(ProvingConfig::Boundless(Box::new(BoundlessConfig {
-                    rpc_url: self.boundless.boundless_rpc_url.clone().ok_or_else(|| {
-                        RegistrarError::Config("--boundless-rpc-url is required".into())
-                    })?,
-                    signer: parse_private_key("--boundless-private-key", boundless_key)?,
+                    rpc_url: self.nitro_boundless.nitro_boundless_rpc_url.clone().ok_or_else(
+                        || RegistrarError::Config("--nitro-boundless-rpc-url is required".into()),
+                    )?,
+                    signer: parse_private_key("--nitro-boundless-private-key", boundless_key)?,
                     verifier_program_url: self
-                        .boundless
-                        .boundless_verifier_program_url
+                        .nitro_boundless
+                        .nitro_boundless_verifier_program_url
                         .clone()
                         .ok_or_else(|| {
                             RegistrarError::Config(
-                                "--boundless-verifier-program-url is required".into(),
+                                "--nitro-boundless-verifier-program-url is required".into(),
                             )
                         })?,
                     image_id: parse_image_id("--nitro-image-id", image_id_hex)?,
-                    poll_interval: Duration::from_secs(self.boundless.boundless_poll_interval_secs),
-                    timeout: Duration::from_secs(self.boundless.boundless_timeout_secs),
-                    nitro_verifier_address: self.boundless.nitro_verifier_address,
-                    max_recovery_attempts: self.boundless.boundless_max_recovery_attempts,
+                    poll_interval: Duration::from_secs(
+                        self.nitro_boundless.nitro_boundless_poll_interval_secs,
+                    ),
+                    timeout: Duration::from_secs(self.nitro_boundless.nitro_boundless_timeout_secs),
+                    nitro_verifier_address: self.nitro_boundless.nitro_verifier_address,
+                    max_recovery_attempts: self
+                        .nitro_boundless
+                        .nitro_boundless_max_recovery_attempts,
                     max_attestation_age: Duration::from_secs(
-                        self.boundless.max_attestation_age_secs,
+                        self.nitro_boundless.nitro_max_attestation_age_secs,
                     ),
                 })))
             }
             ProvingMode::Direct => {
-                let elf_path =
-                    self.nitro_elf_path.clone().or_else(|| self.elf_path.clone()).ok_or_else(
-                        || {
-                            RegistrarError::Config(
-                                "--nitro-elf-path is required for direct mode".into(),
-                            )
-                        },
-                    )?;
+                let elf_path = self.nitro_elf_path.clone().ok_or_else(|| {
+                    RegistrarError::Config("--nitro-elf-path is required for direct mode".into())
+                })?;
                 Ok(ProvingConfig::Direct { elf_path })
             }
         }
@@ -1034,7 +1001,7 @@ impl Cli {
 mod tests {
     use std::{net::SocketAddr, time::Duration};
 
-    use clap::CommandFactory;
+    use clap::{CommandFactory, error::ErrorKind};
     use rstest::rstest;
 
     use super::*;
@@ -1078,9 +1045,9 @@ mod tests {
             TEST_L1_CHAIN_ID,
             "--tee-prover-registry-address",
             TEST_REGISTRY_ADDR,
-            "--target-group-arn",
+            "--nitro-target-group-arn",
             TEST_TARGET_GROUP_ARN,
-            "--aws-region",
+            "--nitro-aws-region",
             TEST_AWS_REGION,
             "--private-key",
             TEST_PRIVATE_KEY,
@@ -1091,15 +1058,15 @@ mod tests {
     fn boundless_args() -> Vec<&'static str> {
         let mut args = common_args();
         args.extend([
-            "--proving-mode",
+            "--nitro-proving-mode",
             "boundless",
-            "--image-id",
+            "--nitro-image-id",
             TEST_IMAGE_ID,
-            "--boundless-rpc-url",
+            "--nitro-boundless-rpc-url",
             TEST_BOUNDLESS_RPC,
-            "--boundless-private-key",
+            "--nitro-boundless-private-key",
             TEST_BOUNDLESS_KEY,
-            "--boundless-verifier-program-url",
+            "--nitro-boundless-verifier-program-url",
             TEST_VERIFIER_URL,
         ]);
         args
@@ -1108,7 +1075,7 @@ mod tests {
     /// Direct-mode args: common + direct proving.
     fn direct_args() -> Vec<&'static str> {
         let mut args = common_args();
-        args.extend(["--proving-mode", "direct", "--elf-path", TEST_ELF_PATH]);
+        args.extend(["--nitro-proving-mode", "direct", "--nitro-elf-path", TEST_ELF_PATH]);
         args
     }
 
@@ -1122,23 +1089,23 @@ mod tests {
             TEST_L1_CHAIN_ID,
             "--tee-prover-registry-address",
             TEST_REGISTRY_ADDR,
-            "--target-group-arn",
+            "--nitro-target-group-arn",
             TEST_TARGET_GROUP_ARN,
-            "--aws-region",
+            "--nitro-aws-region",
             TEST_AWS_REGION,
             "--signer-endpoint",
             TEST_SIGNER_ENDPOINT,
             "--signer-address",
             TEST_SIGNER_ADDR,
-            "--proving-mode",
+            "--nitro-proving-mode",
             "boundless",
-            "--image-id",
+            "--nitro-image-id",
             TEST_IMAGE_ID,
-            "--boundless-rpc-url",
+            "--nitro-boundless-rpc-url",
             TEST_BOUNDLESS_RPC,
-            "--boundless-private-key",
+            "--nitro-boundless-private-key",
             TEST_BOUNDLESS_KEY,
-            "--boundless-verifier-program-url",
+            "--nitro-boundless-verifier-program-url",
             TEST_VERIFIER_URL,
         ]
     }
@@ -1214,7 +1181,10 @@ mod tests {
         args.retain(|arg| {
             !matches!(
                 *arg,
-                "--target-group-arn" | TEST_TARGET_GROUP_ARN | "--aws-region" | TEST_AWS_REGION
+                "--nitro-target-group-arn"
+                    | TEST_TARGET_GROUP_ARN
+                    | "--nitro-aws-region"
+                    | TEST_AWS_REGION
             )
         });
         args.extend([
@@ -1354,7 +1324,7 @@ mod tests {
     }
 
     #[rstest]
-    fn nitro_prefixed_aliases_parse() {
+    fn nitro_prefixed_args_parse() {
         let mut args = vec![
             "prover-registrar",
             "--l1-rpc-url",
@@ -1383,23 +1353,25 @@ mod tests {
     }
 
     #[rstest]
-    fn nitro_prefixed_mode_overrides_legacy_boundless_mode() {
-        let mut args = common_args();
-        args.extend([
-            "--proving-mode",
-            "boundless",
-            "--nitro-proving-mode",
-            "direct",
-            "--nitro-elf-path",
-            TEST_ELF_PATH,
-        ]);
+    #[case::target_group_arn("--target-group-arn")]
+    #[case::aws_region("--aws-region")]
+    #[case::prover_port("--prover-port")]
+    #[case::proving_mode("--proving-mode")]
+    #[case::image_id("--image-id")]
+    #[case::elf_path("--elf-path")]
+    #[case::boundless_rpc_url("--boundless-rpc-url")]
+    #[case::boundless_private_key("--boundless-private-key")]
+    #[case::boundless_verifier_program_url("--boundless-verifier-program-url")]
+    #[case::boundless_poll_interval_secs("--boundless-poll-interval-secs")]
+    #[case::boundless_timeout_secs("--boundless-timeout-secs")]
+    #[case::boundless_max_recovery_attempts("--boundless-max-recovery-attempts")]
+    #[case::max_attestation_age_secs("--max-attestation-age-secs")]
+    fn legacy_nitro_alias_flags_are_rejected(#[case] flag: &str) {
+        let Err(error) = Cli::try_parse_from(["prover-registrar", flag, "value"]) else {
+            panic!("legacy Nitro alias flag should be rejected");
+        };
 
-        let config = Cli::try_parse_from(args)
-            .expect("prefixed Nitro direct mode should not require legacy Boundless args")
-            .into_config()
-            .unwrap();
-
-        assert!(matches!(nitro_proving(&config), ProvingConfig::Direct { .. }));
+        assert_eq!(error.kind(), ErrorKind::UnknownArgument);
     }
 
     #[rstest]
@@ -1409,7 +1381,19 @@ mod tests {
         for flag in [
             "--nitro-discovery-mode",
             "--nitro-target-group-arn",
+            "--nitro-aws-region",
+            "--nitro-prover-port",
             "--nitro-prover-endpoint",
+            "--nitro-proving-mode",
+            "--nitro-image-id",
+            "--nitro-elf-path",
+            "--nitro-boundless-rpc-url",
+            "--nitro-boundless-private-key",
+            "--nitro-boundless-verifier-program-url",
+            "--nitro-boundless-poll-interval-secs",
+            "--nitro-boundless-timeout-secs",
+            "--nitro-boundless-max-recovery-attempts",
+            "--nitro-max-attestation-age-secs",
             "--tdx-discovery-mode",
             "--tdx-target-group-arn",
             "--tdx-prover-endpoint",
@@ -1421,10 +1405,81 @@ mod tests {
         ] {
             assert!(help.contains(flag), "help should contain {flag}");
         }
+        for flag in [
+            "--target-group-arn",
+            "--aws-region",
+            "--prover-port",
+            "--proving-mode",
+            "--image-id",
+            "--elf-path",
+            "--boundless-rpc-url",
+            "--boundless-private-key",
+            "--boundless-verifier-program-url",
+            "--boundless-poll-interval-secs",
+            "--boundless-timeout-secs",
+            "--boundless-max-recovery-attempts",
+            "--max-attestation-age-secs",
+        ] {
+            assert!(!help.contains(flag), "help should not contain legacy alias {flag}");
+        }
         assert!(
             !help.contains("--tee-platform"),
             "TDX should not be presented as a mutually exclusive platform mode"
         );
+    }
+
+    #[rstest]
+    fn env_lists_separate_nitro_and_tdx_configuration() {
+        let command = Cli::command();
+        let env_vars = command
+            .get_arguments()
+            .filter_map(|arg| arg.get_env().map(|env| env.to_string_lossy().into_owned()))
+            .collect::<Vec<_>>();
+
+        for env in [
+            "BASE_REGISTRAR_NITRO_TARGET_GROUP_ARN",
+            "BASE_REGISTRAR_NITRO_AWS_REGION",
+            "BASE_REGISTRAR_NITRO_PROVER_PORT",
+            "BASE_REGISTRAR_NITRO_PROVING_MODE",
+            "BASE_REGISTRAR_NITRO_IMAGE_ID",
+            "BASE_REGISTRAR_NITRO_ELF_PATH",
+            "BASE_REGISTRAR_NITRO_BOUNDLESS_RPC_URL",
+            "BASE_REGISTRAR_NITRO_BOUNDLESS_PRIVATE_KEY",
+            "BASE_REGISTRAR_NITRO_BOUNDLESS_VERIFIER_PROGRAM_URL",
+            "BASE_REGISTRAR_NITRO_BOUNDLESS_POLL_INTERVAL_SECS",
+            "BASE_REGISTRAR_NITRO_BOUNDLESS_TIMEOUT_SECS",
+            "BASE_REGISTRAR_NITRO_BOUNDLESS_MAX_RECOVERY_ATTEMPTS",
+            "BASE_REGISTRAR_NITRO_MAX_ATTESTATION_AGE_SECS",
+            "BASE_REGISTRAR_TDX_TARGET_GROUP_ARN",
+            "BASE_REGISTRAR_TDX_AWS_REGION",
+            "BASE_REGISTRAR_TDX_PROVER_PORT",
+            "BASE_REGISTRAR_TDX_PROVING_MODE",
+            "BASE_REGISTRAR_TDX_IMAGE_ID",
+            "BASE_REGISTRAR_TDX_BOUNDLESS_RPC_URL",
+        ] {
+            assert!(env_vars.iter().any(|actual| actual == env), "env should contain {env}");
+        }
+
+        for env in [
+            "BASE_REGISTRAR_TARGET_GROUP_ARN",
+            "BASE_REGISTRAR_AWS_REGION",
+            "BASE_REGISTRAR_PROVER_PORT",
+            "BASE_REGISTRAR_PROVING_MODE",
+            "BASE_REGISTRAR_IMAGE_ID",
+            "BASE_REGISTRAR_ELF_PATH",
+            "BASE_REGISTRAR_BOUNDLESS_RPC_URL",
+            "BASE_REGISTRAR_BOUNDLESS_PRIVATE_KEY",
+            "BASE_REGISTRAR_BOUNDLESS_VERIFIER_PROGRAM_URL",
+            "BASE_REGISTRAR_BOUNDLESS_POLL_INTERVAL_SECS",
+            "BASE_REGISTRAR_BOUNDLESS_TIMEOUT_SECS",
+            "BASE_REGISTRAR_BOUNDLESS_MAX_RECOVERY_ATTEMPTS",
+            "BASE_REGISTRAR_MAX_ATTESTATION_AGE_SECS",
+        ] {
+            assert!(
+                !env_vars.iter().any(|actual| actual == env),
+                "env should not contain legacy alias {env}"
+            );
+        }
     }
 
     // ── Proving mode variants ───────────────────────────────────────────
@@ -1512,7 +1567,7 @@ mod tests {
     #[rstest]
     #[case::zero_poll_interval("--poll-interval-secs", "0")]
     #[case::zero_prover_timeout("--prover-timeout-secs", "0")]
-    #[case::zero_boundless_timeout("--boundless-timeout-secs", "0")]
+    #[case::zero_boundless_timeout("--nitro-boundless-timeout-secs", "0")]
     #[case::zero_max_concurrency("--max-concurrency", "0")]
     #[case::zero_tx_retry_delay("--tx-retry-delay-secs", "0")]
     fn zero_duration_fails_into_config(#[case] flag: &str, #[case] value: &str) {
@@ -1607,7 +1662,7 @@ mod tests {
     #[case::with_prefix("0x0100000002000000030000000400000005000000060000000700000008000000", [1,2,3,4,5,6,7,8])]
     #[case::without_prefix("0100000002000000030000000400000005000000060000000700000008000000", [1,2,3,4,5,6,7,8])]
     fn parse_image_id_valid(#[case] input: &str, #[case] expected: [u32; 8]) {
-        assert_eq!(parse_image_id("--image-id", input).unwrap(), expected);
+        assert_eq!(parse_image_id("--nitro-image-id", input).unwrap(), expected);
     }
 
     #[rstest]
@@ -1615,7 +1670,7 @@ mod tests {
     #[case::invalid_hex("zzzz")]
     #[case::empty("")]
     fn parse_image_id_invalid(#[case] input: &str) {
-        assert!(parse_image_id("--image-id", input).is_err());
+        assert!(parse_image_id("--nitro-image-id", input).is_err());
     }
 
     // ── CRL config validation tests ─────────────────────────────────────
