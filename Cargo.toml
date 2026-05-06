@@ -219,6 +219,7 @@ audit-archiver-lib = { path = "crates/infra/audit" }
 base-load-tests = { path = "crates/infra/load-tests" }
 ingress-rpc-lib = { path = "crates/infra/ingress-rpc" }
 websocket-proxy = { path = "crates/infra/websocket-proxy" }
+base-snappy = { path = "crates/infra/snappy" }
 mempool-rebroadcaster = { path = "crates/infra/mempool-rebroadcaster" }
 
 # Proof
@@ -509,6 +510,9 @@ arbitrary = { version = "1", default-features = false }
 wiremock = { version = "0.6.2", default-features = false }
 testcontainers = { version = "0.25", default-features = false }
 testcontainers-modules = { version = "0.13", default-features = false }
+
+# docker
+bollard = "0.19.4"
 
 # misc
 snap = "1"
