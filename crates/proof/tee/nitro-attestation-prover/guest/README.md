@@ -93,6 +93,9 @@ docker run --rm --platform=linux/amd64 \
     nitro-guest-builder diagnose
 
 # Persist the cargo cache across runs (only affects build speed, not the ELF)
+# IMPORTANT: after rebuilding the image (e.g. toolchain bump), delete the
+# old volume to pick up the new binaries:
+#   docker volume rm nitro-guest-builder-cargo
 docker run --rm --platform=linux/amd64 \
     -v /path/to/base-repo:/build/base \
     -v nitro-guest-builder-cargo:/opt/cargo \
