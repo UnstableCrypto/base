@@ -36,13 +36,32 @@ pub const P384VERIFY_ADDRESS: Address = address!("0x0000000000000000000000000000
 
 /// Placeholder gas cost.
 ///
-/// TODO: derive from the triangulation methodology in the project P/PS:
-/// (1) native execution benchmark on representative sequencer hardware,
-/// (2) ratio against `p256verify` (6,900 gas post-Osaka), (3) ceiling from
-/// the proof-system team's circuit cost. Take the maximum, then verify it
-/// fits well under the EIP-7825 per-tx gas cap. The current value is a
-/// conservative placeholder roughly 2.2x p256verify's Osaka cost.
-pub const P384VERIFY_BASE_GAS_FEE: u64 = 15_000;
+/// Triangulation status (project P/PS, after Succinct response):
+///
+/// 1. Native execution: ~4x p256verify (our criterion bench is 3.73x;
+///    Succinct independently measured ~4x with RustCrypto). Implies
+///    ~27,600 gas at p256verify-Osaka parity.
+/// 2. Parity with `p256verify` (6,900 gas Osaka): same ~27,600.
+/// 3. Prover ceiling: SP1 has a custom circuit for p256 curve ops giving
+///    a ~7.5x improvement vs pure RISC-V. No equivalent p384 circuit
+///    exists today, so proving p384 in pure RISC-V costs roughly
+///    4 x 7.5 = 30x p256verify on the SP1 prover. Pricing at the native
+///    ratio (~27,600) underprices prover work by 7.5x — a DoS vector
+///    against the prover.
+///
+/// Therefore: until a custom p384 circuit ships, gas must reflect the
+/// pure-RISC-V proving cost (~30x p256verify ≈ 207,000 gas). The
+/// current placeholder is set to 250,000 to give modest headroom over
+/// that bound. Still <2% of the EIP-7825 per-tx cap.
+///
+/// Two paths reduce this:
+///   - Custom p384 circuit in SP1 (LOE outstanding from Succinct).
+///     Reprices down to ~27,600 once landed.
+///   - Per-block prover-budget confirmation that p384 calls at this
+///     price stay under the prover-throughput ceiling.
+///
+/// TODO: lock the number once circuit availability is decided.
+pub const P384VERIFY_BASE_GAS_FEE: u64 = 250_000;
 
 /// Length of the `p384verify` calldata: msg(32) || r(48) || s(48) || pub_x(48) || pub_y(48).
 pub const P384VERIFY_INPUT_LEN: usize = 32 + 48 + 48 + 48 + 48;
