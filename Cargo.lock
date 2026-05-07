@@ -3796,6 +3796,7 @@ dependencies = [
  "base-metrics",
  "base-protocol",
  "c-kzg",
+ "futures",
  "http-body-util",
  "httpmock",
  "lru 0.16.4",

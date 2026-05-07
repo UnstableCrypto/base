@@ -40,7 +40,9 @@ base-common-consensus.workspace = true
 lru.workspace = true
 url.workspace = true
 tower.workspace = true
+futures.workspace = true
 reqwest.workspace = true
+tokio = { workspace = true, features = ["rt"] }
 async-trait.workspace = true
 http-body-util.workspace = true
 serde = { workspace = true, features = ["std"] }

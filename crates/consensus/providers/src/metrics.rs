@@ -14,6 +14,22 @@ base_metrics::define_metrics! {
     #[describe("Number of RPC errors in chain provider")]
     #[label(name = "method", default = ["header_by_hash", "receipts_by_hash", "block_by_hash", "block_number"])]
     chain_rpc_errors: counter,
+    #[describe("Number of L1 data-availability prefetch outcomes")]
+    #[label(name = "outcome", default = ["hit", "empty_hit", "miss", "stored", "empty", "stale", "evicted", "error", "aborted"])]
+    l1_prefetch_outcomes: counter,
+    #[describe("Number of completed L1 data-availability prefetch results buffered")]
+    l1_prefetch_buffer_len: gauge,
+    #[describe("Number of empty L1 data-availability prefetch results cached")]
+    l1_prefetch_empty_len: gauge,
+    #[describe("Number of in-flight L1 data-availability prefetch tasks")]
+    l1_prefetch_inflight_len: gauge,
+    #[describe("Number of L1 origin prefetch outcomes")]
+    #[label(name = "outcome", default = ["block_hit", "receipts_hit", "miss", "stored", "stale", "evicted", "error", "aborted"])]
+    l1_origin_prefetch_outcomes: counter,
+    #[describe("Number of completed L1 origin prefetch results buffered")]
+    l1_origin_prefetch_buffer_len: gauge,
+    #[describe("Number of in-flight L1 origin prefetch tasks")]
+    l1_origin_prefetch_inflight_len: gauge,
     #[describe("Number of requests made to beacon client")]
     #[label(name = "method", default = ["spec", "genesis", "blobs"])]
     beacon_requests: counter,

@@ -7,22 +7,22 @@ use alloy_genesis::ChainConfig;
 use async_trait::async_trait;
 use base_common_genesis::{RollupConfig, SystemConfig};
 use base_consensus_derive::{
-    DerivationPipeline, EthereumDataSource, OriginProvider, Pipeline, PipelineBuilder,
-    PipelineErrorKind, PipelineResult, PolledAttributesQueueStage, ResetSignal, Signal,
-    SignalReceiver, StatefulAttributesBuilder, StepResult,
+    DerivationPipeline, OriginProvider, Pipeline, PipelineBuilder, PipelineErrorKind,
+    PipelineResult, PolledAttributesQueueStage, ResetSignal, Signal, SignalReceiver,
+    StatefulAttributesBuilder, StepResult,
 };
 use base_protocol::{AttributesWithParent, BlockInfo, L2BlockInfo};
 
 use crate::{
     AlloyChainProvider, AlloyL2ChainProvider, ConfDepthProvider, L1HeadNumber, OnlineBeaconClient,
-    OnlineBlobProvider,
+    OnlineBlobProvider, PrefetchingChainProvider, PrefetchingEthereumDataSource,
 };
 
 /// An online polled derivation pipeline.
 type OnlinePolledDerivationPipeline = DerivationPipeline<
     PolledAttributesQueueStage<
         OnlineDataProvider,
-        ConfDepthProvider,
+        OnlineTraversalProvider,
         AlloyL2ChainProvider,
         OnlineAttributesBuilder,
     >,
@@ -31,7 +31,10 @@ type OnlinePolledDerivationPipeline = DerivationPipeline<
 
 /// An RPC-backed Ethereum data source.
 type OnlineDataProvider =
-    EthereumDataSource<ConfDepthProvider, OnlineBlobProvider<OnlineBeaconClient>>;
+    PrefetchingEthereumDataSource<ConfDepthProvider, OnlineBlobProvider<OnlineBeaconClient>>;
+
+/// An RPC-backed L1 traversal provider with origin lookahead.
+type OnlineTraversalProvider = PrefetchingChainProvider<ConfDepthProvider>;
 
 /// An RPC-backed payload attributes builder for the `AttributesQueue` stage of the derivation
 /// pipeline.
@@ -99,13 +102,18 @@ impl OnlinePipeline {
             l2_chain_provider.clone(),
             chain_provider.clone(),
         );
-        let dap = EthereumDataSource::new_from_parts(chain_provider.clone(), blob_provider, &cfg);
+        let traversal_provider = PrefetchingChainProvider::new(chain_provider.clone());
+        let dap = PrefetchingEthereumDataSource::new_from_parts(
+            chain_provider,
+            blob_provider,
+            Arc::clone(&cfg),
+        );
 
         let pipeline = PipelineBuilder::new()
             .rollup_config(cfg)
             .dap_source(dap)
             .l2_chain_provider(l2_chain_provider)
-            .chain_provider(chain_provider)
+            .chain_provider(traversal_provider)
             .builder(attributes)
             .origin(BlockInfo::default())
             .build_polled();

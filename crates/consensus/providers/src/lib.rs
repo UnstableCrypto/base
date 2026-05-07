@@ -27,5 +27,19 @@ pub use conf_depth::{ConfDepthProvider, L1HeadNumber};
 mod l2_chain_provider;
 pub use l2_chain_provider::{AlloyL2ChainProvider, AlloyL2ChainProviderError};
 
+mod origin_prefetch;
+pub use origin_prefetch::{
+    ORIGIN_PREFETCH_BUFFER_CAPACITY, ORIGIN_PREFETCH_SCAN_BLOCK_LIMIT,
+    ORIGIN_PREFETCH_SCAN_CONCURRENCY, OriginPrefetchData, OriginPrefetchMessage,
+    OriginPrefetchReceiver, OriginPrefetchResult, OriginPrefetchWorker, PrefetchingChainProvider,
+};
+
 mod pipeline;
 pub use pipeline::OnlinePipeline;
+
+mod prefetch;
+pub use prefetch::{
+    EmptyPrefetch, PREFETCH_BUFFER_CAPACITY, PREFETCH_EMPTY_BUFFER_CAPACITY,
+    PREFETCH_SCAN_BLOCK_LIMIT, PREFETCH_SCAN_CONCURRENCY, PrefetchMessage, PrefetchResult,
+    PrefetchWorker, PrefetchedData, PrefetchingEthereumDataSource,
+};
