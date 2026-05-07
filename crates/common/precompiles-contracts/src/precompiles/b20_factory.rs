@@ -7,16 +7,14 @@ crate::sol! {
     interface IB20Factory {
         error AddressReserved();
         error AddressNotReserved();
-        error InvalidQuoteToken();
         error TokenAlreadyExists(address token);
 
-        event TokenCreated(address indexed token, string name, string symbol, string currency, address quoteToken, address admin, bytes32 salt);
+        event TokenCreated(address indexed token, string name, string symbol, string currency, address admin, bytes32 salt);
 
         function createToken(
             string memory name,
             string memory symbol,
             string memory currency,
-            address quoteToken,
             address admin,
             bytes32 salt
         ) external returns (address);
@@ -36,11 +34,6 @@ impl B20FactoryError {
     /// Creates an error when address is not in the reserved range.
     pub const fn address_not_reserved() -> Self {
         Self::AddressNotReserved(IB20Factory::AddressNotReserved {})
-    }
-
-    /// Creates an error for invalid quote token.
-    pub const fn invalid_quote_token() -> Self {
-        Self::InvalidQuoteToken(IB20Factory::InvalidQuoteToken {})
     }
 
     /// Creates an error when token already exists at the given address.

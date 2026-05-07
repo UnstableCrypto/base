@@ -2,24 +2,8 @@
 pragma solidity ^0.8.0;
 
 /// Test contract for B20 token storage layout.
-/// Includes roles, metadata, ERC20, and rewards storage.
+/// Includes roles, metadata, and ERC20 storage.
 contract B20 {
-    // ========== Structs ==========
-
-    struct RewardStream {
-        address funder;
-        uint64 startTime;
-        uint64 endTime;
-        uint256 ratePerSecondScaled;
-        uint256 amountTotal;
-    }
-
-    struct UserRewardInfo {
-        address rewardRecipient;
-        uint256 rewardPerToken;
-        uint256 rewardBalance;
-    }
-
     // ========== RolesAuth Storage ==========
 
     /// Nested mapping for role assignments: user -> role -> hasRole
@@ -35,8 +19,6 @@ contract B20 {
     string public currency;
     // Unused slot, kept for storage layout compatibility
     bytes32 public domainSeparator;
-    address public quoteToken;
-    address public nextQuoteToken;
     uint64 public transferPolicyId;
 
     // ========== ERC20 Storage ==========
@@ -49,12 +31,4 @@ contract B20 {
     uint256 public supplyCap;
     // Unused slot, kept for storage layout compatibility
     mapping(bytes32 => bool) public salts;
-
-    // ========== Rewards Storage ==========
-
-    uint256 public globalRewardPerToken;
-    uint128 public optedInSupply;
-
-    /// Mapping of user address to their reward info
-    mapping(address => UserRewardInfo) public userRewardInfo;
 }

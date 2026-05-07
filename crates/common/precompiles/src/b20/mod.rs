@@ -1,15 +1,14 @@
 //! [B20] token standard — Base's native fungible token implementation.
 //!
 //! Provides ERC-20-like balances, allowances, and transfers with Base extensions:
-//! role-based access control, pausability, supply caps, transfer policies ([B403]), opt-in
-//! staking rewards, EIP-2612 permits (T2+), quote-token graphs, and virtual addresses ([B1022]).
+//! role-based access control, pausability, supply caps, transfer policies ([B403]),
+//! EIP-2612 permits (T2+), and virtual addresses ([B1022]).
 //!
 //! [B20]: <https://docs.base.xyz/protocol/b20>
 //! [B403]: <https://docs.base.xyz/protocol/b403>
 //! [B1022]: <https://docs.base.xyz/protocol/b1022>
 
 pub mod dispatch;
-pub mod rewards;
 pub mod roles;
 
 pub use base_precompiles_contracts::{
@@ -22,9 +21,7 @@ pub use slots as b20_slots;
 use crate::BaseBAddressExt;
 pub use crate::is_b20_prefix;
 use crate::{
-    PATH_USD_ADDRESS,
-    b20::{rewards::UserRewardInfo, roles::DEFAULT_ADMIN_ROLE},
-    b20_factory::B20Factory,
+    b20::roles::DEFAULT_ADMIN_ROLE,
     b403_registry::{AuthRole, B403Registry, IB403Registry},
     error::{BasePrecompileError, Result},
     storage::{Handler, Mapping},
@@ -42,23 +39,11 @@ pub const U128_MAX: U256 = uint!(0xffffffffffffffffffffffffffffffff_U256);
 
 use base_precompiles_contracts::DECIMALS as B20_DECIMALS;
 
-/// Validates that the given token's currency is `"USD"`.
-///
-/// # Errors
-/// - `InvalidToken` — address does not have the B20 prefix
-/// - `InvalidCurrency` — token currency is not `"USD"`
-pub fn validate_usd_currency(token: Address) -> Result<()> {
-    if B20Token::from_address(token)?.currency()? != USD_CURRENCY {
-        return Err(B20Error::invalid_currency().into());
-    }
-    Ok(())
-}
-
 /// B20 token contract — the native token standard on Base.
 ///
 /// Implements ERC-20-like functionality (balances, allowances, transfers) with additional
 /// features: role-based access control, pausability, supply caps, transfer policies ([B403]),
-/// virtual addresses ([B1022]), and opt-in staking rewards.
+/// and virtual addresses ([B1022]).
 ///
 /// [B403]: <https://docs.base.xyz/protocol/b403>
 /// [B1022]: <https://docs.base.xyz/protocol/b1022>
@@ -79,8 +64,6 @@ pub struct B20Token {
     currency: String,
     // Unused slot, kept for storage layout compatibility
     _domain_separator: B256,
-    quote_token: Address,
-    next_quote_token: Address,
     transfer_policy_id: u64,
 
     // B20 Token
@@ -92,11 +75,6 @@ pub struct B20Token {
     supply_cap: U256,
     // Unused slot, kept for storage layout compatibility
     _salts: Mapping<B256, bool>,
-
-    // B20 Rewards
-    global_reward_per_token: U256,
-    opted_in_supply: u128,
-    user_reward_info: Mapping<Address, UserRewardInfo>,
 }
 
 /// EIP-712 Permit typehash: keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)")
@@ -145,16 +123,6 @@ impl B20Token {
     /// Returns the current total supply.
     pub fn total_supply(&self) -> Result<U256> {
         self.total_supply.read()
-    }
-
-    /// Returns the active quote token address used for pricing.
-    pub fn quote_token(&self) -> Result<Address> {
-        self.quote_token.read()
-    }
-
-    /// Returns the pending next quote token address (set but not yet finalized).
-    pub fn next_quote_token(&self) -> Result<Address> {
-        self.next_quote_token.read()
     }
 
     /// Returns the maximum mintable supply.
@@ -297,83 +265,6 @@ impl B20Token {
         }))
     }
 
-    /// Stages a new quote token. Must be finalized via [`Self::complete_quote_token_update`].
-    /// Validates that the candidate is a deployed B20 token (via [`B20Factory`]) and, for
-    /// USD-denominated tokens, that the candidate is also USD-denominated.
-    ///
-    /// # Errors
-    /// - `Unauthorized` — caller does not hold `DEFAULT_ADMIN_ROLE`
-    /// - `InvalidQuoteToken` — token is pathUSD, candidate is not a deployed B20, or
-    ///   USD currency mismatch
-    pub fn set_next_quote_token(
-        &mut self,
-        msg_sender: Address,
-        call: IB20::setNextQuoteTokenCall,
-    ) -> Result<()> {
-        self.check_role(msg_sender, DEFAULT_ADMIN_ROLE)?;
-
-        if self.address == PATH_USD_ADDRESS {
-            return Err(B20Error::invalid_quote_token().into());
-        }
-
-        // Verify the new quote token is a valid B20 token that has been deployed
-        // use factory's `is_b20()` which checks both prefix and counter
-        if !B20Factory::new().is_b20(call.newQuoteToken)? {
-            return Err(B20Error::invalid_quote_token().into());
-        }
-
-        // Check if the currency is USD, if so then the quote token's currency MUST also be USD
-        let currency = self.currency()?;
-        if currency == USD_CURRENCY {
-            let quote_token_currency = Self::from_address(call.newQuoteToken)?.currency()?;
-            if quote_token_currency != USD_CURRENCY {
-                return Err(B20Error::invalid_quote_token().into());
-            }
-        }
-
-        self.next_quote_token.write(call.newQuoteToken)?;
-
-        self.emit_event(B20Event::NextQuoteTokenSet(IB20::NextQuoteTokenSet {
-            updater: msg_sender,
-            nextQuoteToken: call.newQuoteToken,
-        }))
-    }
-
-    /// Finalizes the staged quote token update. Walks the quote-token chain to detect cycles
-    /// before committing the change.
-    ///
-    /// # Errors
-    /// - `Unauthorized` — caller does not hold `DEFAULT_ADMIN_ROLE`
-    /// - `InvalidQuoteToken` — update would create a cycle in the quote-token graph
-    pub fn complete_quote_token_update(
-        &mut self,
-        msg_sender: Address,
-        _call: IB20::completeQuoteTokenUpdateCall,
-    ) -> Result<()> {
-        self.check_role(msg_sender, DEFAULT_ADMIN_ROLE)?;
-
-        let next_quote_token = self.next_quote_token()?;
-
-        // Check that this does not create a loop
-        // Loop through quote tokens until we reach the root (pathUSD)
-        let mut current = next_quote_token;
-        while current != PATH_USD_ADDRESS {
-            if current == self.address {
-                return Err(B20Error::invalid_quote_token().into());
-            }
-
-            current = Self::from_address(current)?.quote_token()?;
-        }
-
-        // Update the quote token
-        self.quote_token.write(next_quote_token)?;
-
-        self.emit_event(B20Event::QuoteTokenUpdate(IB20::QuoteTokenUpdate {
-            updater: msg_sender,
-            newQuoteToken: next_quote_token,
-        }))
-    }
-
     // Token operations
 
     /// Mints `amount` tokens to the resolved target `to` address:
@@ -436,8 +327,6 @@ impl B20Token {
         if new_supply > supply_cap {
             return Err(B20Error::supply_cap_exceeded().into());
         }
-
-        self.handle_rewards_on_mint(to.target, amount)?;
 
         self.set_total_supply(new_supply)?;
         let to_balance = self.get_balance(to.target)?;
@@ -785,15 +674,14 @@ impl B20Token {
         Self::__new(address)
     }
 
-    /// Initializes the B20 token precompile with metadata, quote token, supply cap, and
-    /// default admin role. Called once by [`B20Factory`] during token creation.
+    /// Initializes the B20 token precompile with metadata, supply cap, and default admin role.
+    /// Called once by [`B20Factory`] during token creation.
     pub fn initialize(
         &mut self,
         msg_sender: Address,
         name: &str,
         symbol: &str,
         currency: &str,
-        quote_token: Address,
         admin: Address,
     ) -> Result<()> {
         trace!(%name, address=%self.address, "Initializing token");
@@ -804,10 +692,6 @@ impl B20Token {
         self.name.write(name.to_string())?;
         self.symbol.write(symbol.to_string())?;
         self.currency.write(currency.to_string())?;
-
-        self.quote_token.write(quote_token)?;
-        // Initialize nextQuoteToken to the same value as quoteToken
-        self.next_quote_token.write(quote_token)?;
 
         // Set default values
         self.supply_cap.write(U128_MAX)?;
@@ -919,8 +803,6 @@ impl B20Token {
         if amount > from_balance {
             return Err(B20Error::insufficient_balance(from_balance, amount, self.address).into());
         }
-
-        self.handle_rewards_on_transfer(from, to.target, amount)?;
 
         // Adjust balances
         let new_from_balance =

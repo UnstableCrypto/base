@@ -227,7 +227,7 @@ fn gen_contract_storage(
 /// use alloy_primitives::{Address, U256};
 ///
 /// #[derive(Storable)]
-/// pub struct RewardStream {
+/// pub struct VestingStream {
 ///     pub funder: Address,              // rel slot: 0 (20 bytes)
 ///     pub start_time: u64,              // rel slot: 0 (8 bytes)
 ///     pub end_time: u64,                // rel slot: 1 (8 bytes)

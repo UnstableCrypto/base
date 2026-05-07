@@ -5,9 +5,9 @@
 
 use crate::BaseBSpec;
 use alloy::primitives::FixedBytes;
-use base_precompiles::{
-    storage::{FromWord, Layout, StorableType, StorageCtx, packing::insert_into_word},
-    test_util::gen_word_from,
+use base_precompiles::storage::{
+    FromWord, Layout, StorableType, StorageCtx,
+    packing::{gen_word_from, insert_into_word},
 };
 
 use super::*;
@@ -735,7 +735,7 @@ fn test_t4_store_packed_struct_skips_sload() -> eyre::Result<()> {
     ]);
 
     // -- Pre-T4: SLOAD is performed, so unused bytes retain the garbage --
-    let mut storage = HashMapStorageProvider::new_with_spec(1, BaseBSpec::Azul);
+    let mut storage = HashMapStorageProvider::new_with_spec(1, BaseBSpec::PreAzul);
     StorageCtx::enter(&mut storage, || {
         // Pre-fill the slot with garbage
         U256::handle(base_slot, LayoutCtx::FULL, address).write(garbage)?;
@@ -858,7 +858,7 @@ fn test_t4_store_multi_slot_packed_skips_sload() -> eyre::Result<()> {
     };
 
     // -- Pre-T4: SLOADs are performed for each packed slot --
-    let mut storage = HashMapStorageProvider::new_with_spec(1, BaseBSpec::Azul);
+    let mut storage = HashMapStorageProvider::new_with_spec(1, BaseBSpec::PreAzul);
     StorageCtx::enter(&mut storage, || {
         // Pre-fill both slots with garbage
         U256::handle(base_slot, LayoutCtx::FULL, address).write(garbage)?;

@@ -60,7 +60,7 @@ fn test_b403_registry_layout() {
 
 #[test]
 fn test_b20_layout() {
-    use base_precompiles::b20::{rewards::__packing_user_reward_info::*, slots};
+    use base_precompiles::b20::slots;
 
     let sol_path = testdata("b20.sol");
     let solc_layout = load_solc_layout(&sol_path);
@@ -76,8 +76,6 @@ fn test_b20_layout() {
         currency,
         // Unused slot, kept for storage layout compatibility
         _domain_separator,
-        quote_token,
-        next_quote_token,
         transfer_policy_id,
         // B20 Token
         total_supply,
@@ -88,22 +86,10 @@ fn test_b20_layout() {
         paused,
         supply_cap,
         // Unused slot, kept for storage layout compatibility
-        _salts,
-        // B20 Rewards
-        global_reward_per_token,
-        opted_in_supply,
-        user_reward_info
+        _salts
     );
     if let Err(errors) = compare_layouts(&solc_layout, &rust_layout) {
         panic_layout_mismatch("Layout", errors, &sol_path);
-    }
-
-    // Verify `UserRewardInfo` struct members
-    let user_info_base_slot = slots::USER_REWARD_INFO;
-    let rust_user_info =
-        struct_fields!(user_info_base_slot, reward_recipient, reward_per_token, reward_balance);
-    if let Err(errors) = compare_struct_members(&solc_layout, "userRewardInfo", &rust_user_info) {
-        panic_layout_mismatch("UserRewardInfo struct member layout", errors, &sol_path);
     }
 }
 
@@ -172,7 +158,7 @@ fn export_all_storage_constants() {
 
     // B20 Token
     {
-        use base_precompiles::b20::{rewards::__packing_user_reward_info::*, slots};
+        use base_precompiles::b20::slots;
 
         let fields = layout_fields!(
             // RolesAuth
@@ -184,8 +170,6 @@ fn export_all_storage_constants() {
             currency,
             // Unused slot, kept for storage layout compatibility
             _domain_separator,
-            quote_token,
-            next_quote_token,
             transfer_policy_id,
             // B20 Token
             total_supply,
@@ -196,24 +180,13 @@ fn export_all_storage_constants() {
             paused,
             supply_cap,
             // Unused slot, kept for storage layout compatibility
-            _salts,
-            // B20 Rewards
-            global_reward_per_token,
-            opted_in_supply,
-            user_reward_info
+            _salts
         );
-
-        let user_info_base_slot = slots::USER_REWARD_INFO;
-        let user_info_struct =
-            struct_fields!(user_info_base_slot, reward_recipient, reward_per_token, reward_balance);
 
         all_constants.insert(
             "b20".to_string(),
             json!({
-                "fields": fields.iter().map(field_to_json).collect::<Vec<_>>(),
-                "structs": {
-                    "userRewardInfo": user_info_struct.iter().map(field_to_json).collect::<Vec<_>>()
-                }
+                "fields": fields.iter().map(field_to_json).collect::<Vec<_>>()
             }),
         );
     }

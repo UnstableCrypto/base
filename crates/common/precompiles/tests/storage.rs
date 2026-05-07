@@ -7,6 +7,7 @@
 pub mod storage_primitives {
     pub use base_precompiles::storage::*;
 }
+pub use base_precompiles::BaseBSpec;
 pub use base_precompiles::error;
 pub use storage_primitives as storage;
 

@@ -264,7 +264,7 @@ mod tests {
         assert_eq!(to_snake_case("transferFrom"), "transfer_from");
         assert_eq!(to_snake_case("name"), "name");
         assert_eq!(to_snake_case("already_snake"), "already_snake");
-        assert_eq!(to_snake_case("updateQuoteToken"), "update_quote_token");
+        assert_eq!(to_snake_case("updatePolicyId"), "update_policy_id");
         assert_eq!(to_snake_case("DOMAIN_SEPARATOR"), "DOMAIN_SEPARATOR");
         assert_eq!(to_snake_case("ERC20Token"), "erc20_token");
     }
@@ -273,7 +273,7 @@ mod tests {
     fn test_to_camel_case() {
         assert_eq!(to_camel_case("balance_of"), "balanceOf");
         assert_eq!(to_camel_case("transfer_from"), "transferFrom");
-        assert_eq!(to_camel_case("update_quote_token"), "updateQuoteToken");
+        assert_eq!(to_camel_case("update_policy_id"), "updatePolicyId");
         assert_eq!(to_camel_case("name"), "name");
         assert_eq!(to_camel_case("token"), "token");
         assert_eq!(to_camel_case("alreadycamelCase"), "alreadycamelCase");

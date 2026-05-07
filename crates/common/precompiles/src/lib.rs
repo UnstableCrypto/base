@@ -17,7 +17,7 @@ pub mod b403_registry;
 #[cfg(test)]
 use alloy::sol_types::SolInterface;
 use alloy::{
-    primitives::{Address, Bytes, address},
+    primitives::{Address, Bytes},
     sol,
     sol_types::{SolCall, SolError},
 };
@@ -60,9 +60,6 @@ impl From<BaseBSpec> for SpecId {
         }
     }
 }
-
-/// Base path USD B20 address under the `0x8453` B20 prefix.
-pub const PATH_USD_ADDRESS: Address = address!("0x8453000000000000000000000000000000000000");
 
 /// Input per word cost. It covers abi decoding and cloning of input into call data.
 ///

@@ -85,10 +85,6 @@ impl Precompile for B20Token {
                 // View functions
                 B20Call::B20(IB20Calls::balanceOf(call)) => view(call, |c| self.balance_of(c)),
                 B20Call::B20(IB20Calls::allowance(call)) => view(call, |c| self.allowance(c)),
-                B20Call::B20(IB20Calls::quoteToken(call)) => view(call, |_| self.quote_token()),
-                B20Call::B20(IB20Calls::nextQuoteToken(call)) => {
-                    view(call, |_| self.next_quote_token())
-                }
                 B20Call::B20(IB20Calls::PAUSE_ROLE(call)) => view(call, |_| Ok(Self::pause_role())),
                 B20Call::B20(IB20Calls::UNPAUSE_ROLE(call)) => {
                     view(call, |_| Ok(Self::unpause_role()))
@@ -122,12 +118,6 @@ impl Precompile for B20Token {
                 B20Call::B20(IB20Calls::unpause(call)) => {
                     mutate_void(call, msg_sender, |s, c| self.unpause(s, c))
                 }
-                B20Call::B20(IB20Calls::setNextQuoteToken(call)) => {
-                    mutate_void(call, msg_sender, |s, c| self.set_next_quote_token(s, c))
-                }
-                B20Call::B20(IB20Calls::completeQuoteTokenUpdate(call)) => {
-                    mutate_void(call, msg_sender, |s, c| self.complete_quote_token_update(s, c))
-                }
                 B20Call::B20(IB20Calls::mint(call)) => {
                     mutate_void(call, msg_sender, |s, c| self.mint(s, c))
                 }
@@ -148,27 +138,6 @@ impl Precompile for B20Token {
                 }
                 B20Call::B20(IB20Calls::transferFromWithMemo(call)) => {
                     mutate(call, msg_sender, |sender, c| self.transfer_from_with_memo(sender, c))
-                }
-                B20Call::B20(IB20Calls::distributeReward(call)) => {
-                    mutate_void(call, msg_sender, |s, c| self.distribute_reward(s, c))
-                }
-                B20Call::B20(IB20Calls::setRewardRecipient(call)) => {
-                    mutate_void(call, msg_sender, |s, c| self.set_reward_recipient(s, c))
-                }
-                B20Call::B20(IB20Calls::claimRewards(call)) => {
-                    mutate(call, msg_sender, |_, _| self.claim_rewards(msg_sender))
-                }
-                B20Call::B20(IB20Calls::globalRewardPerToken(call)) => {
-                    view(call, |_| self.get_global_reward_per_token())
-                }
-                B20Call::B20(IB20Calls::optedInSupply(call)) => {
-                    view(call, |_| self.get_opted_in_supply())
-                }
-                B20Call::B20(IB20Calls::userRewardInfo(call)) => {
-                    view(call, |c| self.get_user_reward_info(c.account).map(|info| info.into()))
-                }
-                B20Call::B20(IB20Calls::getPendingRewards(call)) => {
-                    view(call, |c| self.get_pending_rewards(c.account))
                 }
 
                 B20Call::B20(IB20Calls::permit(call)) => {

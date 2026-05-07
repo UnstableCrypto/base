@@ -70,8 +70,6 @@ crate::sol! {
         function symbol() external view returns (string memory);
         function decimals() external view returns (uint8);
         function totalSupply() external view returns (uint256);
-        function quoteToken() external view returns (address);
-        function nextQuoteToken() external view returns (address);
         function balanceOf(address account) external view returns (uint256);
         function transfer(address to, uint256 amount) external returns (bool);
         function approve(address spender, uint256 amount) external returns (bool);
@@ -96,8 +94,6 @@ crate::sol! {
         function setSupplyCap(uint256 newSupplyCap) external;
         function pause() external;
         function unpause() external;
-        function setNextQuoteToken(address newQuoteToken) external;
-        function completeQuoteTokenUpdate() external;
 
         /// @notice Returns the role identifier for pausing the contract
         /// @return The pause role identifier
@@ -120,21 +116,6 @@ crate::sol! {
         function nonces(address owner) external view returns (uint256);
         function DOMAIN_SEPARATOR() external view returns (bytes32);
 
-        struct UserRewardInfo {
-            address rewardRecipient;
-            uint256 rewardPerToken;
-            uint256 rewardBalance;
-        }
-
-        // Reward Functions
-        function distributeReward(uint256 amount) external;
-        function setRewardRecipient(address recipient) external;
-        function claimRewards() external returns (uint256);
-        function optedInSupply() external view returns (uint128);
-        function globalRewardPerToken() external view returns (uint256);
-        function userRewardInfo(address account) external view returns (UserRewardInfo memory);
-        function getPendingRewards(address account) external view returns (uint128);
-
         // Events
         event Transfer(address indexed from, address indexed to, uint256 amount);
         event Approval(address indexed owner, address indexed spender, uint256 amount);
@@ -145,10 +126,6 @@ crate::sol! {
         event TransferPolicyUpdate(address indexed updater, uint64 indexed newPolicyId);
         event SupplyCapUpdate(address indexed updater, uint256 indexed newSupplyCap);
         event PauseStateUpdate(address indexed updater, bool isPaused);
-        event NextQuoteTokenSet(address indexed updater, address indexed nextQuoteToken);
-        event QuoteTokenUpdate(address indexed updater, address indexed newQuoteToken);
-        event RewardDistributed(address indexed funder, uint256 amount);
-        event RewardRecipientSet(address indexed holder, address indexed recipient);
 
         // Errors
         error InsufficientBalance(uint256 available, uint256 required, address token);
@@ -161,10 +138,8 @@ crate::sol! {
         error InvalidRecipient();
         error ContractPaused();
         error InvalidCurrency();
-        error InvalidQuoteToken();
         error TransfersDisabled();
         error InvalidAmount();
-        error NoOptedInSupply();
         error Unauthorized();
         error ProtectedAddress();
         error InvalidToken();
@@ -244,11 +219,6 @@ impl B20Error {
         Self::InvalidPayload(IB20::InvalidPayload {})
     }
 
-    /// Creates an error for invalid quote token.
-    pub const fn invalid_quote_token() -> Self {
-        Self::InvalidQuoteToken(IB20::InvalidQuoteToken {})
-    }
-
     /// Creates an error when string parameter exceeds maximum length.
     pub const fn string_too_long() -> Self {
         Self::StringTooLong(IB20::StringTooLong {})
@@ -282,11 +252,6 @@ impl B20Error {
     /// Creates an error for invalid amount.
     pub const fn invalid_amount() -> Self {
         Self::InvalidAmount(IB20::InvalidAmount {})
-    }
-
-    /// Error for when opted in supply is 0
-    pub const fn no_opted_in_supply() -> Self {
-        Self::NoOptedInSupply(IB20::NoOptedInSupply {})
     }
 
     /// Error for operations on protected addresses (like burning `FeeManager` tokens)
@@ -323,13 +288,13 @@ impl B20Error {
 #[cfg(test)]
 mod test {
     use super::*;
-    use alloc::vec::Vec;
     use alloy_primitives::{Address, B256, U256};
+    use std::vec::Vec;
 
     #[rustfmt::skip]
     /// Returns valid ABI-encoded calldata for every recognized B20 payment selector.
     fn payment_calldatas() -> [Vec<u8>; 9] {
-        let (to, from, amount, memo) = (Address::random(), Address::random(), U256::random(), B256::random());
+        let (to, from, amount, memo) = (Address::with_last_byte(1), Address::with_last_byte(2), U256::from(3), B256::repeat_byte(4));
 
         [
             IB20::transferCall { to, amount }.abi_encode(),
@@ -347,15 +312,15 @@ mod test {
     #[rustfmt::skip]
     /// Returns ABI-encoded calldata for B20 selectors NOT recognized as payments.
     fn non_payment_calldatas() -> [Vec<u8>; 3] {
-        let mut data = IB20::transferCall { to: Address::random(), amount: U256::random() }.abi_encode();
+        let mut data = IB20::transferCall { to: Address::with_last_byte(1), amount: U256::from(3) }.abi_encode();
         data[..4].copy_from_slice(&[0xde, 0xad, 0xbe, 0xef]);
 
         [
             // non-payment B20 calls with known selectors
-            IB20::claimRewardsCall {}.abi_encode(),
+            IB20::pauseCall {}.abi_encode(),
             IB20::permitCall {
-                owner: Address::random(), spender: Address::random(), value: U256::random(), deadline: U256::random(),
-                v: u8::MAX, r: B256::random(), s: B256::random() }.abi_encode(),
+                owner: Address::with_last_byte(1), spender: Address::with_last_byte(2), value: U256::from(3), deadline: U256::from(4),
+                v: u8::MAX, r: B256::repeat_byte(5), s: B256::repeat_byte(6) }.abi_encode(),
             // non-payment B20 calls with unknown selectors
             data,
         ]

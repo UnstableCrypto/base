@@ -9,8 +9,8 @@ use base_precompiles_macros::contract;
 
 use crate::BaseBAddressExt;
 use crate::{
-    B20_FACTORY_ADDRESS, B20_PREFIX_BYTES, PATH_USD_ADDRESS,
-    b20::{B20Error, B20Token, USD_CURRENCY},
+    B20_FACTORY_ADDRESS, B20_PREFIX_BYTES,
+    b20::{B20Error, B20Token},
     error::{BasePrecompileError, Result},
 };
 use alloy::{
@@ -85,13 +85,11 @@ impl B20Factory {
 
     /// Deploys a new B20 token at a deterministic address derived from `sender` and `salt`.
     ///
-    /// Validates that the token does not already exist, the quote token is a deployed B20 of
-    /// a compatible currency, and the derived address is outside the reserved range. Initializes
-    /// the token via [`B20Token::initialize`].
+    /// Validates that the token does not already exist and the derived address is outside the
+    /// reserved range. Initializes the token via [`B20Token::initialize`].
     ///
     /// # Errors
     /// - `TokenAlreadyExists` — a B20 is already deployed at the derived address
-    /// - `InvalidQuoteToken` — quote token is not a deployed B20 or has incompatible currency
     /// - `AddressReserved` — the derived address is in the reserved range
     pub fn create_token(
         &mut self,
@@ -109,21 +107,6 @@ impl B20Factory {
             )));
         }
 
-        let is_root_usd_token = call.currency == USD_CURRENCY && call.quoteToken.is_zero();
-
-        // Ensure that the quote token is a valid B20 that is currently deployed.
-        if !is_root_usd_token && !self.is_b20(call.quoteToken)? {
-            return Err(B20Error::invalid_quote_token().into());
-        }
-
-        // If token is USD, its quote token must also be USD
-        if !is_root_usd_token
-            && call.currency == USD_CURRENCY
-            && B20Token::from_address(call.quoteToken)?.currency()? != USD_CURRENCY
-        {
-            return Err(B20Error::invalid_quote_token().into());
-        }
-
         // Check if address is in reserved range
         if lower_bytes < RESERVED_SIZE {
             return Err(BasePrecompileError::B20Factory(B20FactoryError::address_reserved()));
@@ -134,7 +117,6 @@ impl B20Factory {
             &call.name,
             &call.symbol,
             &call.currency,
-            call.quoteToken,
             call.admin,
         )?;
 
@@ -143,7 +125,6 @@ impl B20Factory {
             name: call.name,
             symbol: call.symbol,
             currency: call.currency,
-            quoteToken: call.quoteToken,
             admin: call.admin,
             salt: call.salt,
         }))?;
@@ -152,13 +133,11 @@ impl B20Factory {
     }
 
     /// Deploys a B20 token at a reserved address (lower 8 bytes < `RESERVED_SIZE`). Used
-    /// during genesis or hardforks to bootstrap protocol tokens like pathUSD.
+    /// during genesis or hardforks to bootstrap protocol tokens.
     ///
     /// # Errors
     /// - `InvalidToken` — `address` does not have the B20 prefix
     /// - `TokenAlreadyExists` — a B20 is already deployed at `address`
-    /// - `InvalidQuoteToken` — quote token is invalid, not deployed, or has incompatible
-    ///   currency; pathUSD must use `Address::ZERO` as quote token
     /// - `AddressNotReserved` — the address is outside the reserved range
     pub fn create_token_reserved_address(
         &mut self,
@@ -166,7 +145,6 @@ impl B20Factory {
         name: &str,
         symbol: &str,
         currency: &str,
-        quote_token: Address,
         admin: Address,
     ) -> Result<Address> {
         // Validate that the address has a B20 prefix
@@ -181,21 +159,6 @@ impl B20Factory {
             )));
         }
 
-        // quote_token must be address(0) or a valid B20
-        if !quote_token.is_zero() {
-            // pathUSD must set address(0) as the quote token
-            // or the b20 must be a valid deployed token
-            if address == PATH_USD_ADDRESS || !self.is_b20(quote_token)? {
-                return Err(B20Error::invalid_quote_token().into());
-            }
-            // If token is USD, its quote token must also be USD
-            if currency == USD_CURRENCY
-                && B20Token::from_address(quote_token)?.currency()? != USD_CURRENCY
-            {
-                return Err(B20Error::invalid_quote_token().into());
-            }
-        }
-
         // Validate that the address is within the reserved range
         // Reserved addresses have their last 8 bytes represent a value < RESERVED_SIZE
         let mut padded = [0u8; 8];
@@ -206,14 +169,13 @@ impl B20Factory {
         }
 
         let mut token = B20Token::from_address(address)?;
-        token.initialize(admin, name, symbol, currency, quote_token, admin)?;
+        token.initialize(admin, name, symbol, currency, admin)?;
 
         self.emit_event(B20FactoryEvent::TokenCreated(IB20Factory::TokenCreated {
             token: address,
             name: name.into(),
             symbol: symbol.into(),
             currency: currency.into(),
-            quoteToken: quote_token,
             admin,
             salt: B256::ZERO,
         }))?;
