@@ -304,7 +304,12 @@ impl SpanBatch {
         l2_safe_head: L2BlockInfo,
     ) -> Result<Vec<SingleBatch>, SpanBatchError> {
         let mut single_batches = Vec::with_capacity(self.batches.len());
-        let mut origin_index = 0;
+        // l1_origins is expected to be a contiguous prefix of L1 blocks
+        // emitted by the L1 traversal stage with no gaps, so we can index
+        // directly by epoch number instead of scanning. The runtime check
+        // below falls back to MissingL1Origin (matching the prior linear-scan
+        // behavior) if a caller ever violates the invariant.
+        let base_epoch = l1_origins.first().map(|o| o.number);
         for batch in &self.batches {
             if batch.timestamp <= l2_safe_head.block_info.timestamp {
                 continue;
@@ -314,18 +319,14 @@ impl SpanBatch {
             if batch.epoch_num < l2_safe_head.l1_origin.number {
                 return Err(SpanBatchError::L1OriginBeforeSafeHead);
             }
-            let origin_epoch_hash = l1_origins[origin_index..l1_origins.len()]
-                .iter()
-                .enumerate()
-                .find(|(_, origin)| origin.number == batch.epoch_num)
-                .map(|(i, origin)| {
-                    origin_index += i;
-                    origin.hash
-                })
+            let origin = base_epoch
+                .and_then(|base| batch.epoch_num.checked_sub(base))
+                .and_then(|offset| l1_origins.get(offset as usize))
+                .filter(|origin| origin.number == batch.epoch_num)
                 .ok_or(SpanBatchError::MissingL1Origin)?;
             let single_batch = SingleBatch {
                 epoch_num: batch.epoch_num,
-                epoch_hash: origin_epoch_hash,
+                epoch_hash: origin.hash,
                 timestamp: batch.timestamp,
                 transactions: batch.transactions.clone(),
                 ..Default::default()
