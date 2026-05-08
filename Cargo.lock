@@ -4449,8 +4449,6 @@ dependencies = [
  "tokio-tungstenite 0.28.0",
  "tokio-util",
  "tracing",
- "tracing-indicatif",
- "tracing-subscriber 0.3.23",
  "url",
 ]
 
@@ -4462,7 +4460,10 @@ dependencies = [
  "base-load-tests",
  "clap",
  "eyre",
+ "indicatif 0.18.4",
  "tokio",
+ "tracing-indicatif",
+ "tracing-subscriber 0.3.23",
  "url",
 ]
 

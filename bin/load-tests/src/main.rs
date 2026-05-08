@@ -2,7 +2,7 @@
 
 use clap::Parser;
 
-mod cli;
+pub mod cli;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> eyre::Result<()> {

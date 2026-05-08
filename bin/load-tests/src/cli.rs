@@ -5,6 +5,11 @@ use std::path::PathBuf;
 use alloy_signer_local::PrivateKeySigner;
 use base_load_tests::{LoadTest, LoadTestOptions, Rescue, RescueOptions};
 use clap::{ArgGroup, Args, Parser, Subcommand};
+use indicatif::MultiProgress;
+use tracing_indicatif::{IndicatifWriter, writer::Stderr};
+use tracing_subscriber::{
+    EnvFilter, filter::LevelFilter, layer::SubscriberExt, util::SubscriberInitExt,
+};
 use url::Url;
 
 /// Load-test binary CLI.
@@ -15,35 +20,35 @@ use url::Url;
     about = "Base network load test runner",
     long_about = None
 )]
-pub(crate) struct Cli {
+pub struct Cli {
     /// Default load-test arguments.
     #[command(flatten)]
-    pub(crate) load: LoadArgs,
+    pub load: LoadArgs,
 
     /// Optional subcommand.
     #[command(subcommand)]
-    pub(crate) command: Option<Commands>,
+    pub command: Option<Commands>,
 }
 
 /// CLI arguments for the default load-test command.
 #[derive(Clone, Debug, Args)]
-pub(crate) struct LoadArgs {
+pub struct LoadArgs {
     /// YAML config file to run.
     #[arg(value_name = "CONFIG")]
-    pub(crate) config: Option<PathBuf>,
+    pub config: Option<PathBuf>,
 
     /// Run indefinitely until interrupted.
     #[arg(long)]
-    pub(crate) continuous: bool,
+    pub continuous: bool,
 
     /// Drain accounts from the config without running a load test.
     #[arg(long)]
-    pub(crate) drain_only: bool,
+    pub drain_only: bool,
 }
 
 /// Load-test subcommands.
 #[derive(Clone, Debug, Subcommand)]
-pub(crate) enum Commands {
+pub enum Commands {
     /// Rescue stranded funds by deriving accounts from a seed or mnemonic.
     Rescue(RescueArgs),
 }
@@ -51,39 +56,71 @@ pub(crate) enum Commands {
 /// CLI arguments for the rescue subcommand.
 #[derive(Clone, Debug, Args)]
 #[command(group(ArgGroup::new("derivation").required(true).args(["seed", "mnemonic"])))]
-pub(crate) struct RescueArgs {
+pub struct RescueArgs {
     /// RPC endpoint.
     #[arg(long = "rpc-url", alias = "rpc")]
-    pub(crate) rpc_url: Url,
+    pub rpc_url: Url,
 
     /// Seed used for account generation.
     #[arg(long)]
-    pub(crate) seed: Option<u64>,
+    pub seed: Option<u64>,
 
     /// Mnemonic used for account generation.
     #[arg(long)]
-    pub(crate) mnemonic: Option<String>,
+    pub mnemonic: Option<String>,
 
     /// Number of accounts to scan.
     #[arg(long = "count", default_value_t = RescueOptions::DEFAULT_SCAN_COUNT)]
-    pub(crate) scan_count: usize,
+    pub scan_count: usize,
 
     /// Starting account offset.
     #[arg(long, default_value_t = 0)]
-    pub(crate) offset: usize,
+    pub offset: usize,
 
     /// Private key of the funder account.
     #[arg(long = "funder-key", env = "FUNDER_KEY")]
-    pub(crate) funder_key: PrivateKeySigner,
+    pub funder_key: PrivateKeySigner,
 }
 
 impl Cli {
     /// Runs the load-test CLI.
-    pub(crate) async fn run(self) -> eyre::Result<()> {
+    pub async fn run(self) -> eyre::Result<()> {
         match self.command {
-            Some(Commands::Rescue(args)) => Rescue::run(args.into()).await,
-            None => LoadTest::run(self.load.into()).await,
+            Some(Commands::Rescue(args)) => {
+                Self::init_tracing()?;
+                Rescue::run(args.into()).await
+            }
+            None => {
+                let mp = Self::init_progress_tracing()?;
+                LoadTest::run_with_progress(self.load.into(), &mp).await
+            }
         }
+    }
+
+    /// Initialises standard tracing output for non-interactive commands.
+    pub fn init_tracing() -> eyre::Result<()> {
+        tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+            .try_init()
+            .map_err(|e| eyre::eyre!("failed to initialize tracing: {e}"))?;
+
+        Ok(())
+    }
+
+    /// Initialises progress-bar-aware tracing for the default load-test command.
+    pub fn init_progress_tracing() -> eyre::Result<MultiProgress> {
+        let mp = MultiProgress::new();
+        let writer: IndicatifWriter<Stderr> = IndicatifWriter::new(mp.clone());
+        let filter =
+            EnvFilter::builder().with_default_directive(LevelFilter::WARN.into()).from_env_lossy();
+
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer().with_writer(writer).with_ansi(true))
+            .with(filter)
+            .try_init()
+            .map_err(|e| eyre::eyre!("failed to initialize tracing: {e}"))?;
+
+        Ok(mp)
     }
 }
 

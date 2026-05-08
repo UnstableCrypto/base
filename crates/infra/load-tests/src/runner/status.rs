@@ -1,9 +1,6 @@
 use std::time::Duration;
 
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use tracing::level_filters::LevelFilter;
-use tracing_indicatif::{IndicatifWriter, writer::Stderr};
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Snapshot of live metrics for the status display.
 #[derive(Debug, Clone, Default)]
@@ -52,9 +49,7 @@ pub struct DisplaySnapshot {
 
 /// Live progress-bar display for a running load test.
 ///
-/// Uses `indicatif` for animated progress bars. Log output is routed through
-/// an `IndicatifWriter` that calls `MultiProgress::suspend()` around each
-/// write, preventing log lines from corrupting the progress bar display.
+/// Uses `indicatif` for animated progress bars.
 pub struct LoadTestDisplay {
     header: ProgressBar,
     txs: ProgressBar,
@@ -67,28 +62,6 @@ pub struct LoadTestDisplay {
 }
 
 impl LoadTestDisplay {
-    /// Initialises the global tracing subscriber with progress-bar-aware log
-    /// output.
-    ///
-    /// Returns the `MultiProgress` that manages the progress bars. Pass it to
-    /// [`LoadTestDisplay::new`] after the run duration is known.
-    pub fn init_tracing() -> MultiProgress {
-        let mp = MultiProgress::new();
-        // IndicatifWriter wraps `mp` and calls `mp.suspend()` around every
-        // tracing log write, so log lines never corrupt the rendered bars.
-        let writer: IndicatifWriter<Stderr> = IndicatifWriter::new(mp.clone());
-
-        let filter =
-            EnvFilter::builder().with_default_directive(LevelFilter::WARN.into()).from_env_lossy();
-
-        let _ = tracing_subscriber::registry()
-            .with(tracing_subscriber::fmt::layer().with_writer(writer).with_ansi(true))
-            .with(filter)
-            .try_init();
-
-        mp
-    }
-
     /// Creates a new display and attaches its bars to `mp`.
     ///
     /// `duration` controls whether the header shows a finite progress bar or a

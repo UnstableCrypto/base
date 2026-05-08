@@ -14,8 +14,8 @@ use tracing::{debug, info, warn};
 use url::Url;
 
 use crate::{
-    AccountPool, BaselineError, BatchRpcClient, FundedAccount, Result as LoadResult, RpcClient,
-    create_wallet_provider,
+    AccountPool, BaselineError, BatchRpcClient, DEFAULT_MAX_GAS_PRICE, FundedAccount,
+    Result as LoadResult, RpcClient, create_wallet_provider,
 };
 
 /// Options for the rescue command.
@@ -44,9 +44,6 @@ const RESCUE_CONCURRENCY: usize = 32;
 /// Default number of accounts to scan during rescue.
 const DEFAULT_RESCUE_SCAN_COUNT: usize = 1000;
 
-/// Default maximum gas price (1000 gwei).
-const DEFAULT_MAX_GAS_PRICE: u128 = 1_000_000_000_000;
-
 /// Runs the rescue command.
 #[derive(Debug)]
 pub struct Rescue;
@@ -54,13 +51,6 @@ pub struct Rescue;
 impl Rescue {
     /// Runs the rescue command.
     pub async fn run(options: RescueOptions) -> Result<()> {
-        tracing_subscriber::fmt()
-            .with_env_filter(
-                tracing_subscriber::EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| "info".into()),
-            )
-            .init();
-
         options.validate()?;
 
         let client = RpcClient::new(options.rpc_url.clone());

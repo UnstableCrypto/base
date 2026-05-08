@@ -36,8 +36,12 @@ pub struct LoadTest;
 impl LoadTest {
     /// Runs the default load-test command.
     pub async fn run(options: LoadTestOptions) -> Result<()> {
-        let mp = LoadTestDisplay::init_tracing();
+        let mp = MultiProgress::new();
+        Self::run_with_progress(options, &mp).await
+    }
 
+    /// Runs the default load-test command with progress bars attached to `mp`.
+    pub async fn run_with_progress(options: LoadTestOptions, mp: &MultiProgress) -> Result<()> {
         let config_path = options
             .config_path
             .or_else(|| {
