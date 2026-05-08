@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use base_proof_preimage::PreimageKey;
 use base_proof_primitives::ProofResult;
-use base_proof_tee_nitro_enclave::{EnclaveRequest, EnclaveResponse, Frame};
+use base_proof_tee_nitro_enclave::{EnclaveRequest, EnclaveResponse, Frame, TransportError};
 use tokio_vsock::{VsockAddr, VsockStream};
 use tracing::info;
 
@@ -51,6 +51,18 @@ impl VsockTransport {
             port = self.port,
             "sending prove request to enclave"
         );
+
+        // Cheap pre-flight check: the encoded frame is necessarily larger than
+        // the sum of preimage values (which dominate the wire size). Refusing
+        // to dial the enclave at all when we already know the frame will be
+        // rejected avoids a wasted vsock round trip and a multi-hundred-MiB
+        // bincode allocation on the host.
+        if total_value_bytes > Frame::MAX_FRAME_BYTES {
+            return Err(NitroHostError::FrameWrite(TransportError::FrameTooLarge {
+                len: total_value_bytes,
+                limit: Frame::MAX_FRAME_BYTES,
+            }));
+        }
 
         let mut stream = self.connect().await?;
 
