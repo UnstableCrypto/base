@@ -8,7 +8,7 @@ use base_consensus_engine::{
     BuildTask, ConsolidateInput, ConsolidateTask, DelegatedForkchoiceTask,
     DelegatedForkchoiceUpdate, Engine, EngineClient, EngineSyncStateUpdate, EngineTask,
     EngineTaskError, EngineTaskErrorSeverity, FinalizeTask, GetPayloadTask, InsertPayloadSafety,
-    InsertTask, SealTask,
+    InsertTask, Metrics as EngineMetrics, SealTask,
 };
 use base_protocol::L2BlockInfo;
 use tokio::{
@@ -613,11 +613,19 @@ where
             }
 
             loop {
+                // Full processor iteration window: drain + recv wait + request handling.
+                // Bounds the worst-case channel wait — any request arriving during this
+                // iteration waits at most this long before the next recv picks it up.
+                let _iter_timer =
+                    base_metrics::timed!(EngineMetrics::engine_processor_iteration_duration());
+
                 // Attempt to drain all outstanding tasks from the engine queue before adding new
                 // ones.
-                self.drain().await.inspect_err(
-                    |err| error!(target: "engine", ?err, "Failed to drain engine tasks"),
-                )?;
+                base_metrics::time!(EngineMetrics::engine_processor_drain_duration_seconds(), {
+                    self.drain().await.inspect_err(
+                        |err| error!(target: "engine", ?err, "Failed to drain engine tasks"),
+                    )
+                })?;
 
                 // If the unsafe head has updated, propagate it to the outbound channels.
                 if let Some(unsafe_head_tx) = self.unsafe_head_tx.as_ref() {
@@ -628,7 +636,11 @@ where
                 }
 
                 // Wait for the next processing request.
-                let Some(request) = request_channel.recv().await else {
+                let recv_result = base_metrics::time!(
+                    EngineMetrics::engine_processor_recv_wait_duration_seconds(),
+                    { request_channel.recv().await }
+                );
+                let Some(request) = recv_result else {
                     error!(target: "engine", "Engine processing request receiver closed unexpectedly");
                     return Err(EngineError::ChannelClosed);
                 };

@@ -5,10 +5,10 @@ use base_engine_tree::BaseEngineValidatorBuilder;
 use base_execution_chainspec::BaseChainSpec;
 use base_execution_payload_builder::config::{BaseDAConfig, GasLimitConfig};
 use base_execution_rpc::eth::BaseEthApiBuilder;
-use base_execution_storage::BaseStorage;
 use base_node_core::{
     BaseConsensusBuilder, BaseEngineApiBuilder, BaseEngineTypes, BaseExecutorBuilder,
     BaseNetworkBuilder, BaseNodeComponentBuilder, BaseNodeTypes, BasePayloadValidatorBuilder,
+    BaseStorage,
     args::RollupArgs,
     node::{BasePayloadBuilder, BasePoolBuilder},
 };
@@ -73,11 +73,15 @@ impl BaseNode {
             compute_pending_block,
             discovery_v4,
             base_protocol,
+            max_inflight_delegated_slots,
             ..
         } = self.args;
         ComponentsBuilder::default()
             .node_types::<Node>()
-            .pool(BasePoolBuilder::default())
+            .pool(
+                BasePoolBuilder::default()
+                    .with_max_inflight_delegated_slots(max_inflight_delegated_slots),
+            )
             .executor(BaseExecutorBuilder::default())
             .payload(BasicPayloadServiceBuilder::new(
                 BasePayloadBuilder::new(compute_pending_block)
@@ -106,14 +110,15 @@ impl BaseNode {
     /// [`ReadOnlyConfig`](reth_provider::providers::ReadOnlyConfig).
     ///
     /// ```no_run
-    /// use base_execution_chainspec::BASE_MAINNET;
+    /// use base_execution_chainspec::BaseChainSpec;
     /// use base_node_runner::BaseNode;
     /// use reth_provider::providers::ReadOnlyConfig;
+    /// use std::sync::Arc;
     ///
     /// let runtime = reth_tasks::Runtime::test();
     /// let factory = BaseNode::provider_factory_builder()
     ///     .open_read_only(
-    ///         BASE_MAINNET.clone(),
+    ///         Arc::new(BaseChainSpec::mainnet()),
     ///         ReadOnlyConfig::from_datadir("datadir").no_watch(),
     ///         runtime,
     ///     )
