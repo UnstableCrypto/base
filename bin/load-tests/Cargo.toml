@@ -22,6 +22,6 @@ indicatif.workspace = true
 base-load-tests.workspace = true
 tracing-indicatif.workspace = true
 alloy-signer-local.workspace = true
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "signal"] }
 clap = { workspace = true, features = ["derive", "env"] }
 tracing-subscriber = { workspace = true, features = ["fmt", "env-filter"] }

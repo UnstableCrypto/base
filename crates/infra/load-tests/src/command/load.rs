@@ -2,10 +2,7 @@
 
 use std::{
     path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, atomic::AtomicBool},
     time::Duration,
 };
 
@@ -27,6 +24,8 @@ pub struct LoadTestOptions {
     pub continuous: bool,
     /// Drain accounts without running a load test.
     pub drain_only: bool,
+    /// Optional stop flag controlled by the caller.
+    pub stop_flag: Option<Arc<AtomicBool>>,
 }
 
 /// Runs the default load-test command.
@@ -106,11 +105,9 @@ impl LoadTest {
         let config_summary = test_config.to_summary();
         let mut runner = LoadRunner::new(load_config.clone())?;
         runner.set_config_summary(config_summary.clone());
-
-        // Install signal handling before long-running work so the runner drains
-        // funds on the first shutdown signal and force-exits on the second.
-        let stop_flag = runner.stop_flag();
-        Self::install_signal_handler(stop_flag);
+        if let Some(stop_flag) = options.stop_flag {
+            runner.replace_stop_flag(stop_flag);
+        }
 
         let run_result = Self::run_test_phases(
             &mut runner,
@@ -250,36 +247,6 @@ impl LoadTest {
                 },
                 Err(e) => eprintln!("Warning: failed to serialize results: {e}"),
             }
-        }
-    }
-
-    fn install_signal_handler(stop_flag: Arc<AtomicBool>) {
-        tokio::spawn(async move {
-            Self::wait_for_shutdown_signal().await;
-            eprintln!("\nReceived signal, stopping gracefully. Send again to force exit.");
-            stop_flag.store(true, Ordering::SeqCst);
-
-            Self::wait_for_shutdown_signal().await;
-            eprintln!("\nForcing exit. Funds may remain in test accounts.");
-            std::process::exit(1);
-        });
-    }
-
-    async fn wait_for_shutdown_signal() {
-        #[cfg(unix)]
-        {
-            use tokio::signal::unix::{SignalKind, signal};
-
-            let mut sigterm =
-                signal(SignalKind::terminate()).expect("failed to register SIGTERM handler");
-            tokio::select! {
-                _ = tokio::signal::ctrl_c() => {}
-                _ = sigterm.recv() => {}
-            }
-        }
-        #[cfg(not(unix))]
-        {
-            let _ = tokio::signal::ctrl_c().await;
         }
     }
 }

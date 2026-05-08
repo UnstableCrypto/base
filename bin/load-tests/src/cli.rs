@@ -1,6 +1,12 @@
 //! CLI argument parsing for the load-test binary.
 
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use alloy_signer_local::PrivateKeySigner;
 use base_load_tests::{LoadTest, LoadTestOptions, Rescue, RescueOptions};
@@ -18,23 +24,25 @@ use url::Url;
     author,
     version = env!("CARGO_PKG_VERSION"),
     about = "Base network load test runner",
-    long_about = None
+    long_about = None,
+    args_conflicts_with_subcommands = true,
+    subcommand_precedence_over_arg = true
 )]
 pub struct Cli {
-    /// Default load-test arguments.
-    #[command(flatten)]
-    pub load: LoadArgs,
-
     /// Optional subcommand.
     #[command(subcommand)]
     pub command: Option<Commands>,
+
+    /// Default load-test arguments.
+    #[command(flatten)]
+    pub load: LoadArgs,
 }
 
 /// CLI arguments for the default load-test command.
 #[derive(Clone, Debug, Args)]
 pub struct LoadArgs {
     /// YAML config file to run.
-    #[arg(value_name = "CONFIG")]
+    #[arg(value_name = "CONFIG", value_parser = LoadArgs::parse_config_path)]
     pub config: Option<PathBuf>,
 
     /// Run indefinitely until interrupted.
@@ -51,6 +59,13 @@ pub struct LoadArgs {
 pub enum Commands {
     /// Rescue stranded funds by deriving accounts from a seed or mnemonic.
     Rescue(RescueArgs),
+}
+
+impl Commands {
+    /// Returns true when `value` is a load-test subcommand name.
+    pub const fn is_subcommand_name(value: &str) -> bool {
+        matches!(value.as_bytes(), b"rescue")
+    }
 }
 
 /// CLI arguments for the rescue subcommand.
@@ -82,6 +97,19 @@ pub struct RescueArgs {
     pub funder_key: PrivateKeySigner,
 }
 
+impl LoadArgs {
+    /// Parses the load config path, rejecting known subcommand names.
+    pub fn parse_config_path(value: &str) -> Result<PathBuf, String> {
+        if Commands::is_subcommand_name(value) {
+            return Err(format!(
+                "`{value}` is a subcommand; run `base-load-tests {value} ...` before load options"
+            ));
+        }
+
+        Ok(PathBuf::from(value))
+    }
+}
+
 impl Cli {
     /// Runs the load-test CLI.
     pub async fn run(self) -> eyre::Result<()> {
@@ -92,7 +120,11 @@ impl Cli {
             }
             None => {
                 let mp = Self::init_progress_tracing()?;
-                LoadTest::run_with_progress(self.load.into(), &mp).await
+                let stop_flag = Self::install_signal_handler();
+                let mut options = LoadTestOptions::from(self.load);
+                options.stop_flag = Some(stop_flag);
+
+                LoadTest::run_with_progress(options, &mp).await
             }
         }
     }
@@ -122,11 +154,53 @@ impl Cli {
 
         Ok(mp)
     }
+
+    /// Installs binary-owned signal handling for graceful shutdown and force exit.
+    pub fn install_signal_handler() -> Arc<AtomicBool> {
+        let stop_flag = Arc::new(AtomicBool::new(false));
+        let handler_flag = Arc::clone(&stop_flag);
+
+        tokio::spawn(async move {
+            Self::wait_for_shutdown_signal().await;
+            eprintln!("\nReceived signal, stopping gracefully. Send again to force exit.");
+            handler_flag.store(true, Ordering::SeqCst);
+
+            Self::wait_for_shutdown_signal().await;
+            eprintln!("\nForcing exit. Funds may remain in test accounts.");
+            std::process::exit(1);
+        });
+
+        stop_flag
+    }
+
+    /// Waits for Ctrl-C or SIGTERM.
+    pub async fn wait_for_shutdown_signal() {
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{SignalKind, signal};
+
+            let mut sigterm =
+                signal(SignalKind::terminate()).expect("failed to register SIGTERM handler");
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = sigterm.recv() => {}
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = tokio::signal::ctrl_c().await;
+        }
+    }
 }
 
 impl From<LoadArgs> for LoadTestOptions {
     fn from(args: LoadArgs) -> Self {
-        Self { config_path: args.config, continuous: args.continuous, drain_only: args.drain_only }
+        Self {
+            config_path: args.config,
+            continuous: args.continuous,
+            drain_only: args.drain_only,
+            stop_flag: None,
+        }
     }
 }
 
