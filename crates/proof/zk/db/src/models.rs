@@ -150,10 +150,10 @@ pub enum RetryOutcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "VARCHAR")]
 pub enum ProofType {
-    /// Compressed proof generated via OP-Succinct SP1 cluster.
+    /// Compressed proof generated via the Succinct SP1 cluster.
     #[sqlx(rename = "op_succinct_sp1_cluster_compressed")]
     OpSuccinctSp1ClusterCompressed,
-    /// SNARK Groth16 proof generated via OP-Succinct SP1 cluster.
+    /// SNARK Groth16 proof generated via the Succinct SP1 cluster.
     #[sqlx(rename = "op_succinct_sp1_cluster_snark_groth16")]
     OpSuccinctSp1ClusterSnarkGroth16,
 }
@@ -237,6 +237,8 @@ pub struct ProofRequest {
     pub prover_address: Option<String>,
     /// Explicit L1 head hash used for witness generation.
     pub l1_head: Option<String>,
+    /// Intermediate root interval requested for ZK proof generation.
+    pub intermediate_root_interval: Option<i64>,
     /// Timestamp when the request was created.
     pub created_at: DateTime<Utc>,
     /// Timestamp of the last status update.
@@ -245,6 +247,62 @@ pub struct ProofRequest {
     pub completed_at: Option<DateTime<Utc>>,
     /// Number of times this request has been retried after getting stuck.
     pub retry_count: i32,
+}
+
+/// Receipt-free proof request row used by list endpoints.
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct ProofRequestListItem {
+    /// Unique identifier.
+    pub id: Uuid,
+    /// Starting L2 block number.
+    pub start_block_number: i64,
+    /// Number of consecutive blocks to prove.
+    pub number_of_blocks_to_prove: i64,
+    /// Type of proof to generate.
+    pub proof_type: ProofType,
+    /// Current proof status.
+    pub status: ProofStatus,
+    /// Error message if the proof failed.
+    pub error_message: Option<String>,
+    /// Timestamp when the request was created.
+    pub created_at: DateTime<Utc>,
+    /// Timestamp of the last status update.
+    pub updated_at: DateTime<Utc>,
+    /// Timestamp when the proof completed (success or failure).
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+/// Offset pagination parameters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProofRequestPage {
+    limit: i64,
+    offset: i64,
+}
+
+impl ProofRequestPage {
+    /// Create pagination parameters from API-level unsigned values.
+    pub fn try_new(limit: u64, offset: u64) -> Result<Self, String> {
+        if limit == 0 {
+            return Err("limit must be greater than zero".to_owned());
+        }
+
+        let limit =
+            i64::try_from(limit).map_err(|_| "limit exceeds maximum supported value".to_owned())?;
+        let offset = i64::try_from(offset)
+            .map_err(|_| "offset exceeds maximum supported value".to_owned())?;
+
+        Ok(Self { limit, offset })
+    }
+
+    /// Maximum number of rows to return.
+    pub const fn limit(&self) -> i64 {
+        self.limit
+    }
+
+    /// Number of rows to skip.
+    pub const fn offset(&self) -> i64 {
+        self.offset
+    }
 }
 
 /// A proof session record tracking a specific backend job (STARK or SNARK)
@@ -287,6 +345,8 @@ pub struct CreateProofRequest {
     pub prover_address: Option<String>,
     /// Explicit L1 head hash for witness generation.
     pub l1_head: Option<String>,
+    /// Intermediate root interval for ZK proof generation.
+    pub intermediate_root_interval: Option<u64>,
 }
 
 /// Parameters for creating a new proof session

@@ -19,9 +19,7 @@ use base_common_consensus::BaseBlock;
 use base_common_genesis::RollupConfig;
 use base_common_network::Base;
 use base_proof_host::HostConfig;
-use base_proof_succinct_client_utils::{
-    boot::BootInfoStruct, client::DEFAULT_INTERMEDIATE_ROOT_INTERVAL,
-};
+use base_proof_succinct_client_utils::boot::BootInfoStruct;
 use base_protocol::L2BlockInfo;
 use futures::{StreamExt, stream};
 use reqwest::Url;
@@ -226,7 +224,7 @@ impl OPSuccinctDataFetcher {
 
     /// Get the aggregate block statistics for a range of blocks exclusive of the start block.
     ///
-    /// When proving a range in OP Succinct, we are proving the transition from the block hash
+    /// When proving a range with Succinct, we are proving the transition from the block hash
     /// of the start block to the block hash of the end block. This means that we don't expend
     /// resources to "prove" the start block. This is why the start block is not included in the
     /// range for which we fetch block data.
@@ -730,6 +728,7 @@ impl OPSuccinctDataFetcher {
         l2_start_block: u64,
         l2_end_block: u64,
         l1_head_hash: B256,
+        intermediate_block_interval: u64,
     ) -> Result<HostConfig> {
         let Some(rollup_config) = &self.rollup_config else {
             return Err(anyhow::anyhow!("Rollup config not loaded."));
@@ -810,7 +809,7 @@ impl OPSuccinctDataFetcher {
             agreed_l2_head_hash,
             claimed_l2_output_root,
             claimed_l2_block_number: l2_end_block,
-            intermediate_block_interval: DEFAULT_INTERMEDIATE_ROOT_INTERVAL,
+            intermediate_block_interval,
             l1_head_number,
             // We don't need to set the proposer or image hash for the range proof zk program
             proposer: Address::ZERO,

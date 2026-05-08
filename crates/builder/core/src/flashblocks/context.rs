@@ -7,13 +7,13 @@ use std::{
 use alloy_consensus::{Eip658Value, Transaction};
 use alloy_eips::{Encodable2718, Typed2718};
 use alloy_evm::Database;
-use alloy_primitives::{B256, BlockHash, Bytes, TxHash, U256};
+use alloy_primitives::{BlockHash, Bytes, TxHash, U256};
 use alloy_rpc_types_eth::Withdrawals;
 use base_access_lists::FBALBuilderDb;
 use base_bundles::{MeterBundleResponse, RejectedTransaction, RejectionReason};
 use base_common_chains::Upgrades;
 use base_common_consensus::{BaseReceipt, BaseTransactionSigned, DepositReceipt, OpTxType};
-use base_common_evm::{BaseReceiptBuilder, L1BlockInfo, OpSpecId};
+use base_common_evm::{BaseReceiptBuilder, BaseSpecId, L1BlockInfo};
 use base_execution_chainspec::BaseChainSpec;
 use base_execution_evm::{BaseEvmConfig, BaseNextBlockEnvAttributes};
 use base_execution_payload_builder::{
@@ -285,7 +285,7 @@ pub struct BasePayloadBuilderCtx {
     /// How to build the payload.
     pub config: PayloadConfig<BasePayloadBuilderAttributes<BaseTransactionSigned>>,
     /// Evm Settings
-    pub evm_env: EvmEnv<OpSpecId>,
+    pub evm_env: EvmEnv<BaseSpecId>,
     /// Block env attributes for the current block.
     pub block_env_attributes: BaseNextBlockEnvAttributes,
     /// Marker to check whether the job has been cancelled.
@@ -1111,6 +1111,9 @@ impl BasePayloadBuilderCtx {
         }
     }
 }
+
+#[cfg(any(test, feature = "test-utils"))]
+use alloy_primitives::B256;
 
 #[cfg(any(test, feature = "test-utils"))]
 impl BasePayloadBuilderCtx {

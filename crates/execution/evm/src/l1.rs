@@ -3,7 +3,7 @@
 use alloy_consensus::Transaction;
 use alloy_primitives::{U16, U256, hex};
 use base_common_chains::Upgrades;
-use base_common_evm::{L1BlockInfo, OpSpecId};
+use base_common_evm::{BaseSpecId, L1BlockInfo};
 use reth_execution_errors::BlockExecutionError;
 use reth_primitives_traits::BlockBody;
 
@@ -299,29 +299,31 @@ pub fn parse_l1_info_tx_jovian(data: &[u8]) -> Result<L1BlockInfo, BaseBlockExec
     })
 }
 
-/// Returns the [`OpSpecId`] at the given timestamp using the [`Upgrades`] trait from
+/// Returns the [`BaseSpecId`] at the given timestamp using the [`Upgrades`] trait from
 /// `base-common-chains`.
-fn base_spec_id(chain_spec: &impl Upgrades, timestamp: u64) -> OpSpecId {
-    if chain_spec.is_base_azul_active_at_timestamp(timestamp) {
-        OpSpecId::AZUL
+fn base_spec_id(chain_spec: &impl Upgrades, timestamp: u64) -> BaseSpecId {
+    if chain_spec.is_beryl_active_at_timestamp(timestamp) {
+        BaseSpecId::BERYL
+    } else if chain_spec.is_base_azul_active_at_timestamp(timestamp) {
+        BaseSpecId::AZUL
     } else if chain_spec.is_jovian_active_at_timestamp(timestamp) {
-        OpSpecId::JOVIAN
+        BaseSpecId::JOVIAN
     } else if chain_spec.is_isthmus_active_at_timestamp(timestamp) {
-        OpSpecId::ISTHMUS
+        BaseSpecId::ISTHMUS
     } else if chain_spec.is_holocene_active_at_timestamp(timestamp) {
-        OpSpecId::HOLOCENE
+        BaseSpecId::HOLOCENE
     } else if chain_spec.is_granite_active_at_timestamp(timestamp) {
-        OpSpecId::GRANITE
+        BaseSpecId::GRANITE
     } else if chain_spec.is_fjord_active_at_timestamp(timestamp) {
-        OpSpecId::FJORD
+        BaseSpecId::FJORD
     } else if chain_spec.is_ecotone_active_at_timestamp(timestamp) {
-        OpSpecId::ECOTONE
+        BaseSpecId::ECOTONE
     } else if chain_spec.is_canyon_active_at_timestamp(timestamp) {
-        OpSpecId::CANYON
+        BaseSpecId::CANYON
     } else if chain_spec.is_regolith_active_at_timestamp(timestamp) {
-        OpSpecId::REGOLITH
+        BaseSpecId::REGOLITH
     } else {
-        OpSpecId::BEDROCK
+        BaseSpecId::BEDROCK
     }
 }
 
@@ -391,7 +393,7 @@ mod tests {
     use alloy_primitives::{Bytes, hex_literal::hex, keccak256};
     use base_common_chains::Upgrades;
     use base_common_consensus::BaseTransactionSigned;
-    use base_execution_chainspec::BASE_MAINNET;
+    use base_execution_chainspec::BaseChainSpec;
 
     use super::*;
 
@@ -424,12 +426,12 @@ mod tests {
     fn sanity_l1_block_ecotone() {
         // rig
 
-        // OP mainnet ecotone block 118024092
+        // OP Mainnet Ecotone compatibility fixture, block 118024092.
         // <https://optimistic.etherscan.io/block/118024092>
         const TIMESTAMP: u64 = 1711603765;
-        assert!(BASE_MAINNET.is_ecotone_active_at_timestamp(TIMESTAMP));
+        assert!(BaseChainSpec::mainnet().is_ecotone_active_at_timestamp(TIMESTAMP));
 
-        // First transaction in OP mainnet block 118024092
+        // First transaction in the OP Mainnet compatibility fixture, block 118024092.
         //
         // https://optimistic.etherscan.io/getRawTx?tx=0x88501da5d5ca990347c2193be90a07037af1e3820bb40774c8154871c7669150
         const TX: [u8; 251] = hex!(
@@ -466,7 +468,8 @@ mod tests {
     fn parse_l1_info_fjord() {
         // rig
 
-        // L1 block info for OP mainnet block 124665056 (stored in input of tx at index 0)
+        // L1 block info from an OP Mainnet compatibility fixture, block 124665056
+        // (stored in input of tx at index 0).
         //
         // https://optimistic.etherscan.io/tx/0x312e290cf36df704a2217b015d6455396830b0ce678b860ebfcc30f41403d7b1
         const DATA: &[u8] = &hex!(

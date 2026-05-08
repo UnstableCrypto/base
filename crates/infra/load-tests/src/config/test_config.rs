@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{
+    metrics::ConfigSummary,
     runner::{TxConfig, TxType},
     utils::{BaselineError, Result},
 };
@@ -135,6 +136,10 @@ pub struct TestConfig {
     /// WebSocket URL for flashblocks subscription.
     #[serde(default, alias = "flashblocks_url")]
     pub flashblocks_ws_url: Option<Url>,
+    /// Separate HTTP JSON-RPC endpoint for confirmation polling.
+    /// Defaults to `rpc` when not set.
+    #[serde(default)]
+    pub confirmer_url: Option<Url>,
 }
 
 impl Default for TestConfig {
@@ -157,6 +162,7 @@ impl Default for TestConfig {
             swap_token_amount: default_swap_token_amount(),
             block_watcher_url: None,
             flashblocks_ws_url: None,
+            confirmer_url: None,
         }
     }
 }
@@ -179,6 +185,7 @@ impl fmt::Debug for TestConfig {
             .field("swap_token_amount", &self.swap_token_amount)
             .field("block_watcher_url", &self.block_watcher_url)
             .field("flashblocks_ws_url", &self.flashblocks_ws_url)
+            .field("confirmer_url", &self.confirmer_url)
             .finish()
     }
 }
@@ -416,6 +423,32 @@ impl TestConfig {
         })
     }
 
+    /// Returns a summary of the config for JSON output (excludes URLs and secrets).
+    pub fn to_summary(&self) -> ConfigSummary {
+        ConfigSummary {
+            funding_amount: self.funding_amount.clone(),
+            sender_count: self.sender_count,
+            sender_offset: self.sender_offset,
+            in_flight_per_sender: self.in_flight_per_sender,
+            batch_size: self.batch_size,
+            batch_timeout: self.batch_timeout.clone(),
+            duration: self.duration.clone(),
+            target_gps: self.target_gps,
+            seed: self.seed,
+            chain_id: self.chain_id,
+            transactions: serde_json::to_value(&self.transactions)
+                .inspect_err(|e| {
+                    tracing::warn!(
+                        error = %e,
+                        "failed to serialize transactions for config summary"
+                    );
+                })
+                .unwrap_or_default(),
+            looper_contract: self.looper_contract.clone(),
+            swap_token_amount: self.swap_token_amount.clone(),
+        }
+    }
+
     /// Converts this test config into a `LoadConfig` for runtime use.
     pub fn to_load_config(
         &self,
@@ -461,6 +494,7 @@ impl TestConfig {
             max_gas_price: crate::runner::DEFAULT_MAX_GAS_PRICE,
             block_watcher_url: self.block_watcher_url.clone(),
             flashblocks_ws_url: self.flashblocks_ws_url.clone(),
+            confirmer_url: self.confirmer_url.clone(),
         })
     }
 
