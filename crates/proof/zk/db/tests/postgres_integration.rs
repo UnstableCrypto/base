@@ -524,6 +524,34 @@ async fn test_activate_reserved_proof_session() {
 
 #[tokio::test]
 #[ignore = "requires a running Postgres with the prover schema (set DATABASE_URL); run with `cargo nextest run --run-ignored all -p base-zk-db --test postgres_integration --test-threads=1`"]
+async fn test_fail_reserved_proof_session() {
+    let pool = test_pool().await;
+    let repo = test_repo(pool);
+
+    let req_id = repo.create(snark_request()).await.unwrap();
+    let reservation_id = repo
+        .reserve_proof_session(req_id, SessionType::Snark)
+        .await
+        .unwrap()
+        .expect("reservation should win");
+
+    let failed =
+        repo.fail_reserved_proof_session(&reservation_id, "submission failed").await.unwrap();
+    assert!(failed);
+
+    let session =
+        repo.get_session_by_backend_id(&reservation_id).await.unwrap().expect("session exists");
+    assert_eq!(session.status, SessionStatus::Failed);
+    assert_eq!(session.error_message.as_deref(), Some("submission failed"));
+    assert!(session.completed_at.is_some());
+
+    let failed_again =
+        repo.fail_reserved_proof_session(&reservation_id, "submission failed again").await.unwrap();
+    assert!(!failed_again, "reservation should only fail while SUBMITTING");
+}
+
+#[tokio::test]
+#[ignore = "requires a running Postgres with the prover schema (set DATABASE_URL); run with `cargo nextest run --run-ignored all -p base-zk-db --test postgres_integration --test-threads=1`"]
 async fn test_update_proof_session() {
     let pool = test_pool().await;
     let repo = test_repo(pool);
@@ -756,6 +784,32 @@ async fn test_retry_or_fail_stuck_request_retries() {
     assert_eq!(req.status, ProofStatus::Created);
     assert_eq!(req.retry_count, 1);
     assert!(req.error_message.is_none());
+}
+
+#[tokio::test]
+#[ignore = "requires a running Postgres with the prover schema (set DATABASE_URL); run with `cargo nextest run --run-ignored all -p base-zk-db --test postgres_integration --test-threads=1`"]
+async fn test_get_stuck_requests_excludes_submitting_session() {
+    let pool = test_pool().await;
+    let repo = test_repo(pool.clone());
+
+    let id = repo.create(snark_request()).await.unwrap();
+    repo.atomic_claim_task(id).await.unwrap();
+    repo.reserve_proof_session(id, SessionType::Snark).await.unwrap().expect("reservation wins");
+
+    sqlx::query(
+        r#"
+        UPDATE proof_requests
+        SET updated_at = NOW() - INTERVAL '10 minutes'
+        WHERE id = $1
+        "#,
+    )
+    .bind(id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let stuck = repo.get_stuck_requests(1).await.unwrap();
+    assert!(!stuck.iter().any(|request| request.id == id));
 }
 
 #[tokio::test]

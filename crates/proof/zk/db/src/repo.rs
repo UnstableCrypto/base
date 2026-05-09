@@ -693,9 +693,9 @@ impl ProofRequestRepo {
         rows.iter().map(row_to_proof_request).collect()
     }
 
-    /// Get proof requests that are stuck in PENDING without a running session.
+    /// Get proof requests that are stuck in PENDING without an active session.
     /// These are likely orphaned due to crashes before session creation.
-    /// Only checks for active (RUNNING) sessions so that retried requests
+    /// Only checks for active (SUBMITTING/RUNNING) sessions so that retried requests
     /// with old COMPLETED/FAILED sessions are still detected as stuck.
     pub async fn get_stuck_requests(&self, stuck_timeout_mins: i32) -> Result<Vec<ProofRequest>> {
         let rows = sqlx::query(
@@ -712,7 +712,7 @@ impl ProofRequestRepo {
               AND NOT EXISTS (
                   SELECT 1 FROM proof_sessions ps
                   WHERE ps.proof_request_id = pr.id
-                    AND ps.status = 'RUNNING'
+                    AND ps.status IN ('SUBMITTING', 'RUNNING')
               )
             ORDER BY pr.created_at ASC
             "#,
