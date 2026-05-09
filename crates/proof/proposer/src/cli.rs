@@ -87,9 +87,13 @@ pub struct ProposerArgs {
     #[arg(long = "game-type", env = cli_env!("GAME_TYPE"))]
     pub game_type: u32,
 
-    /// Keccak256 hash of the TEE image PCR0 (0x-prefixed hex).
-    #[arg(long = "tee-image-hash", env = cli_env!("TEE_IMAGE_HASH"))]
-    pub tee_image_hash: B256,
+    /// Keccak256 hash of the Nitro TEE image PCR0 (0x-prefixed hex).
+    #[arg(long = "tee-nitro-image-hash", env = cli_env!("TEE_NITRO_IMAGE_HASH"))]
+    pub tee_nitro_image_hash: B256,
+
+    /// Contract-compatible hash of the TDX TEE image measurements (0x-prefixed hex).
+    #[arg(long = "tee-tdx-image-hash", env = cli_env!("TEE_TDX_IMAGE_HASH"))]
+    pub tee_tdx_image_hash: B256,
 
     /// Polling interval for new blocks (e.g., "12s", "1m").
     #[arg(
@@ -253,8 +257,10 @@ mod tests {
             "0x2234567890123456789012345678901234567890",
             "--game-type",
             "1",
-            "--tee-image-hash",
+            "--tee-nitro-image-hash",
             "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "--tee-tdx-image-hash",
+            "0x0000000000000000000000000000000000000000000000000000000000000002",
             "--rollup-rpc",
             "http://localhost:7545",
         ];
@@ -270,6 +276,18 @@ mod tests {
         assert_eq!(cli.proposer.rollup_rpc.as_str(), "http://localhost:7545/");
         assert!(!cli.proposer.skip_tls_verify);
         assert_eq!(cli.proposer.game_type, 1);
+        assert_eq!(
+            cli.proposer.tee_nitro_image_hash,
+            "0x0000000000000000000000000000000000000000000000000000000000000001"
+                .parse::<B256>()
+                .unwrap()
+        );
+        assert_eq!(
+            cli.proposer.tee_tdx_image_hash,
+            "0x0000000000000000000000000000000000000000000000000000000000000002"
+                .parse::<B256>()
+                .unwrap()
+        );
         assert_eq!(cli.proposer.max_parallel_proofs, 1);
 
         assert_eq!(cli.logging.level, 3);
@@ -322,8 +340,10 @@ mod tests {
             "0x2234567890123456789012345678901234567890",
             "--game-type",
             "1",
-            "--tee-image-hash",
+            "--tee-nitro-image-hash",
             "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "--tee-tdx-image-hash",
+            "0x0000000000000000000000000000000000000000000000000000000000000002",
         ];
         assert!(Cli::try_parse_from(args).is_err());
     }

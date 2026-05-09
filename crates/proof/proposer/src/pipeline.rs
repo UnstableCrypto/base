@@ -410,6 +410,8 @@ where
                 Ok(request) => {
                     let claimed_output = request.claimed_l2_output_root;
                     let proof_sources = self.proof_sources.clone();
+                    let nitro_image_hash = self.config.driver.tee_nitro_image_hash;
+                    let tdx_image_hash = self.config.driver.tee_tdx_image_hash;
                     let target = cursor;
                     let cancel = self.cancel.child_token();
 
@@ -430,7 +432,7 @@ where
                                     error: ProposerError::Internal("cancelled".into()),
                                 }))
                             }
-                            result = proof_sources.prove(request) => {
+                            result = proof_sources.prove(request, nitro_image_hash, tdx_image_hash) => {
                                 drop(proof_timer);
                                 (target, result)
                             }
@@ -1009,7 +1011,7 @@ where
             proposer: self.config.driver.proposer_address,
             intermediate_block_interval: self.config.driver.intermediate_block_interval,
             l1_head_number: l1_head.number,
-            image_hash: self.config.driver.tee_image_hash,
+            image_hash: B256::ZERO,
         };
 
         info!(request = ?request, "Built proof request for parallel proving");
@@ -1039,7 +1041,10 @@ where
             ending_l2_block: aggregate_proposal.l2_block_number,
             intermediate_roots: intermediate_roots.to_vec(),
             config_hash: aggregate_proposal.config_hash,
-            tee_image_hash: self.config.driver.tee_image_hash,
+            tee_image_hash: match platform {
+                TeeProofPlatform::Nitro => self.config.driver.tee_nitro_image_hash,
+                TeeProofPlatform::Tdx => self.config.driver.tee_tdx_image_hash,
+            },
         };
         let digest = keccak256(journal.encode());
 
@@ -1076,7 +1081,7 @@ where
                 registry_address,
                 ITEEProverRegistry::signerImageHashCall { signer }
             ),
-            self.call_registry(registry_address, ITEEProverRegistry::getExpectedImageHashCall {}),
+            self.call_expected_image_hash(registry_address, platform),
         );
 
         let is_registered = match registered_res {
@@ -1105,6 +1110,29 @@ where
         };
 
         Ok(SignerValidity::WrongImageHash { signer, signer_image_hash, expected_image_hash })
+    }
+
+    async fn call_expected_image_hash(
+        &self,
+        registry_address: Address,
+        platform: TeeProofPlatform,
+    ) -> Result<B256, ProposerError> {
+        match platform {
+            TeeProofPlatform::Nitro => {
+                self.call_registry(
+                    registry_address,
+                    ITEEProverRegistry::getExpectedNitroImageHashCall {},
+                )
+                .await
+            }
+            TeeProofPlatform::Tdx => {
+                self.call_registry(
+                    registry_address,
+                    ITEEProverRegistry::getExpectedTDXImageHashCall {},
+                )
+                .await
+            }
+        }
     }
 
     /// Issues a single `ITEEProverRegistry` call and decodes the typed return.
@@ -1307,11 +1335,16 @@ where
             "Proposing output (creating dispute game)"
         );
 
-        let proof_data = proof_result.build_proof_data().map_err(|e| {
-            SubmitAction::Failed(ProposerError::Internal(format!(
-                "failed to build dual-platform proof data: {e}"
-            )))
-        })?;
+        let proof_data = proof_result
+            .build_proof_data(
+                self.config.driver.tee_nitro_image_hash,
+                self.config.driver.tee_tdx_image_hash,
+            )
+            .map_err(|e| {
+                SubmitAction::Failed(ProposerError::Internal(format!(
+                    "failed to build dual-platform proof data: {e}"
+                )))
+            })?;
 
         // Submit with timeout.
         let mut propose_timer = base_metrics::timed!(Metrics::proposal_l1_tx_duration_seconds());
@@ -1507,6 +1540,12 @@ mod tests {
     /// Default mock prover delay for recovery tests (minimal).
     const MOCK_PROVER_DELAY: Duration = Duration::from_millis(1);
 
+    /// Nitro image hash used by signer-validation tests.
+    const TEST_NITRO_IMAGE_HASH: B256 = B256::repeat_byte(0x55);
+
+    /// TDX image hash used by signer-validation tests.
+    const TEST_TDX_IMAGE_HASH: B256 = B256::repeat_byte(0x66);
+
     // ---- Helper builders for game data ----
 
     /// Helper: unique proxy address derived from an index.
@@ -1601,7 +1640,9 @@ mod tests {
     #[derive(Debug)]
     struct MockRegistryL1 {
         latest_block_number: u64,
-        expected_image_hash: B256,
+        expected_nitro_image_hash: B256,
+        expected_tdx_image_hash: B256,
+        signer_expected_image_hashes: HashMap<Address, B256>,
         signer_image_hashes: HashMap<Address, B256>,
         failing_call: Option<RegistryCall>,
         failing_signer: Option<Address>,
@@ -1655,7 +1696,8 @@ mod tests {
                 let is_valid = self
                     .signer_image_hashes
                     .get(&signer)
-                    .is_some_and(|image_hash| *image_hash == self.expected_image_hash);
+                    .zip(self.signer_expected_image_hashes.get(&signer))
+                    .is_some_and(|(image_hash, expected)| image_hash == expected);
                 return Ok(Bytes::from(SolValue::abi_encode(&is_valid)));
             }
             if selector == ITEEProverRegistry::isRegisteredSignerCall::SELECTOR.as_slice() {
@@ -1674,11 +1716,19 @@ mod tests {
                 let image_hash = self.signer_image_hashes.get(&signer).copied().unwrap_or_default();
                 return Ok(Bytes::from(SolValue::abi_encode(&image_hash)));
             }
-            if selector == ITEEProverRegistry::getExpectedImageHashCall::SELECTOR.as_slice() {
+            if selector == ITEEProverRegistry::getExpectedNitroImageHashCall::SELECTOR.as_slice() {
                 if self.failing_call == Some(RegistryCall::GetExpectedImageHash) {
-                    return Err(RpcError::InvalidResponse("getExpectedImageHash failed".into()));
+                    return Err(RpcError::InvalidResponse(
+                        "getExpectedNitroImageHash failed".into(),
+                    ));
                 }
-                return Ok(Bytes::from(SolValue::abi_encode(&self.expected_image_hash)));
+                return Ok(Bytes::from(SolValue::abi_encode(&self.expected_nitro_image_hash)));
+            }
+            if selector == ITEEProverRegistry::getExpectedTDXImageHashCall::SELECTOR.as_slice() {
+                if self.failing_call == Some(RegistryCall::GetExpectedImageHash) {
+                    return Err(RpcError::InvalidResponse("getExpectedTDXImageHash failed".into()));
+                }
+                return Ok(Bytes::from(SolValue::abi_encode(&self.expected_tdx_image_hash)));
             }
             Err(RpcError::InvalidResponse("unexpected registry call".into()))
         }
@@ -2511,7 +2561,7 @@ mod tests {
             proposer: Address::repeat_byte(0x44),
             intermediate_block_interval: SUBMIT_INTERMEDIATE_INTERVAL,
             l1_head_number: TEST_L1_BLOCK_NUMBER,
-            image_hash: B256::repeat_byte(0x55),
+            image_hash: B256::ZERO,
         }
     }
 
@@ -2527,7 +2577,7 @@ mod tests {
             calls: Arc::clone(&calls),
             block_interval: SUBMIT_BLOCK_INTERVAL,
             proposer_address: request.proposer,
-            tee_image_hash: request.image_hash,
+            tee_image_hash: TEST_NITRO_IMAGE_HASH,
         });
         let tdx: Arc<dyn ProverClient> = Arc::new(RecordingSignedProver {
             platform: TeeProofPlatform::Tdx,
@@ -2535,7 +2585,7 @@ mod tests {
             calls,
             block_interval: SUBMIT_BLOCK_INTERVAL,
             proposer_address: request.proposer,
-            tee_image_hash: request.image_hash,
+            tee_image_hash: TEST_TDX_IMAGE_HASH,
         });
         TeeProofSources::new(nitro, tdx)
     }
@@ -2566,7 +2616,8 @@ mod tests {
                     block_interval: SUBMIT_BLOCK_INTERVAL,
                     intermediate_block_interval: SUBMIT_INTERMEDIATE_INTERVAL,
                     proposer_address: request.proposer,
-                    tee_image_hash: request.image_hash,
+                    tee_nitro_image_hash: TEST_NITRO_IMAGE_HASH,
+                    tee_tdx_image_hash: TEST_TDX_IMAGE_HASH,
                     ..Default::default()
                 },
             },
@@ -2594,12 +2645,19 @@ mod tests {
         let sources = recording_sources(Arc::clone(&calls), nitro_signer, tdx_signer);
         let request = signed_proof_request();
 
-        let proof = sources.prove(request.clone()).await.unwrap();
+        let proof = sources
+            .prove(request.clone(), TEST_NITRO_IMAGE_HASH, TEST_TDX_IMAGE_HASH)
+            .await
+            .unwrap();
 
         let calls = calls.lock().unwrap();
         assert_eq!(calls.len(), 2);
-        assert!(calls.contains(&(TeeProofPlatform::Nitro, request.clone())));
-        assert!(calls.contains(&(TeeProofPlatform::Tdx, request)));
+        let mut nitro_request = request.clone();
+        nitro_request.image_hash = TEST_NITRO_IMAGE_HASH;
+        let mut tdx_request = request;
+        tdx_request.image_hash = TEST_TDX_IMAGE_HASH;
+        assert!(calls.contains(&(TeeProofPlatform::Nitro, nitro_request)));
+        assert!(calls.contains(&(TeeProofPlatform::Tdx, tdx_request)));
         let nitro_aggregate = &proof.nitro.aggregate_proposal;
         let tdx_aggregate = &proof.tdx.aggregate_proposal;
         assert_ne!(nitro_aggregate.signature, tdx_aggregate.signature);
@@ -2616,7 +2674,10 @@ mod tests {
         let tdx: Arc<dyn ProverClient> = Arc::new(FailingProver { message: "unavailable" });
         let sources = TeeProofSources::new(nitro, tdx);
 
-        let error = sources.prove(signed_proof_request()).await.unwrap_err();
+        let error = sources
+            .prove(signed_proof_request(), TEST_NITRO_IMAGE_HASH, TEST_TDX_IMAGE_HASH)
+            .await
+            .unwrap_err();
 
         assert!(matches!(&error, TeeProofError::Platform { platform: TeeProofPlatform::Tdx, .. }));
         assert_eq!(
@@ -2633,15 +2694,23 @@ mod tests {
         let sources =
             recording_sources(Arc::clone(&calls), nitro_signer.clone(), tdx_signer.clone());
         let request = signed_proof_request();
-        let proof = sources.prove(request.clone()).await.unwrap();
+        let proof = sources
+            .prove(request.clone(), TEST_NITRO_IMAGE_HASH, TEST_TDX_IMAGE_HASH)
+            .await
+            .unwrap();
         let readiness = Arc::new(AtomicBool::new(false));
         let pipeline = registry_pipeline(
             MockRegistryL1 {
                 latest_block_number: TEST_L1_BLOCK_NUMBER,
-                expected_image_hash: request.image_hash,
+                expected_nitro_image_hash: TEST_NITRO_IMAGE_HASH,
+                expected_tdx_image_hash: TEST_TDX_IMAGE_HASH,
+                signer_expected_image_hashes: HashMap::from([
+                    (nitro_signer.address(), TEST_NITRO_IMAGE_HASH),
+                    (tdx_signer.address(), TEST_TDX_IMAGE_HASH),
+                ]),
                 signer_image_hashes: HashMap::from([
-                    (nitro_signer.address(), request.image_hash),
-                    (tdx_signer.address(), request.image_hash),
+                    (nitro_signer.address(), TEST_NITRO_IMAGE_HASH),
+                    (tdx_signer.address(), TEST_TDX_IMAGE_HASH),
                 ]),
                 failing_call: None,
                 failing_signer: None,
@@ -2664,15 +2733,23 @@ mod tests {
         let sources =
             recording_sources(Arc::clone(&calls), nitro_signer.clone(), tdx_signer.clone());
         let request = signed_proof_request();
-        let proof = sources.prove(request.clone()).await.unwrap();
+        let proof = sources
+            .prove(request.clone(), TEST_NITRO_IMAGE_HASH, TEST_TDX_IMAGE_HASH)
+            .await
+            .unwrap();
         let readiness = Arc::new(AtomicBool::new(true));
         let pipeline = registry_pipeline(
             MockRegistryL1 {
                 latest_block_number: TEST_L1_BLOCK_NUMBER,
-                expected_image_hash: request.image_hash,
+                expected_nitro_image_hash: TEST_NITRO_IMAGE_HASH,
+                expected_tdx_image_hash: TEST_TDX_IMAGE_HASH,
+                signer_expected_image_hashes: HashMap::from([
+                    (nitro_signer.address(), TEST_NITRO_IMAGE_HASH),
+                    (tdx_signer.address(), TEST_TDX_IMAGE_HASH),
+                ]),
                 signer_image_hashes: HashMap::from([
-                    (nitro_signer.address(), request.image_hash),
-                    (tdx_signer.address(), request.image_hash),
+                    (nitro_signer.address(), TEST_NITRO_IMAGE_HASH),
+                    (tdx_signer.address(), TEST_TDX_IMAGE_HASH),
                 ]),
                 failing_call: Some(RegistryCall::IsValidSigner),
                 failing_signer: Some(tdx_signer.address()),
@@ -2690,10 +2767,15 @@ mod tests {
         let retry_pipeline = registry_pipeline(
             MockRegistryL1 {
                 latest_block_number: TEST_L1_BLOCK_NUMBER,
-                expected_image_hash: request.image_hash,
+                expected_nitro_image_hash: TEST_NITRO_IMAGE_HASH,
+                expected_tdx_image_hash: TEST_TDX_IMAGE_HASH,
+                signer_expected_image_hashes: HashMap::from([
+                    (nitro_signer.address(), TEST_NITRO_IMAGE_HASH),
+                    (tdx_signer.address(), TEST_TDX_IMAGE_HASH),
+                ]),
                 signer_image_hashes: HashMap::from([
-                    (nitro_signer.address(), request.image_hash),
-                    (tdx_signer.address(), request.image_hash),
+                    (nitro_signer.address(), TEST_NITRO_IMAGE_HASH),
+                    (tdx_signer.address(), TEST_TDX_IMAGE_HASH),
                 ]),
                 failing_call: None,
                 failing_signer: None,
@@ -2715,12 +2797,17 @@ mod tests {
         let tdx_signer = PrivateKeySigner::from_slice(&[6u8; 32]).unwrap();
         let sources = recording_sources(calls, nitro_signer, tdx_signer);
         let request = signed_proof_request();
-        let proof = sources.prove(request.clone()).await.unwrap();
+        let proof = sources
+            .prove(request.clone(), TEST_NITRO_IMAGE_HASH, TEST_TDX_IMAGE_HASH)
+            .await
+            .unwrap();
         let readiness = Arc::new(AtomicBool::new(true));
         let pipeline = registry_pipeline(
             MockRegistryL1 {
                 latest_block_number: TEST_L1_BLOCK_NUMBER,
-                expected_image_hash: request.image_hash,
+                expected_nitro_image_hash: TEST_NITRO_IMAGE_HASH,
+                expected_tdx_image_hash: TEST_TDX_IMAGE_HASH,
+                signer_expected_image_hashes: HashMap::new(),
                 signer_image_hashes: HashMap::new(),
                 failing_call: None,
                 failing_signer: None,
@@ -2743,15 +2830,23 @@ mod tests {
         let tdx_signer = PrivateKeySigner::from_slice(&[8u8; 32]).unwrap();
         let sources = recording_sources(calls, nitro_signer.clone(), tdx_signer.clone());
         let request = signed_proof_request();
-        let proof = sources.prove(request.clone()).await.unwrap();
+        let proof = sources
+            .prove(request.clone(), TEST_NITRO_IMAGE_HASH, TEST_TDX_IMAGE_HASH)
+            .await
+            .unwrap();
         let readiness = Arc::new(AtomicBool::new(true));
         let pipeline = registry_pipeline(
             MockRegistryL1 {
                 latest_block_number: TEST_L1_BLOCK_NUMBER,
-                expected_image_hash: request.image_hash,
+                expected_nitro_image_hash: TEST_NITRO_IMAGE_HASH,
+                expected_tdx_image_hash: TEST_TDX_IMAGE_HASH,
+                signer_expected_image_hashes: HashMap::from([
+                    (nitro_signer.address(), TEST_NITRO_IMAGE_HASH),
+                    (tdx_signer.address(), TEST_TDX_IMAGE_HASH),
+                ]),
                 signer_image_hashes: HashMap::from([
                     (nitro_signer.address(), B256::repeat_byte(0x99)),
-                    (tdx_signer.address(), request.image_hash),
+                    (tdx_signer.address(), TEST_TDX_IMAGE_HASH),
                 ]),
                 failing_call: None,
                 failing_signer: None,
@@ -2780,15 +2875,23 @@ mod tests {
         let tdx_signer = PrivateKeySigner::from_slice(&[10u8; 32]).unwrap();
         let sources = recording_sources(calls, nitro_signer.clone(), tdx_signer.clone());
         let request = signed_proof_request();
-        let proof = sources.prove(request.clone()).await.unwrap();
+        let proof = sources
+            .prove(request.clone(), TEST_NITRO_IMAGE_HASH, TEST_TDX_IMAGE_HASH)
+            .await
+            .unwrap();
         let readiness = Arc::new(AtomicBool::new(true));
         let pipeline = registry_pipeline(
             MockRegistryL1 {
                 latest_block_number: TEST_L1_BLOCK_NUMBER,
-                expected_image_hash: request.image_hash,
+                expected_nitro_image_hash: TEST_NITRO_IMAGE_HASH,
+                expected_tdx_image_hash: TEST_TDX_IMAGE_HASH,
+                signer_expected_image_hashes: HashMap::from([
+                    (nitro_signer.address(), TEST_NITRO_IMAGE_HASH),
+                    (tdx_signer.address(), TEST_TDX_IMAGE_HASH),
+                ]),
                 signer_image_hashes: HashMap::from([
                     (nitro_signer.address(), B256::repeat_byte(0x99)),
-                    (tdx_signer.address(), request.image_hash),
+                    (tdx_signer.address(), TEST_TDX_IMAGE_HASH),
                 ]),
                 failing_call: Some(failing_call),
                 failing_signer: None,
@@ -2810,7 +2913,9 @@ mod tests {
         let pipeline = registry_pipeline(
             MockRegistryL1 {
                 latest_block_number: TEST_L1_BLOCK_NUMBER,
-                expected_image_hash: B256::repeat_byte(0x55),
+                expected_nitro_image_hash: TEST_NITRO_IMAGE_HASH,
+                expected_tdx_image_hash: TEST_TDX_IMAGE_HASH,
+                signer_expected_image_hashes: HashMap::new(),
                 signer_image_hashes: HashMap::new(),
                 failing_call: None,
                 failing_signer: None,
@@ -2852,7 +2957,9 @@ mod tests {
         let pipeline = registry_pipeline(
             MockRegistryL1 {
                 latest_block_number: TEST_L1_BLOCK_NUMBER,
-                expected_image_hash: B256::repeat_byte(0x55),
+                expected_nitro_image_hash: TEST_NITRO_IMAGE_HASH,
+                expected_tdx_image_hash: TEST_TDX_IMAGE_HASH,
+                signer_expected_image_hashes: HashMap::new(),
                 signer_image_hashes: HashMap::new(),
                 failing_call: None,
                 failing_signer: None,
@@ -2876,7 +2983,9 @@ mod tests {
         let pipeline = registry_pipeline(
             MockRegistryL1 {
                 latest_block_number: TEST_L1_BLOCK_NUMBER,
-                expected_image_hash: B256::repeat_byte(0x55),
+                expected_nitro_image_hash: TEST_NITRO_IMAGE_HASH,
+                expected_tdx_image_hash: TEST_TDX_IMAGE_HASH,
+                signer_expected_image_hashes: HashMap::new(),
                 signer_image_hashes: HashMap::new(),
                 failing_call: None,
                 failing_signer: None,

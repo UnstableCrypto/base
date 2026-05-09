@@ -2,7 +2,7 @@
 
 use std::{error::Error as StdError, fmt, sync::Arc};
 
-use alloy_primitives::Bytes;
+use alloy_primitives::{B256, Bytes};
 use base_proof_primitives::{
     CryptoError, ProofEncoder, ProofRequest, ProofResult, Proposal, ProverClient,
 };
@@ -91,13 +91,23 @@ impl DualPlatformProof {
     /// Builds the proof bytes submitted to `AggregateVerifier.initializeWithInitData()`.
     ///
     /// The proof layout is:
-    /// `proofType(1) || l1OriginHash(32) || l1OriginNumber(32) || nitroSignature(65) || tdxSignature(65)`.
-    pub fn build_proof_data(&self) -> Result<Bytes, CryptoError> {
+    ///
+    /// ```text
+    /// proofType(1) || l1OriginHash(32) || l1OriginNumber(32) || nitroImageHash(32)
+    ///     || nitroSignature(65) || tdxImageHash(32) || tdxSignature(65)
+    /// ```
+    pub fn build_proof_data(
+        &self,
+        nitro_image_hash: B256,
+        tdx_image_hash: B256,
+    ) -> Result<Bytes, CryptoError> {
         let nitro_aggregate = &self.nitro.aggregate_proposal;
         let tdx_aggregate = &self.tdx.aggregate_proposal;
 
         ProofEncoder::encode_dual_tee_proof_bytes(
+            nitro_image_hash,
             &nitro_aggregate.signature,
+            tdx_image_hash,
             &tdx_aggregate.signature,
             nitro_aggregate.l1_origin_hash,
             nitro_aggregate.l1_origin_number,
@@ -245,9 +255,16 @@ impl TeeProofSources {
     }
 
     /// Requests proofs from configured platform fleets for the same request.
-    pub async fn prove(&self, request: ProofRequest) -> Result<DualPlatformProof, TeeProofError> {
-        let nitro_request = request.clone();
-        let tdx_request = request;
+    pub async fn prove(
+        &self,
+        request: ProofRequest,
+        nitro_image_hash: B256,
+        tdx_image_hash: B256,
+    ) -> Result<DualPlatformProof, TeeProofError> {
+        let mut nitro_request = request.clone();
+        nitro_request.image_hash = nitro_image_hash;
+        let mut tdx_request = request;
+        tdx_request.image_hash = tdx_image_hash;
 
         let (nitro_result, tdx_result) =
             future::join(self.nitro.prove(nitro_request), self.tdx.prove(tdx_request)).await;
@@ -286,9 +303,7 @@ mod tests {
     };
 
     use alloy_primitives::{Address, B256};
-    use base_proof_primitives::{
-        DUAL_TEE_SIGNATURE_LENGTH, PROOF_TYPE_TEE, ProofRequest, ProofResult, ProverClient,
-    };
+    use base_proof_primitives::{PROOF_TYPE_TEE, ProofRequest, ProofResult, ProverClient};
 
     use super::*;
     use crate::test_utils::test_proposal;
@@ -369,12 +384,16 @@ mod tests {
         )
         .unwrap();
 
-        let proof_data = proof.build_proof_data().unwrap();
+        let nitro_image_hash = B256::repeat_byte(0x11);
+        let tdx_image_hash = B256::repeat_byte(0x22);
+        let proof_data = proof.build_proof_data(nitro_image_hash, tdx_image_hash).unwrap();
 
-        assert_eq!(proof_data.len(), 1 + 32 + 32 + DUAL_TEE_SIGNATURE_LENGTH);
+        assert_eq!(proof_data.len(), 1 + 32 + 32 + 32 + 65 + 32 + 65);
         assert_eq!(proof_data[0], PROOF_TYPE_TEE);
-        assert_eq!(proof_data[129], 27);
-        assert_eq!(proof_data[194], 28);
+        assert_eq!(&proof_data[65..97], nitro_image_hash.as_slice());
+        assert_eq!(proof_data[161], 27);
+        assert_eq!(&proof_data[162..194], tdx_image_hash.as_slice());
+        assert_eq!(proof_data[258], 28);
     }
 
     #[tokio::test]
@@ -386,7 +405,10 @@ mod tests {
         let tdx: Arc<dyn ProverClient> = Arc::new(CountingProver { calls: Arc::clone(&tdx_calls) });
         let sources = TeeProofSources::new(nitro, tdx);
 
-        let proof = sources.prove(proof_request()).await.unwrap();
+        let proof = sources
+            .prove(proof_request(), B256::repeat_byte(0xA1), B256::repeat_byte(0xB2))
+            .await
+            .unwrap();
 
         assert_eq!(nitro_calls.load(Ordering::SeqCst), 1);
         assert_eq!(tdx_calls.load(Ordering::SeqCst), 1);
@@ -405,7 +427,10 @@ mod tests {
         let tdx: Arc<dyn ProverClient> = Arc::new(FailingProver { calls: Arc::clone(&tdx_calls) });
         let sources = TeeProofSources::new(nitro, tdx);
 
-        let error = sources.prove(proof_request()).await.unwrap_err();
+        let error = sources
+            .prove(proof_request(), B256::repeat_byte(0xA1), B256::repeat_byte(0xB2))
+            .await
+            .unwrap_err();
 
         assert_eq!(nitro_calls.load(Ordering::SeqCst), 1);
         assert_eq!(tdx_calls.load(Ordering::SeqCst), 1);

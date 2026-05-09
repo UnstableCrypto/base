@@ -101,7 +101,7 @@ impl fmt::Display for TdxImageHashReport {
         writeln!(f, "Quote timestamp millis: {}", self.measurements.quote_timestamp_millis)?;
         writeln!(
             f,
-            "AggregateVerifier.TEE_IMAGE_HASH for TDX must equal imageHash, not the raw MRTD hash."
+            "AggregateVerifier.TEE_TDX_IMAGE_HASH must equal imageHash, not the raw MRTD hash."
         )?;
 
         if let Some(verification) = &self.quote_verification {
@@ -116,7 +116,7 @@ impl fmt::Display for TdxImageHashReport {
         if let Some(registry) = &self.registry {
             writeln!(f, "Registry address: {}", registry.registry_address)?;
             writeln!(f, "Registry signerImageHash: {}", registry.signer_image_hash)?;
-            writeln!(f, "Registry expected TEE_IMAGE_HASH: {}", registry.expected_image_hash)?;
+            writeln!(f, "Registry expected TEE_TDX_IMAGE_HASH: {}", registry.expected_image_hash)?;
             writeln!(f, "Registry isRegisteredSigner: {}", registry.is_registered_signer)?;
             writeln!(f, "Registry isValidSigner: {}", registry.is_valid_signer)?;
         }
@@ -181,7 +181,7 @@ mod tests {
 
         let rendered = report.to_string();
 
-        assert!(rendered.contains("AggregateVerifier.TEE_IMAGE_HASH"));
+        assert!(rendered.contains("AggregateVerifier.TEE_TDX_IMAGE_HASH"));
         assert!(rendered.contains("imageHash"));
         assert!(rendered.contains(&image_hash.to_string()));
     }

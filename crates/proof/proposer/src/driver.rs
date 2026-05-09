@@ -45,10 +45,14 @@ pub struct DriverConfig {
     /// Address of the proposer that submits proof transactions on-chain.
     /// Included in the proof journal so the enclave signs over the correct `msg.sender`.
     pub proposer_address: Address,
-    /// Keccak256 hash of the expected enclave PCR0 measurement.
-    /// Passed to the prover in each proof request so multi-enclave provers
+    /// Keccak256 hash of the expected Nitro enclave PCR0 measurement.
+    /// Passed to the Nitro prover in each proof request so multi-enclave provers
     /// can select the correct enclave.
-    pub tee_image_hash: B256,
+    pub tee_nitro_image_hash: B256,
+    /// Contract-compatible hash of the expected TDX TEE image measurements.
+    /// Passed to the TDX prover in each proof request so multi-enclave provers
+    /// can select the correct enclave.
+    pub tee_tdx_image_hash: B256,
     /// Address of the `AnchorStateRegistry` contract on L1.
     /// Used as the "no parent" sentinel when creating the first game from anchor state.
     pub anchor_state_registry_address: Address,
@@ -63,7 +67,8 @@ impl Default for DriverConfig {
             game_type: 0,
             allow_non_finalized: false,
             proposer_address: Address::ZERO,
-            tee_image_hash: B256::ZERO,
+            tee_nitro_image_hash: B256::ZERO,
+            tee_tdx_image_hash: B256::ZERO,
             anchor_state_registry_address: Address::ZERO,
         }
     }

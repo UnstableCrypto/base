@@ -58,8 +58,10 @@ pub struct ProposerConfig {
     pub dispute_game_factory_addr: Address,
     /// Game type ID for `AggregateVerifier` dispute games.
     pub game_type: u32,
-    /// Keccak256 hash of the TEE image PCR0.
-    pub tee_image_hash: B256,
+    /// Keccak256 hash of the Nitro TEE image PCR0.
+    pub tee_nitro_image_hash: B256,
+    /// Contract-compatible hash of the TDX TEE image measurements.
+    pub tee_tdx_image_hash: B256,
     /// Polling interval for new blocks.
     pub poll_interval: Duration,
     /// RPC request timeout.
@@ -185,7 +187,8 @@ impl ProposerConfig {
             anchor_state_registry_addr: proposer.anchor_state_registry_addr,
             dispute_game_factory_addr: proposer.dispute_game_factory_addr,
             game_type: proposer.game_type,
-            tee_image_hash: proposer.tee_image_hash,
+            tee_nitro_image_hash: proposer.tee_nitro_image_hash,
+            tee_tdx_image_hash: proposer.tee_tdx_image_hash,
             poll_interval: proposer.poll_interval,
             rpc_timeout: proposer.rpc_timeout,
             rollup_rpc: proposer.rollup_rpc,
@@ -251,7 +254,8 @@ mod tests {
                     .parse()
                     .unwrap(),
                 game_type: 1,
-                tee_image_hash: B256::repeat_byte(0x01),
+                tee_nitro_image_hash: B256::repeat_byte(0x01),
+                tee_tdx_image_hash: B256::repeat_byte(0x02),
                 poll_interval: Duration::from_secs(12),
                 rpc_timeout: Duration::from_secs(30),
                 rollup_rpc: Url::parse("http://localhost:7545").unwrap(),
@@ -298,6 +302,8 @@ mod tests {
         assert_eq!(config.nitro_prover_rpc.as_str(), "http://localhost:8080/");
         assert_eq!(config.tdx_prover_rpc.as_str(), "http://localhost:8081/");
         assert_eq!(config.game_type, 1);
+        assert_eq!(config.tee_nitro_image_hash, B256::repeat_byte(0x01));
+        assert_eq!(config.tee_tdx_image_hash, B256::repeat_byte(0x02));
         assert_eq!(config.poll_interval, Duration::from_secs(12));
         assert_eq!(config.rpc_timeout, Duration::from_secs(30));
         assert_eq!(config.max_parallel_proofs, 1);

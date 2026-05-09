@@ -199,10 +199,10 @@ impl TdxImageHashTool {
             },
             async {
                 registry
-                    .getExpectedImageHash()
+                    .getExpectedTDXImageHash()
                     .call()
                     .await
-                    .wrap_err("failed to read getExpectedImageHash")
+                    .wrap_err("failed to read getExpectedTDXImageHash")
             },
             async {
                 registry
