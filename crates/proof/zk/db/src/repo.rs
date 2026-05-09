@@ -492,6 +492,107 @@ impl ProofRequestRepo {
 
     // ========== Proof Session Methods ==========
 
+    /// Reserve a proof session slot before submitting work to the backend.
+    ///
+    /// Returns `Some(reservation_id)` if this caller created the reservation and should submit the
+    /// backend job. Returns `None` if another caller already reserved or created this session type.
+    /// A failed session may be reclaimed so manual retries can submit the SNARK stage again.
+    pub async fn reserve_proof_session(
+        &self,
+        proof_request_id: Uuid,
+        session_type: SessionType,
+    ) -> Result<Option<String>> {
+        let reservation_id =
+            format!("submitting-{}-{}", session_type.as_str().to_ascii_lowercase(), Uuid::new_v4());
+
+        let row = sqlx::query(
+            r#"
+            INSERT INTO proof_sessions (
+                proof_request_id, session_type, backend_session_id, status, metadata
+            )
+            VALUES ($1, $2, $3, $4, NULL)
+            ON CONFLICT (proof_request_id, session_type) DO UPDATE
+            SET backend_session_id = EXCLUDED.backend_session_id,
+                status = EXCLUDED.status,
+                metadata = EXCLUDED.metadata,
+                error_message = NULL,
+                completed_at = NULL,
+                created_at = NOW()
+            WHERE proof_sessions.status = $5
+            RETURNING backend_session_id
+            "#,
+        )
+        .bind(proof_request_id)
+        .bind(session_type.as_str())
+        .bind(&reservation_id)
+        .bind(SessionStatus::Submitting.as_str())
+        .bind(SessionStatus::Failed.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|r| r.get("backend_session_id")))
+    }
+
+    /// Activate a reserved proof session after the backend returns its session ID.
+    ///
+    /// Returns `true` when the reservation was found and updated.
+    pub async fn activate_reserved_proof_session(
+        &self,
+        reservation_id: &str,
+        session: CreateProofSession,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE proof_sessions
+            SET backend_session_id = $1,
+                status = $2,
+                metadata = $3,
+                error_message = NULL
+            WHERE backend_session_id = $4
+              AND proof_request_id = $5
+              AND session_type = $6
+              AND status = $7
+            "#,
+        )
+        .bind(&session.backend_session_id)
+        .bind(SessionStatus::Running.as_str())
+        .bind(&session.metadata)
+        .bind(reservation_id)
+        .bind(session.proof_request_id)
+        .bind(session.session_type.as_str())
+        .bind(SessionStatus::Submitting.as_str())
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Mark a reserved proof session as failed when backend submission fails.
+    pub async fn fail_reserved_proof_session(
+        &self,
+        reservation_id: &str,
+        error_message: &str,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE proof_sessions
+            SET status = $1,
+                error_message = $2,
+                completed_at = NOW()
+            WHERE backend_session_id = $3
+              AND status = $4
+            "#,
+        )
+        .bind(SessionStatus::Failed.as_str())
+        .bind(error_message)
+        .bind(reservation_id)
+        .bind(SessionStatus::Submitting.as_str())
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
     /// Create a new proof session
     pub async fn create_proof_session(&self, session: CreateProofSession) -> Result<i64> {
         let row = sqlx::query(
