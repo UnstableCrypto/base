@@ -588,9 +588,10 @@ impl ProofRequestRepo {
 
     /// Create a new proof session.
     ///
-    /// This is intended for direct, non-reserved session creation. It is not idempotent under the
-    /// `(proof_request_id, session_type)` uniqueness invariant; callers that need first-writer-wins
-    /// behavior should use [`Self::reserve_proof_session`] before backend submission.
+    /// This is intended for direct, non-reserved session creation. If another caller already
+    /// created the same `(proof_request_id, session_type)` row, this returns that row ID instead of
+    /// failing on the uniqueness invariant. Callers that need to avoid duplicate backend submission
+    /// should use [`Self::reserve_proof_session`] before submitting work.
     pub async fn create_proof_session(&self, session: CreateProofSession) -> Result<i64> {
         let row = sqlx::query(
             r#"
@@ -598,6 +599,8 @@ impl ProofRequestRepo {
                 proof_request_id, session_type, backend_session_id, status, metadata
             )
             VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (proof_request_id, session_type) DO UPDATE
+            SET backend_session_id = proof_sessions.backend_session_id
             RETURNING id
             "#,
         )
@@ -722,6 +725,61 @@ impl ProofRequestRepo {
         .await?;
 
         rows.iter().map(row_to_proof_request).collect()
+    }
+
+    /// Mark proof requests with stale SUBMITTING sessions as failed.
+    ///
+    /// Only SNARK aggregation uses the reservation flow today; keep this scoped to SNARK so a
+    /// future reserved session type cannot fail an otherwise healthy multi-stage request.
+    pub async fn fail_stale_submitting_sessions(
+        &self,
+        stuck_timeout_mins: i32,
+        error_message: &str,
+    ) -> Result<Vec<ProofType>> {
+        let rows = sqlx::query(
+            r#"
+            WITH stale_sessions AS (
+                SELECT ps.id, ps.proof_request_id
+                FROM proof_sessions ps
+                INNER JOIN proof_requests pr ON pr.id = ps.proof_request_id
+                WHERE ps.status = 'SUBMITTING'
+                  AND ps.session_type = $5
+                  AND ps.created_at < NOW() - INTERVAL '1 minute' * $1
+                  AND pr.status IN ('PENDING', 'RUNNING')
+            ),
+            failed_sessions AS (
+                UPDATE proof_sessions ps
+                SET status = $2,
+                    error_message = $3,
+                    completed_at = NOW()
+                WHERE ps.id IN (SELECT id FROM stale_sessions)
+                RETURNING ps.proof_request_id
+            )
+            UPDATE proof_requests pr
+            SET status = $4,
+                error_message = $3,
+                completed_at = NOW()
+            WHERE pr.id IN (SELECT proof_request_id FROM failed_sessions)
+              AND pr.status IN ('PENDING', 'RUNNING')
+            RETURNING pr.proof_type
+            "#,
+        )
+        .bind(stuck_timeout_mins)
+        .bind(SessionStatus::Failed.as_str())
+        .bind(error_message)
+        .bind(ProofStatus::Failed.as_str())
+        .bind(SessionType::Snark.as_str())
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.iter()
+            .map(|row| {
+                let proof_type_str: &str = row.get("proof_type");
+                ProofType::try_from(proof_type_str).map_err(|e| {
+                    sqlx::Error::Protocol(format!("Unknown proof type '{proof_type_str}': {e}"))
+                })
+            })
+            .collect()
     }
 
     /// Update a proof session status

@@ -52,6 +52,25 @@ impl StatusPoller {
 
     /// Poll once for all RUNNING proof requests and detect stuck requests
     async fn poll_once(&self) -> anyhow::Result<()> {
+        let stale_submitting_error =
+            format!("Session stuck in SUBMITTING state for {}+ minutes", self.stuck_timeout_mins);
+        let stale_submitting_proof_types = self
+            .repo
+            .fail_stale_submitting_sessions(self.stuck_timeout_mins, &stale_submitting_error)
+            .await?;
+        if !stale_submitting_proof_types.is_empty() {
+            warn!(
+                count = stale_submitting_proof_types.len(),
+                stuck_timeout_mins = self.stuck_timeout_mins,
+                "Failed proof requests with stale SUBMITTING sessions"
+            );
+            for proof_type in stale_submitting_proof_types {
+                let proof_type_label = metrics::proof_type_label(proof_type);
+                metrics::inc_stuck_requests(proof_type_label);
+                metrics::inc_proof_requests_completed("failed", proof_type_label);
+            }
+        }
+
         // Get all RUNNING proof_requests
         let running_requests = self.repo.get_running_proof_requests().await?;
 
