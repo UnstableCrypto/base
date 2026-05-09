@@ -588,10 +588,9 @@ impl ProofRequestRepo {
 
     /// Create a new proof session.
     ///
-    /// This is intended for direct, non-reserved session creation. If another caller already
-    /// created the same `(proof_request_id, session_type)` row, this returns that row ID instead of
-    /// failing on the uniqueness invariant. Callers that need to avoid duplicate backend submission
-    /// should use [`Self::reserve_proof_session`] before submitting work.
+    /// This is intended for direct, non-reserved session creation. It is not idempotent under the
+    /// `(proof_request_id, session_type)` uniqueness invariant; callers that need first-writer-wins
+    /// behavior should use [`Self::reserve_proof_session`] before backend submission.
     pub async fn create_proof_session(&self, session: CreateProofSession) -> Result<i64> {
         let row = sqlx::query(
             r#"
@@ -599,8 +598,6 @@ impl ProofRequestRepo {
                 proof_request_id, session_type, backend_session_id, status, metadata
             )
             VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (proof_request_id, session_type) DO UPDATE
-            SET backend_session_id = proof_sessions.backend_session_id
             RETURNING id
             "#,
         )
@@ -746,6 +743,13 @@ impl ProofRequestRepo {
                   AND ps.session_type = $5
                   AND ps.created_at < NOW() - INTERVAL '1 minute' * $1
                   AND pr.status IN ('PENDING', 'RUNNING')
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM proof_sessions active
+                      WHERE active.proof_request_id = ps.proof_request_id
+                        AND active.id <> ps.id
+                        AND active.status IN ('SUBMITTING', 'RUNNING')
+                  )
             ),
             failed_sessions AS (
                 UPDATE proof_sessions ps

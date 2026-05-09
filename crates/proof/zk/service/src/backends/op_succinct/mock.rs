@@ -18,7 +18,7 @@ use serde_json::json;
 use sp1_sdk::{
     SP1_CIRCUIT_VERSION, SP1ProofMode, SP1ProofWithPublicValues, SP1PublicValues, SP1VerifyingKey,
 };
-use tracing::info;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::backends::traits::{
@@ -223,6 +223,16 @@ impl ProvingBackend for MockBackend {
                     proof_request_id = %proof_request.id,
                     "MockBackend: STARK done, creating SNARK session"
                 );
+                let Some(reservation_id) =
+                    repo.reserve_proof_session(proof_request.id, SessionType::Snark).await?
+                else {
+                    info!(
+                        proof_request_id = %proof_request.id,
+                        "MockBackend: SNARK proof session already reserved by another worker"
+                    );
+                    let final_sessions = repo.get_sessions_for_request(proof_request.id).await?;
+                    return Ok(determine_mock_status(proof_request.proof_type, &final_sessions));
+                };
 
                 let snark_session_id = format!("mock-snark-{}", Uuid::new_v4());
                 let metadata = json!({
@@ -239,7 +249,36 @@ impl ProvingBackend for MockBackend {
                     metadata: Some(metadata),
                 };
 
-                repo.create_proof_session(session).await?;
+                match repo.activate_reserved_proof_session(&reservation_id, session).await {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        let error_message =
+                            "MockBackend: reserved SNARK proof session was not found for activation"
+                                .to_string();
+                        return Ok(ProofProcessingResult {
+                            status: ProofStatus::Failed,
+                            error_message: Some(error_message),
+                        });
+                    }
+                    Err(e) => {
+                        let error_message =
+                            format!("MockBackend: failed to activate SNARK session: {e}");
+                        if let Err(fail_err) =
+                            repo.fail_reserved_proof_session(&reservation_id, &error_message).await
+                        {
+                            warn!(
+                                proof_request_id = %proof_request.id,
+                                reservation_id = %reservation_id,
+                                error = %fail_err,
+                                "failed to mark reserved SNARK proof session as failed"
+                            );
+                        }
+                        return Ok(ProofProcessingResult {
+                            status: ProofStatus::Failed,
+                            error_message: Some(error_message),
+                        });
+                    }
+                }
 
                 let final_sessions = repo.get_sessions_for_request(proof_request.id).await?;
                 return Ok(determine_mock_status(proof_request.proof_type, &final_sessions));

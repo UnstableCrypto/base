@@ -224,10 +224,34 @@ impl ProvingBackend for ClusterBackend {
                     proof_request_id = %proof_request.id,
                     "STARK completed, triggering stage-2 aggregation proof (SNARK Groth16)"
                 );
+                let Some(reservation_id) =
+                    repo.reserve_proof_session(proof_request.id, SessionType::Snark).await?
+                else {
+                    info!(
+                        proof_request_id = %proof_request.id,
+                        "SNARK proof session already reserved by another worker"
+                    );
+                    let updated_sessions = repo.get_sessions_for_request(proof_request.id).await?;
+                    return Ok(Self::determine_status(proof_request.proof_type, &updated_sessions));
+                };
+
                 let fresh_proof_request = repo.get(proof_request.id).await?.ok_or_else(|| {
                     anyhow::anyhow!("Proof request not found after STARK completion")
                 })?;
-                if let Err(e) = self.submit_aggregation_proof(&fresh_proof_request, repo).await {
+                if let Err(e) =
+                    self.submit_aggregation_proof(&fresh_proof_request, repo, &reservation_id).await
+                {
+                    let error_message = format!("Failed to submit aggregation proof: {e}");
+                    if let Err(fail_err) =
+                        repo.fail_reserved_proof_session(&reservation_id, &error_message).await
+                    {
+                        warn!(
+                            proof_request_id = %proof_request.id,
+                            reservation_id = %reservation_id,
+                            error = %fail_err,
+                            "failed to mark reserved SNARK proof session as failed"
+                        );
+                    }
                     error!(
                         proof_request_id = %proof_request.id,
                         error = %e,
@@ -235,7 +259,7 @@ impl ProvingBackend for ClusterBackend {
                     );
                     return Ok(ProofProcessingResult {
                         status: ProofStatus::Failed,
-                        error_message: Some(format!("Failed to submit aggregation proof: {e}")),
+                        error_message: Some(error_message),
                     });
                 }
                 let updated_sessions = repo.get_sessions_for_request(proof_request.id).await?;
@@ -615,6 +639,7 @@ impl ClusterBackend {
         &self,
         proof_request: &ProofRequest,
         repo: &ProofRequestRepo,
+        reservation_id: &str,
     ) -> anyhow::Result<()> {
         let BackendConfig::OpSuccinct {
             cluster_rpc,
@@ -731,7 +756,10 @@ impl ClusterBackend {
             metadata: Some(metadata),
         };
 
-        repo.create_proof_session(session).await?;
+        let activated = repo.activate_reserved_proof_session(reservation_id, session).await?;
+        if !activated {
+            anyhow::bail!("reserved SNARK proof session was not found for activation");
+        }
 
         info!(
             proof_request_id = %proof_request.id,
