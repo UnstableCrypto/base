@@ -496,7 +496,6 @@ impl ProofRequestRepo {
     ///
     /// Returns `Some(reservation_id)` if this caller created the reservation and should submit the
     /// backend job. Returns `None` if another caller already reserved or created this session type.
-    /// A failed session may be reclaimed so manual retries can submit the SNARK stage again.
     pub async fn reserve_proof_session(
         &self,
         proof_request_id: Uuid,
@@ -511,14 +510,7 @@ impl ProofRequestRepo {
                 proof_request_id, session_type, backend_session_id, status, metadata
             )
             VALUES ($1, $2, $3, $4, NULL)
-            ON CONFLICT (proof_request_id, session_type) DO UPDATE
-            SET backend_session_id = EXCLUDED.backend_session_id,
-                status = EXCLUDED.status,
-                metadata = EXCLUDED.metadata,
-                error_message = NULL,
-                completed_at = NULL,
-                created_at = NOW()
-            WHERE proof_sessions.status = $5
+            ON CONFLICT (proof_request_id, session_type) DO NOTHING
             RETURNING backend_session_id
             "#,
         )
@@ -526,7 +518,6 @@ impl ProofRequestRepo {
         .bind(session_type.as_str())
         .bind(&reservation_id)
         .bind(SessionStatus::Submitting.as_str())
-        .bind(SessionStatus::Failed.as_str())
         .fetch_optional(&self.pool)
         .await?;
 
@@ -535,6 +526,8 @@ impl ProofRequestRepo {
 
     /// Activate a reserved proof session after the backend returns its session ID.
     ///
+    /// Reuses [`CreateProofSession`] because activation fills in the same fields that direct
+    /// session creation would insert: request ID, session type, backend session ID, and metadata.
     /// Returns `true` when the reservation was found and updated.
     pub async fn activate_reserved_proof_session(
         &self,
@@ -593,7 +586,11 @@ impl ProofRequestRepo {
         Ok(result.rows_affected() > 0)
     }
 
-    /// Create a new proof session
+    /// Create a new proof session.
+    ///
+    /// This is intended for direct, non-reserved session creation. It is not idempotent under the
+    /// `(proof_request_id, session_type)` uniqueness invariant; callers that need first-writer-wins
+    /// behavior should use [`Self::reserve_proof_session`] before backend submission.
     pub async fn create_proof_session(&self, session: CreateProofSession) -> Result<i64> {
         let row = sqlx::query(
             r#"

@@ -1,6 +1,5 @@
 -- Migration 009: Enforce one session row per proof request and session type
 -- Prevents concurrent status pollers from creating duplicate SNARK aggregation jobs.
--- Manual retries reclaim FAILED rows instead of inserting duplicate session rows.
 
 -- Keep the most useful row if duplicates already exist, then enforce the invariant.
 WITH ranked_sessions AS (

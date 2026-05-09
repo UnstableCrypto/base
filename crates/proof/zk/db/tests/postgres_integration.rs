@@ -474,40 +474,6 @@ async fn test_reserve_proof_session_is_single_winner() {
 
 #[tokio::test]
 #[ignore = "requires a running Postgres with the prover schema (set DATABASE_URL); run with `cargo nextest run --run-ignored all -p base-zk-db --test postgres_integration --test-threads=1`"]
-async fn test_reserve_proof_session_reclaims_failed_session() {
-    let pool = test_pool().await;
-    let repo = test_repo(pool);
-
-    let req_id = repo.create(snark_request()).await.unwrap();
-    let first_reservation = repo
-        .reserve_proof_session(req_id, SessionType::Snark)
-        .await
-        .unwrap()
-        .expect("first reservation should win");
-
-    let failed =
-        repo.fail_reserved_proof_session(&first_reservation, "submission failed").await.unwrap();
-    assert!(failed);
-
-    let second_reservation = repo
-        .reserve_proof_session(req_id, SessionType::Snark)
-        .await
-        .unwrap()
-        .expect("failed reservation should be reclaimable");
-
-    assert_ne!(first_reservation, second_reservation);
-
-    let sessions = repo.get_sessions_for_request(req_id).await.unwrap();
-    assert_eq!(sessions.len(), 1);
-    assert_eq!(sessions[0].session_type, SessionType::Snark);
-    assert_eq!(sessions[0].backend_session_id, second_reservation);
-    assert_eq!(sessions[0].status, SessionStatus::Submitting);
-    assert!(sessions[0].error_message.is_none());
-    assert!(sessions[0].completed_at.is_none());
-}
-
-#[tokio::test]
-#[ignore = "requires a running Postgres with the prover schema (set DATABASE_URL); run with `cargo nextest run --run-ignored all -p base-zk-db --test postgres_integration --test-threads=1`"]
 async fn test_activate_reserved_proof_session() {
     let pool = test_pool().await;
     let repo = test_repo(pool);
