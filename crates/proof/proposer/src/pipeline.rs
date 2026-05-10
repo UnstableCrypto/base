@@ -73,7 +73,7 @@ pub struct PipelineConfig {
     /// Optional address of the `TEEProverRegistry` contract on L1.
     /// When set, the pipeline validates signers via `isValidSigner` before submission.
     pub tee_prover_registry_address: Option<Address>,
-    /// Optional readiness flag updated when platform proof health changes.
+    /// Optional service readiness flag for the health server.
     pub readiness: Option<Arc<AtomicBool>>,
 }
 
@@ -331,6 +331,12 @@ where
         {
             Metrics::safe_head().set(safe_head as f64);
             state.prune_stale(recovered.l2_block_number);
+
+            // Readiness means the proposer can recover chain state and start
+            // work. Proof health is tracked separately by per-platform gauges
+            // and failures below can still mark the service unready.
+            self.set_ready(true);
+
             self.dispatch_proofs(&recovered, safe_head, state).await?;
             // No next target left to dispatch and nothing in flight → fully
             // caught up; advertise readiness even if no proof has completed
@@ -2481,6 +2487,36 @@ mod tests {
 
         assert!(readiness.load(Ordering::SeqCst));
         assert!(state.is_empty());
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn test_tick_marks_pipeline_ready_before_dispatching_proofs() {
+        let readiness = Arc::new(AtomicBool::new(false));
+        let pipeline = test_pipeline(
+            PipelineConfig {
+                max_parallel_proofs: 1,
+                max_retries: 1,
+                recovery_scan_concurrency: 8,
+                tee_prover_registry_address: None,
+                readiness: Some(Arc::clone(&readiness)),
+                driver: DriverConfig {
+                    game_type: TEST_GAME_TYPE,
+                    block_interval: TEST_BLOCK_INTERVAL,
+                    intermediate_block_interval: TEST_BLOCK_INTERVAL,
+                    ..Default::default()
+                },
+            },
+            TEST_BLOCK_INTERVAL,
+            CancellationToken::new(),
+        );
+        let mut state = PipelineState::new();
+
+        pipeline.tick(&mut state).await.unwrap();
+
+        assert!(readiness.load(Ordering::SeqCst));
+        assert!(state.inflight.contains(&TEST_BLOCK_INTERVAL));
+        assert_eq!(state.inflight.len(), 1);
+        assert!(state.proved.is_empty());
     }
 
     // ---- State management tests ----
