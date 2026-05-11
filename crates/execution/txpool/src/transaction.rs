@@ -208,7 +208,16 @@ impl<Cons: Typed2718, Pooled> Typed2718 for BasePooledTransaction<Cons, Pooled> 
 
 impl<Cons: InMemorySize, Pooled> InMemorySize for BasePooledTransaction<Cons, Pooled> {
     fn size(&self) -> usize {
-        self.inner.size() + core::mem::size_of::<u128>() + core::mem::size_of::<Option<u64>>() * 3
+        // The pool uses this value for subpool budgeting; any retained
+        // allocation must be reflected here. The `size_of::<Self>() -
+        // size_of_val(&inner)` term auto-accounts for every inline field
+        // in `Self` except `inner` (whose heap-aware size is added via
+        // `inner.size()`). `encoded_2718` holds a heap allocation when
+        // populated; use non-blocking `get` so `size()` never triggers
+        // cache initialization as a side effect.
+        self.inner.size()
+            + (core::mem::size_of::<Self>() - core::mem::size_of_val(&self.inner))
+            + self.encoded_2718.get().map_or(0, |b| b.len())
     }
 }
 
@@ -424,12 +433,15 @@ where
 mod tests {
     use std::sync::Arc;
 
-    use alloy_consensus::transaction::Recovered;
+    use alloy_consensus::{TxEip1559, transaction::Recovered};
     use alloy_eips::eip2718::Encodable2718;
-    use alloy_primitives::{TxKind, U256};
-    use base_common_consensus::{BasePrimitives, BaseTransactionSigned, TxDeposit};
+    use alloy_primitives::{Address, Bytes, Signature, TxKind, U256};
+    use base_common_consensus::{
+        BasePrimitives, BaseTransactionSigned, BaseTypedTransaction, TxDeposit,
+    };
     use base_execution_chainspec::BaseChainSpec;
     use base_execution_evm::BaseEvmConfig;
+    use reth_primitives_traits::InMemorySize;
     use reth_provider::test_utils::MockEthProvider;
     use reth_transaction_pool::{
         TransactionOrigin, TransactionValidationOutcome, blobstore::InMemoryBlobStore,
@@ -473,5 +485,55 @@ mod tests {
             _ => panic!("Expected invalid transaction"),
         };
         assert_eq!(err.to_string(), "transaction type not supported");
+    }
+
+    fn pooled_tx_with_calldata(input_len: usize) -> BasePooledTransaction {
+        let signer = Address::repeat_byte(0xAB);
+        let tx = TxEip1559 {
+            chain_id: 8453,
+            nonce: 0,
+            gas_limit: 21_000,
+            max_fee_per_gas: 100,
+            max_priority_fee_per_gas: 10,
+            to: TxKind::Call(Address::repeat_byte(0x01)),
+            value: U256::from(1_000u64),
+            access_list: Default::default(),
+            input: Bytes::from(vec![0u8; input_len]),
+        };
+        let sig = Signature::new(U256::from(1), U256::from(2), false);
+        let signed = BaseTransactionSigned::new_unhashed(BaseTypedTransaction::Eip1559(tx), sig);
+        let recovered = Recovered::new_unchecked(signed, signer);
+        let encoded_len = recovered.encode_2718_len();
+        BasePooledTransaction::new(recovered, encoded_len)
+    }
+
+    #[test]
+    fn size_includes_cached_encoded_2718_bytes() {
+        let pooled = pooled_tx_with_calldata(64 * 1024);
+
+        let before = pooled.size();
+        let cached_len = pooled.encoded_2718().len();
+        let after = pooled.size();
+
+        assert!(
+            cached_len > 0,
+            "encoded_2718 cache should be non-empty for a non-trivial tx"
+        );
+        assert!(
+            after >= before + cached_len,
+            "size() must grow by at least the cached encoded length: \
+             before={before}, after={after}, cached_len={cached_len}",
+        );
+    }
+
+    #[test]
+    fn size_unchanged_when_cache_uninitialized() {
+        let pooled = pooled_tx_with_calldata(64 * 1024);
+        let first = pooled.size();
+        let second = pooled.size();
+        assert_eq!(
+            first, second,
+            "size() must be stable and must not initialize encoded_2718 as a side effect",
+        );
     }
 }
