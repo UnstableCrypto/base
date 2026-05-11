@@ -1,15 +1,17 @@
-//! Base precompile implementations for B20 and B403.
+//! Base precompile implementations for B20, B403, and plan-2 token family.
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod address;
 pub use address::{
+    BASE_ASSET_PREFIX_BYTES, BASE_SECURITY_PREFIX_BYTES, BASE_STABLECOIN_PREFIX_BYTES,
     BASE_TOKEN_PREFIX_BYTES, B20_PREFIX_BYTES, BaseBAddressExt, is_b20_prefix,
+    is_base_asset_prefix, is_base_security_prefix, is_base_stablecoin_prefix,
     is_base_token_prefix,
 };
 
 mod bootstrap;
-pub use bootstrap::{B20Bootstrap, BUSD_ADDRESS};
+pub use bootstrap::{B20Bootstrap, BUSD_ADDRESS, Plan2Bootstrap};
 
 pub mod error;
 pub use error::{IntoPrecompileResult, Result};
@@ -23,6 +25,8 @@ pub mod b403_registry;
 pub mod plan_1;
 pub use plan_1::{base_token, base_token_factory, base_token_policy_registry};
 
+pub mod plan_2;
+
 #[cfg(test)]
 use alloy::sol_types::SolInterface;
 use alloy::{
@@ -32,7 +36,9 @@ use alloy::{
 };
 use alloy_evm::precompiles::{DynPrecompile, PrecompilesMap};
 pub use base_precompiles_contracts::{
-    B20_FACTORY_ADDRESS, B403_REGISTRY_ADDRESS, BASE_TOKEN_FACTORY_ADDRESS,
+    B20_FACTORY_ADDRESS, B403_REGISTRY_ADDRESS, BASE_ASSET_FACTORY_ADDRESS,
+    BASE2_POLICY_REGISTRY_ADDRESS, BASE_SECURITY_FACTORY_ADDRESS,
+    BASE_STABLECOIN_FACTORY_ADDRESS, BASE_TOKEN_FACTORY_ADDRESS,
     BASE_TOKEN_POLICY_REGISTRY_ADDRESS,
 };
 use revm::{
@@ -45,7 +51,12 @@ use revm::{
 use crate::{
     b20::B20Token, b20_factory::B20Factory, b403_registry::B403Registry,
     base_token::BaseToken, base_token_factory::BaseTokenFactory,
-    base_token_policy_registry::BaseTokenPolicyRegistry, storage::StorageCtx,
+    base_token_policy_registry::BaseTokenPolicyRegistry,
+    plan_2::{
+        BaseAsset, BaseAssetFactory, BaseSecurity, BaseSecurityFactory,
+        BaseStablecoin, BaseStablecoinFactory, Base2PolicyRegistry,
+    },
+    storage::StorageCtx,
 };
 
 /// B precompile activation marker.
@@ -145,6 +156,28 @@ pub fn extend_base_b_precompiles(
         } else if address.is_base_token() {
             tracing::info!(address = %address, "base BaseToken precompile lookup");
             Some(BaseToken::create_precompile(*address, spec, gas_params.clone()))
+        // ---------------------------------------------------------------- plan-2
+        } else if *address == BASE_ASSET_FACTORY_ADDRESS {
+            tracing::info!(address = %address, "base BaseAssetFactory precompile lookup");
+            Some(BaseAssetFactory::create_precompile(spec, gas_params.clone()))
+        } else if *address == BASE_SECURITY_FACTORY_ADDRESS {
+            tracing::info!(address = %address, "base BaseSecurityFactory precompile lookup");
+            Some(BaseSecurityFactory::create_precompile(spec, gas_params.clone()))
+        } else if *address == BASE_STABLECOIN_FACTORY_ADDRESS {
+            tracing::info!(address = %address, "base BaseStablecoinFactory precompile lookup");
+            Some(BaseStablecoinFactory::create_precompile(spec, gas_params.clone()))
+        } else if *address == BASE2_POLICY_REGISTRY_ADDRESS {
+            tracing::info!(address = %address, "base Base2PolicyRegistry precompile lookup");
+            Some(Base2PolicyRegistry::create_precompile(spec, gas_params.clone()))
+        } else if address.is_base_asset() {
+            tracing::info!(address = %address, "base BaseAsset precompile lookup");
+            Some(BaseAsset::create_precompile(*address, spec, gas_params.clone()))
+        } else if address.is_base_security() {
+            tracing::info!(address = %address, "base BaseSecurity precompile lookup");
+            Some(BaseSecurity::create_precompile(*address, spec, gas_params.clone()))
+        } else if address.is_base_stablecoin() {
+            tracing::info!(address = %address, "base BaseStablecoin precompile lookup");
+            Some(BaseStablecoin::create_precompile(*address, spec, gas_params.clone()))
         } else {
             None
         }
@@ -231,6 +264,68 @@ impl BaseToken {
     ) -> DynPrecompile {
         base_precompile!("BaseToken", spec, gas_params, |input| {
             Self::from_address(address).expect("BaseToken prefix already verified")
+        })
+    }
+}
+
+// ---------------------------------------------------------------- plan-2 create_precompile impls
+
+impl BaseAssetFactory {
+    pub fn create_precompile(spec: BaseBSpec, gas_params: GasParams) -> DynPrecompile {
+        base_precompile!("BaseAssetFactory", spec, gas_params, |input| { Self::new() })
+    }
+}
+
+impl BaseSecurityFactory {
+    pub fn create_precompile(spec: BaseBSpec, gas_params: GasParams) -> DynPrecompile {
+        base_precompile!("BaseSecurityFactory", spec, gas_params, |input| { Self::new() })
+    }
+}
+
+impl BaseStablecoinFactory {
+    pub fn create_precompile(spec: BaseBSpec, gas_params: GasParams) -> DynPrecompile {
+        base_precompile!("BaseStablecoinFactory", spec, gas_params, |input| { Self::new() })
+    }
+}
+
+impl Base2PolicyRegistry {
+    pub fn create_precompile(spec: BaseBSpec, gas_params: GasParams) -> DynPrecompile {
+        base_precompile!("Base2PolicyRegistry", spec, gas_params, |input| { Self::new() })
+    }
+}
+
+impl BaseAsset {
+    pub fn create_precompile(
+        address: Address,
+        spec: BaseBSpec,
+        gas_params: GasParams,
+    ) -> DynPrecompile {
+        base_precompile!("BaseAsset", spec, gas_params, |input| {
+            Self::from_address(address).expect("BaseAsset prefix already verified")
+        })
+    }
+}
+
+impl BaseSecurity {
+    pub fn create_precompile(
+        address: Address,
+        spec: BaseBSpec,
+        gas_params: GasParams,
+    ) -> DynPrecompile {
+        base_precompile!("BaseSecurity", spec, gas_params, |input| {
+            Self::from_address(address).expect("BaseSecurity prefix already verified")
+        })
+    }
+}
+
+impl BaseStablecoin {
+    pub fn create_precompile(
+        address: Address,
+        spec: BaseBSpec,
+        gas_params: GasParams,
+    ) -> DynPrecompile {
+        base_precompile!("BaseStablecoin", spec, gas_params, |input| {
+            Self::from_address(address).expect("BaseStablecoin prefix already verified")
         })
     }
 }

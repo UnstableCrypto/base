@@ -12,6 +12,9 @@ use crate::{
     BaseBSpec,
     b20_factory::B20Factory,
     error::{BasePrecompileError, Result},
+    plan_2::{
+        Base2PolicyRegistry, BaseAssetFactory, BaseSecurityFactory, BaseStablecoinFactory,
+    },
     storage::{PrecompileStorageProvider, StorageCtx},
 };
 
@@ -54,6 +57,47 @@ impl B20Bootstrap {
         let address = StorageCtx::enter(&mut storage, || Self::ensure_busd(admin))?;
         storage.commit();
         Ok(address)
+    }
+}
+
+/// Bootstrap operations for plan-2 singleton precompiles.
+///
+/// Marks the `Base2PolicyRegistry` and all three plan-2 factories as deployed at
+/// genesis so they appear as contracts in EVM state. Idempotent — safe to call on
+/// every genesis or hardfork activation.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Plan2Bootstrap;
+
+impl Plan2Bootstrap {
+    /// Initializes all plan-2 singleton precompiles in the current storage context.
+    ///
+    /// Calling `initialize()` on each singleton sets the EF bytecode marker at its
+    /// address, which is idempotent — safe to call on every genesis or hardfork activation.
+    pub fn ensure_singletons() -> Result<()> {
+        Base2PolicyRegistry::new().initialize()?;
+        BaseAssetFactory::new().initialize()?;
+        BaseSecurityFactory::new().initialize()?;
+        BaseStablecoinFactory::new().initialize()?;
+        Ok(())
+    }
+
+    /// Initializes all plan-2 singleton precompiles in an EVM database.
+    pub fn ensure_singletons_in_database<DB>(
+        db: &mut DB,
+        chain_id: u64,
+        timestamp: U256,
+        beneficiary: Address,
+        block_number: u64,
+    ) -> Result<()>
+    where
+        DB: Database + DatabaseCommit,
+        DB::Error: Display,
+    {
+        let mut storage =
+            DbBootstrapStorageProvider::new(db, chain_id, timestamp, beneficiary, block_number);
+        StorageCtx::enter(&mut storage, Self::ensure_singletons)?;
+        storage.commit();
+        Ok(())
     }
 }
 
@@ -341,5 +385,79 @@ mod tests {
         lower_bytes.copy_from_slice(&BUSD_ADDRESS.as_slice()[12..]);
 
         assert_eq!(u64::from_be_bytes(lower_bytes), 0);
+    }
+
+    // ─────────────────────────────────────────── Plan2Bootstrap tests
+
+    #[test]
+    fn plan2_bootstrap_initializes_all_singletons() {
+        use crate::{
+            BASE2_POLICY_REGISTRY_ADDRESS, BASE_ASSET_FACTORY_ADDRESS,
+            BASE_SECURITY_FACTORY_ADDRESS, BASE_STABLECOIN_FACTORY_ADDRESS,
+            bootstrap::Plan2Bootstrap,
+            storage::hashmap::HashMapStorageProvider,
+        };
+        use revm::Database as _;
+
+        let mut storage = HashMapStorageProvider::new_with_spec(1, BaseBSpec::Beryl);
+
+        StorageCtx::enter(&mut storage, || {
+            Plan2Bootstrap::ensure_singletons().unwrap();
+        });
+
+        // All four singleton addresses must have bytecode set.
+        for addr in [
+            BASE2_POLICY_REGISTRY_ADDRESS,
+            BASE_ASSET_FACTORY_ADDRESS,
+            BASE_SECURITY_FACTORY_ADDRESS,
+            BASE_STABLECOIN_FACTORY_ADDRESS,
+        ] {
+            let initialized = storage
+                .get_account_info(addr)
+                .map(|info| !info.is_empty_code_hash())
+                .unwrap_or(false);
+            assert!(initialized, "{addr} must have bytecode after plan2 bootstrap");
+        }
+    }
+
+    #[test]
+    fn plan2_bootstrap_is_idempotent() {
+        use crate::{bootstrap::Plan2Bootstrap, storage::hashmap::HashMapStorageProvider};
+
+        let mut storage = HashMapStorageProvider::new_with_spec(1, BaseBSpec::Beryl);
+
+        StorageCtx::enter(&mut storage, || {
+            // Calling twice must not error.
+            Plan2Bootstrap::ensure_singletons().unwrap();
+            Plan2Bootstrap::ensure_singletons().unwrap();
+        });
+    }
+
+    #[test]
+    fn plan2_bootstrap_in_database() {
+        use crate::{
+            BASE2_POLICY_REGISTRY_ADDRESS, bootstrap::Plan2Bootstrap,
+        };
+        use revm::Database as _;
+
+        let mut db = InMemoryDB::default();
+        Plan2Bootstrap::ensure_singletons_in_database(
+            &mut db, 1, U256::ZERO, Address::ZERO, 0,
+        )
+        .unwrap();
+
+        assert!(
+            !db.basic(BASE2_POLICY_REGISTRY_ADDRESS)
+                .unwrap()
+                .unwrap()
+                .is_empty_code_hash(),
+            "Base2PolicyRegistry must be deployed after plan2 bootstrap"
+        );
+
+        // Idempotent.
+        Plan2Bootstrap::ensure_singletons_in_database(
+            &mut db, 1, U256::ZERO, Address::ZERO, 0,
+        )
+        .unwrap();
     }
 }

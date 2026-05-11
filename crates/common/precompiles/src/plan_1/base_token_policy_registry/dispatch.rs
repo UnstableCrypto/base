@@ -6,13 +6,26 @@ use revm::precompile::PrecompileResult;
 
 use crate::{
     Precompile, base_token_policy_registry::BaseTokenPolicyRegistry, charge_input_cost,
-    dispatch_call, mutate, mutate_void, view,
+    dispatch_call, mutate, mutate_void,
+    storage::ContractStorage,
+    view,
 };
 
 impl Precompile for BaseTokenPolicyRegistry {
     fn call(&mut self, calldata: &[u8], msg_sender: Address) -> PrecompileResult {
         if let Some(err) = charge_input_cost(&mut self.storage, calldata) {
             return err;
+        }
+
+        // Lazy bootstrap: revm rolls back SSTORE writes on accounts with no code, no
+        // balance, and zero nonce (EIP-161 "empty account" semantics). The registry
+        // singleton has no genesis bytecode, so the first user tx that writes to it
+        // must first deposit `0xef` so the account is no longer empty and SSTOREs
+        // commit. Idempotent — re-setting the same code is cheap and correct.
+        if let Ok(false) = self.is_initialized() {
+            if let Err(e) = self.initialize() {
+                return self.storage.error_result(e);
+            }
         }
 
         dispatch_call(

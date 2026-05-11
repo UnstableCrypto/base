@@ -16,7 +16,9 @@ use alloy::{
 };
 use alloy_evm::EvmInternalsError;
 use base_precompiles_contracts::{
-    B20FactoryError, B403RegistryError, BaseTokenError, BaseTokenFactoryError,
+    B20FactoryError, B403RegistryError, Base2PolicyRegistryError, BaseAssetError,
+    BaseAssetFactoryError, BaseSecurityError, BaseSecurityFactoryError, BaseStablecoinError,
+    BaseStablecoinFactoryError, BaseTokenError, BaseTokenFactoryError,
     BaseTokenPolicyRegistryError, RolesAuthError, UnknownFunctionSelector,
 };
 use revm::{
@@ -45,17 +47,47 @@ pub enum BasePrecompileError {
     #[error("B403 registry error: {0:?}")]
     B403RegistryError(B403RegistryError),
 
-    /// Error from BaseToken (plan-2 sibling token precompile).
+    /// Error from BaseToken (plan-1 sibling token precompile).
     #[error("BaseToken error: {0:?}")]
     BaseToken(BaseTokenError),
 
-    /// Error from BaseTokenFactory (plan-2).
+    /// Error from BaseTokenFactory (plan-1).
     #[error("BaseTokenFactory error: {0:?}")]
     BaseTokenFactory(BaseTokenFactoryError),
 
-    /// Error from BaseTokenPolicyRegistry (plan-2).
+    /// Error from BaseTokenPolicyRegistry.
     #[error("BaseTokenPolicyRegistry error: {0:?}")]
     BaseTokenPolicyRegistry(BaseTokenPolicyRegistryError),
+
+    // ---------------------------------------------------------------- plan_2 errors
+
+    /// Error from BaseAsset (plan-2).
+    #[error("BaseAsset error: {0:?}")]
+    BaseAsset(BaseAssetError),
+
+    /// Error from BaseAssetFactory (plan-2).
+    #[error("BaseAssetFactory error: {0:?}")]
+    BaseAssetFactory(BaseAssetFactoryError),
+
+    /// Error from BaseSecurity (plan-2).
+    #[error("BaseSecurity error: {0:?}")]
+    BaseSecurity(BaseSecurityError),
+
+    /// Error from BaseSecurityFactory (plan-2).
+    #[error("BaseSecurityFactory error: {0:?}")]
+    BaseSecurityFactory(BaseSecurityFactoryError),
+
+    /// Error from BaseStablecoin (plan-2).
+    #[error("BaseStablecoin error: {0:?}")]
+    BaseStablecoin(BaseStablecoinError),
+
+    /// Error from BaseStablecoinFactory (plan-2).
+    #[error("BaseStablecoinFactory error: {0:?}")]
+    BaseStablecoinFactory(BaseStablecoinFactoryError),
+
+    /// Error from Base2PolicyRegistry (plan-2).
+    #[error("Base2PolicyRegistry error: {0:?}")]
+    Base2PolicyRegistry(Base2PolicyRegistryError),
 
     /// EVM panic (i.e. arithmetic under/overflow, out-of-bounds access).
     #[error("Panic({0:?})")]
@@ -117,6 +149,13 @@ impl BasePrecompileError {
             | Self::BaseToken(_)
             | Self::BaseTokenFactory(_)
             | Self::BaseTokenPolicyRegistry(_)
+            | Self::BaseAsset(_)
+            | Self::BaseAssetFactory(_)
+            | Self::BaseSecurity(_)
+            | Self::BaseSecurityFactory(_)
+            | Self::BaseStablecoin(_)
+            | Self::BaseStablecoinFactory(_)
+            | Self::Base2PolicyRegistry(_)
             | Self::UnknownFunctionSelector(_) => false,
         }
     }
@@ -146,6 +185,13 @@ impl BasePrecompileError {
             Self::BaseToken(e) => e.abi_encode().into(),
             Self::BaseTokenFactory(e) => e.abi_encode().into(),
             Self::BaseTokenPolicyRegistry(e) => e.abi_encode().into(),
+            Self::BaseAsset(e) => e.abi_encode().into(),
+            Self::BaseAssetFactory(e) => e.abi_encode().into(),
+            Self::BaseSecurity(e) => e.abi_encode().into(),
+            Self::BaseSecurityFactory(e) => e.abi_encode().into(),
+            Self::BaseStablecoin(e) => e.abi_encode().into(),
+            Self::BaseStablecoinFactory(e) => e.abi_encode().into(),
+            Self::Base2PolicyRegistry(e) => e.abi_encode().into(),
             Self::Panic(kind) => {
                 let panic = Panic { code: U256::from(kind as u32) };
 
@@ -208,6 +254,13 @@ pub fn error_decoder_registry() -> BasePrecompileErrorRegistry {
     add_errors_to_registry(&mut registry, BasePrecompileError::BaseToken);
     add_errors_to_registry(&mut registry, BasePrecompileError::BaseTokenFactory);
     add_errors_to_registry(&mut registry, BasePrecompileError::BaseTokenPolicyRegistry);
+    add_errors_to_registry(&mut registry, BasePrecompileError::BaseAsset);
+    add_errors_to_registry(&mut registry, BasePrecompileError::BaseAssetFactory);
+    add_errors_to_registry(&mut registry, BasePrecompileError::BaseSecurity);
+    add_errors_to_registry(&mut registry, BasePrecompileError::BaseSecurityFactory);
+    add_errors_to_registry(&mut registry, BasePrecompileError::BaseStablecoin);
+    add_errors_to_registry(&mut registry, BasePrecompileError::BaseStablecoinFactory);
+    add_errors_to_registry(&mut registry, BasePrecompileError::Base2PolicyRegistry);
 
     registry
 }
