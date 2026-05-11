@@ -19,9 +19,9 @@ pub mod storage;
 pub mod b20;
 pub mod b20_factory;
 pub mod b403_registry;
-pub mod base_token;
-pub mod base_token_factory;
-pub mod base_token_policy_registry;
+
+pub mod plan_1;
+pub use plan_1::{base_token, base_token_factory, base_token_policy_registry};
 
 #[cfg(test)]
 use alloy::sol_types::SolInterface;
