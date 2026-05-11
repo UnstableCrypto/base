@@ -4277,6 +4277,7 @@ dependencies = [
  "base-common-consensus",
  "base-common-evm",
  "base-common-flz",
+ "base-common-genesis",
  "base-execution-chainspec",
  "base-execution-evm",
  "base-metrics",
@@ -4296,6 +4297,7 @@ dependencies = [
  "reth-tasks",
  "reth-transaction-pool",
  "serde",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
  "tokio-util",
@@ -4454,6 +4456,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "base-load-tester-bin"
+version = "0.0.0"
+dependencies = [
+ "alloy-network",
+ "alloy-primitives",
+ "alloy-provider",
+ "alloy-rpc-types",
+ "alloy-signer-local",
+ "base-cli-utils",
+ "base-load-tests",
+ "clap",
+ "eyre",
+ "futures",
+ "indicatif 0.18.4",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber 0.3.23",
+ "url",
+]
+
+[[package]]
 name = "base-load-tests"
 version = "0.0.0"
 dependencies = [
@@ -4466,9 +4490,9 @@ dependencies = [
  "alloy-signer",
  "alloy-signer-local",
  "alloy-sol-types",
+ "base-common-consensus",
  "base-common-flashblocks",
  "base-common-network",
- "base-common-rpc-types",
  "base-tx-manager",
  "eyre",
  "futures",
@@ -5040,6 +5064,7 @@ dependencies = [
  "base-proof-host",
  "base-proof-preimage",
  "base-proof-primitives",
+ "base-proof-rpc",
  "base-proof-succinct-client-utils",
  "base-protocol",
  "bincode 2.0.1",
@@ -5814,6 +5839,7 @@ dependencies = [
  "async-trait",
  "axum 0.8.9",
  "base-common-network",
+ "base-proof-rpc",
  "base-proof-succinct-client-utils",
  "base-proof-succinct-elfs",
  "base-proof-succinct-ethereum-host-utils",
@@ -5925,7 +5951,6 @@ dependencies = [
  "base-common-network",
  "base-consensus-gossip",
  "base-consensus-rpc",
- "base-load-tests",
  "base-protocol",
  "chrono",
  "crossterm",

@@ -39,7 +39,7 @@ use std::{
 
 use alloy_primitives::{Address, B256};
 use base_proof_contracts::{
-    AggregateVerifierClient, DisputeGameFactoryClient, GameAtIndex, GameInfo,
+    AggregateVerifierClient, DisputeGameFactoryClient, GameAtIndex, GameInfo, GameStatus,
 };
 use eyre::Result;
 use futures::stream::{self, StreamExt};
@@ -89,7 +89,7 @@ pub enum GameCategory {
     /// nullifies the TEE proof first (fast, synchronous) and falls back
     /// to ZK nullification if TEE proving is unavailable or fails.
     /// After TEE nullification the game becomes `(false, true, 0)` and
-    /// will be re-classified as [`InvalidZkProposal`] on the next scan.
+    /// will be re-classified as [`GameCategory::InvalidZkProposal`] on the next scan.
     InvalidDualProposal,
 }
 
@@ -147,9 +147,6 @@ impl std::fmt::Debug for GameScanner {
 }
 
 impl GameScanner {
-    /// Game status indicating the dispute is still in progress.
-    pub const STATUS_IN_PROGRESS: u8 = 0;
-
     /// Maximum number of games to evaluate concurrently during a scan.
     pub const SCAN_CONCURRENCY: usize = 32;
 
@@ -230,8 +227,8 @@ impl GameScanner {
         let factory = self.factory_client.game_at_index(index).await?;
 
         let status = self.verifier_client.status(factory.proxy).await?;
-        if status != Self::STATUS_IN_PROGRESS {
-            debug!(index = index, status = status, "skipping game not in progress");
+        if status != GameStatus::InProgress {
+            debug!(index = index, status = ?status, "skipping game not in progress");
             return Ok(None);
         }
 
