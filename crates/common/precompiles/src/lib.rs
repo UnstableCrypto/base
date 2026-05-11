@@ -2,8 +2,11 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-mod address;
-pub use address::{B20_PREFIX_BYTES, BaseBAddressExt, is_b20_prefix};
+pub mod address;
+pub use address::{
+    BASE_TOKEN_PREFIX_BYTES, B20_PREFIX_BYTES, BaseBAddressExt, is_b20_prefix,
+    is_base_token_prefix,
+};
 
 mod bootstrap;
 pub use bootstrap::{B20Bootstrap, BUSD_ADDRESS};
@@ -16,6 +19,9 @@ pub mod storage;
 pub mod b20;
 pub mod b20_factory;
 pub mod b403_registry;
+pub mod base_token;
+pub mod base_token_factory;
+pub mod base_token_policy_registry;
 
 #[cfg(test)]
 use alloy::sol_types::SolInterface;
@@ -25,7 +31,10 @@ use alloy::{
     sol_types::{SolCall, SolError},
 };
 use alloy_evm::precompiles::{DynPrecompile, PrecompilesMap};
-pub use base_precompiles_contracts::{B20_FACTORY_ADDRESS, B403_REGISTRY_ADDRESS};
+pub use base_precompiles_contracts::{
+    B20_FACTORY_ADDRESS, B403_REGISTRY_ADDRESS, BASE_TOKEN_FACTORY_ADDRESS,
+    BASE_TOKEN_POLICY_REGISTRY_ADDRESS,
+};
 use revm::{
     context::CfgEnv,
     context_interface::cfg::GasParams,
@@ -34,7 +43,9 @@ use revm::{
 };
 
 use crate::{
-    b20::B20Token, b20_factory::B20Factory, b403_registry::B403Registry, storage::StorageCtx,
+    b20::B20Token, b20_factory::B20Factory, b403_registry::B403Registry,
+    base_token::BaseToken, base_token_factory::BaseTokenFactory,
+    base_token_policy_registry::BaseTokenPolicyRegistry, storage::StorageCtx,
 };
 
 /// B precompile activation marker.
@@ -122,9 +133,18 @@ pub fn extend_base_b_precompiles(
         } else if *address == B403_REGISTRY_ADDRESS {
             tracing::info!(address = %address, "base B403 registry precompile lookup");
             Some(B403Registry::create_precompile(spec, gas_params.clone()))
+        } else if *address == BASE_TOKEN_FACTORY_ADDRESS {
+            tracing::info!(address = %address, "base BaseToken factory precompile lookup");
+            Some(BaseTokenFactory::create_precompile(spec, gas_params.clone()))
+        } else if *address == BASE_TOKEN_POLICY_REGISTRY_ADDRESS {
+            tracing::info!(address = %address, "base BaseToken policy registry precompile lookup");
+            Some(BaseTokenPolicyRegistry::create_precompile(spec, gas_params.clone()))
         } else if address.is_b20() {
             tracing::info!(address = %address, "base B20 precompile lookup");
             Some(B20Token::create_precompile(*address, spec, gas_params.clone()))
+        } else if address.is_base_token() {
+            tracing::info!(address = %address, "base BaseToken precompile lookup");
+            Some(BaseToken::create_precompile(*address, spec, gas_params.clone()))
         } else {
             None
         }
@@ -184,6 +204,33 @@ impl B20Token {
     ) -> DynPrecompile {
         base_precompile!("B20Token", spec, gas_params, |input| {
             Self::from_address(address).expect("B20 prefix already verified")
+        })
+    }
+}
+
+impl BaseTokenFactory {
+    /// Creates the EVM precompile for this type.
+    pub fn create_precompile(spec: BaseBSpec, gas_params: GasParams) -> DynPrecompile {
+        base_precompile!("BaseTokenFactory", spec, gas_params, |input| { Self::new() })
+    }
+}
+
+impl BaseTokenPolicyRegistry {
+    /// Creates the EVM precompile for this type.
+    pub fn create_precompile(spec: BaseBSpec, gas_params: GasParams) -> DynPrecompile {
+        base_precompile!("BaseTokenPolicyRegistry", spec, gas_params, |input| { Self::new() })
+    }
+}
+
+impl BaseToken {
+    /// Creates the EVM precompile for this type.
+    pub fn create_precompile(
+        address: Address,
+        spec: BaseBSpec,
+        gas_params: GasParams,
+    ) -> DynPrecompile {
+        base_precompile!("BaseToken", spec, gas_params, |input| {
+            Self::from_address(address).expect("BaseToken prefix already verified")
         })
     }
 }
