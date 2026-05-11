@@ -63,8 +63,6 @@ fn store_blob_preimages(
     hash: B256,
     BlobWithCommitmentAndProof { blob, kzg_proof: proof, kzg_commitment: commitment }: BlobWithCommitmentAndProof,
 ) -> Result<()> {
-    kv.set(PreimageKey::new(*hash, PreimageKeyType::Sha256).into(), commitment.to_vec())?;
-
     let mut blob_key = [0u8; 80];
     blob_key[..48].copy_from_slice(commitment.as_ref());
     for i in 0..FIELD_ELEMENTS_PER_BLOB {
@@ -84,6 +82,11 @@ fn store_blob_preimages(
 
     kv.set(PreimageKey::new_keccak256(*blob_key_hash).into(), blob_key.into())?;
     kv.set(PreimageKey::new(*blob_key_hash, PreimageKeyType::Blob).into(), proof.to_vec())?;
+
+    // Store the commitment last so it doubles as the cache-complete marker. If any field element
+    // or proof write fails first, later hints will retry instead of treating a partial blob as
+    // cached.
+    kv.set(PreimageKey::new(*hash, PreimageKeyType::Sha256).into(), commitment.to_vec())?;
 
     Ok(())
 }
@@ -488,6 +491,8 @@ async fn handle_hint_inner(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
 
     const TEST_HASH: B256 = B256::new([0x42u8; 32]);
@@ -527,5 +532,43 @@ mod tests {
         assert!(err_msg.contains("Invalid blob hint length"));
         assert!(err_msg.contains("expected 40 or 48 bytes"));
         assert!(err_msg.contains("got 35"));
+    }
+
+    #[derive(Default)]
+    struct FailingKeyValueStore {
+        store: HashMap<B256, Vec<u8>>,
+        set_calls: usize,
+        fail_on_call: usize,
+    }
+
+    impl KeyValueStore for FailingKeyValueStore {
+        fn get(&self, key: B256) -> Option<Vec<u8>> {
+            self.store.get(&key).cloned()
+        }
+
+        fn set(&mut self, key: B256, value: Vec<u8>) -> Result<()> {
+            if self.set_calls == self.fail_on_call {
+                return Err(HostError::Custom("injected kv failure".into()));
+            }
+
+            self.set_calls += 1;
+            self.store.insert(key, value);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_store_blob_preimages_writes_commitment_last() {
+        let mut kv = FailingKeyValueStore { fail_on_call: 100, ..Default::default() };
+        let blob = BlobWithCommitmentAndProof {
+            blob: Box::default(),
+            kzg_commitment: [0x11u8; 48].into(),
+            kzg_proof: [0x22u8; 48].into(),
+        };
+
+        let result = store_blob_preimages(&mut kv, TEST_HASH, blob);
+
+        assert!(result.is_err());
+        assert!(kv.get(PreimageKey::new(*TEST_HASH, PreimageKeyType::Sha256).into()).is_none());
     }
 }
