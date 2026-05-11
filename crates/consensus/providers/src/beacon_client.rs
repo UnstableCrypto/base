@@ -93,6 +93,9 @@ pub trait BeaconClient {
         slot: u64,
         blob_hashes: &[B256],
     ) -> Result<Vec<BoxedBlob>, Self::Error>;
+
+    /// Fetches all blobs that were confirmed in the specified L1 slot.
+    async fn beacon_blobs(&self, slot: u64) -> Result<Vec<BoxedBlob>, Self::Error>;
 }
 
 const BLOB_SIZE: usize = 131072;
@@ -210,6 +213,21 @@ impl OnlineBeaconClient {
             })
             .collect::<Result<Vec<_>, BeaconClientError>>()
     }
+
+    /// Fetches all blobs from the beacon [`BLOBS_METHOD_PREFIX`] endpoint for a slot.
+    async fn beacon_blobs(&self, slot: u64) -> Result<Vec<BoxedBlob>, BeaconClientError> {
+        let url = format!("{}/{}/{}", self.base, BLOBS_METHOD_PREFIX, slot);
+        let response = self.inner.get(url).send().await?;
+
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(BeaconClientError::SlotNotFound(slot));
+        }
+
+        let response = response.error_for_status()?;
+        let bundle = response.json::<GetBlobsResponse>().await?;
+
+        Ok(bundle.data.into_iter().map(|blob| BoxedBlob { blob: Box::new(blob) }).collect())
+    }
 }
 
 #[async_trait]
@@ -280,6 +298,20 @@ impl BeaconClient for OnlineBeaconClient {
 
         result
     }
+
+    async fn beacon_blobs(&self, slot: u64) -> Result<Vec<BoxedBlob>, BeaconClientError> {
+        Metrics::beacon_requests("blobs").increment(1);
+
+        let result = base_metrics::time!(Metrics::request_duration("blobs"), {
+            self.beacon_blobs(slot).await
+        });
+
+        if result.is_err() {
+            Metrics::beacon_errors("blobs").increment(1);
+        }
+
+        result
+    }
 }
 
 #[cfg(test)]
@@ -342,6 +374,33 @@ mod tests {
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], BoxedBlob { blob: Box::new(blob_b) }, "first result must be blob_b");
         assert_eq!(result[1], BoxedBlob { blob: Box::new(blob_a) }, "second result must be blob_a");
+    }
+
+    /// Verifies that `beacon_blobs` fetches all blobs for a slot without a
+    /// `versioned_hashes` filter.
+    #[tokio::test]
+    async fn test_beacon_blobs_returns_all_blobs() {
+        let blob_a: Blob = FixedBytes::repeat_byte(1);
+        let blob_b: Blob = FixedBytes::repeat_byte(2);
+
+        let slot = 987654321u64;
+        let server = MockServer::start();
+        let blobs_mock = server.mock(|when, then| {
+            when.method(GET).path(format!("/eth/v1/beacon/blobs/{slot}"));
+            then.status(200).json_body(json!({
+                "execution_optimistic": false,
+                "finalized": false,
+                "data": [blob_a, blob_b]
+            }));
+        });
+
+        let client = OnlineBeaconClient::new_http(server.base_url());
+        let result = client.beacon_blobs(slot).await.unwrap();
+        blobs_mock.assert();
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], BoxedBlob { blob: Box::new(blob_a) });
+        assert_eq!(result[1], BoxedBlob { blob: Box::new(blob_b) });
     }
 
     /// Verifies that requesting a hash that does not match any returned blob yields
