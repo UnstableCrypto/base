@@ -146,10 +146,19 @@ async fn fetch_and_store_slot_blobs(
         .map_err(|e| HostError::BlobSidecarFetchFailed(e.to_string()))?;
 
     let mut found_requested_hash = false;
+    let mut remaining_blobs = Vec::with_capacity(blobs.len());
     for blob in blobs {
         let hash = kzg_to_versioned_hash(blob.kzg_commitment.as_slice());
-        found_requested_hash |= hash == requested_hash;
+        if hash == requested_hash {
+            found_requested_hash = true;
+            store_blob_preimages_if_missing(&kv, hash, blob).await?;
+            continue;
+        }
 
+        remaining_blobs.push((hash, blob));
+    }
+
+    for (hash, blob) in remaining_blobs {
         store_blob_preimages_if_missing(&kv, hash, blob).await?;
     }
 
@@ -578,7 +587,9 @@ mod tests {
 
     #[test]
     fn test_store_blob_preimages_writes_commitment_last() {
-        let mut kv = FailingKeyValueStore { fail_on_call: 100, ..Default::default() };
+        let writes_before_commitment = FIELD_ELEMENTS_PER_BLOB as usize * 2 + 2;
+        let mut kv =
+            FailingKeyValueStore { fail_on_call: writes_before_commitment, ..Default::default() };
         let blob = BlobWithCommitmentAndProof {
             blob: Box::default(),
             kzg_commitment: [0x11u8; 48].into(),
@@ -588,7 +599,24 @@ mod tests {
         let result = store_blob_preimages(&mut kv, TEST_HASH, blob);
 
         assert!(result.is_err());
+        assert_eq!(kv.set_calls, writes_before_commitment);
         assert!(kv.get(PreimageKey::new(*TEST_HASH, PreimageKeyType::Sha256).into()).is_none());
+
+        let mut proof_key = [0u8; 80];
+        proof_key[..48].copy_from_slice(&[0x11u8; 48]);
+        proof_key[48..].copy_from_slice(
+            ROOTS_OF_UNITY[(FIELD_ELEMENTS_PER_BLOB - 1) as usize]
+                .into_bigint()
+                .to_bytes_be()
+                .as_ref(),
+        );
+        proof_key[72..].copy_from_slice(FIELD_ELEMENTS_PER_BLOB.to_be_bytes().as_ref());
+        let proof_key_hash = keccak256(proof_key.as_ref());
+
+        assert_eq!(
+            kv.get(PreimageKey::new(*proof_key_hash, PreimageKeyType::Blob).into()),
+            Some(vec![0x22u8; 48])
+        );
     }
 
     #[tokio::test]
