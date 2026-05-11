@@ -300,14 +300,14 @@ impl BeaconClient for OnlineBeaconClient {
     }
 
     async fn beacon_blobs(&self, slot: u64) -> Result<Vec<BoxedBlob>, BeaconClientError> {
-        Metrics::beacon_requests("blobs").increment(1);
+        Metrics::beacon_requests("all_blobs").increment(1);
 
-        let result = base_metrics::time!(Metrics::request_duration("blobs"), {
+        let result = base_metrics::time!(Metrics::request_duration("all_blobs"), {
             self.beacon_blobs(slot).await
         });
 
         if result.is_err() {
-            Metrics::beacon_errors("blobs").increment(1);
+            Metrics::beacon_errors("all_blobs").increment(1);
         }
 
         result

@@ -125,10 +125,11 @@ async fn fetch_and_store_slot_blobs(
         .map_err(|e| HostError::BlobSidecarFetchFailed(e.to_string()))?;
 
     let mut found_requested_hash = false;
-    let mut kv_lock = kv.write().await;
     for blob in blobs {
         let hash = kzg_to_versioned_hash(blob.kzg_commitment.as_slice());
         found_requested_hash |= hash == requested_hash;
+
+        let mut kv_lock = kv.write().await;
         store_blob_preimages(&mut *kv_lock, hash, blob)?;
     }
 
