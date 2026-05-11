@@ -91,8 +91,26 @@ fn store_blob_preimages(
     Ok(())
 }
 
+fn has_blob_preimages_in_store(kv: &dyn KeyValueStore, hash: B256) -> bool {
+    kv.get(PreimageKey::new(*hash, PreimageKeyType::Sha256).into()).is_some()
+}
+
 async fn has_blob_preimages(kv: &SharedKeyValueStore, hash: B256) -> bool {
-    kv.read().await.get(PreimageKey::new(*hash, PreimageKeyType::Sha256).into()).is_some()
+    has_blob_preimages_in_store(&*kv.read().await, hash)
+}
+
+async fn store_blob_preimages_if_missing(
+    kv: &SharedKeyValueStore,
+    hash: B256,
+    blob: BlobWithCommitmentAndProof,
+) -> Result<bool> {
+    let mut kv_lock = kv.write().await;
+    if has_blob_preimages_in_store(&*kv_lock, hash) {
+        return Ok(false);
+    }
+
+    store_blob_preimages(&mut *kv_lock, hash, blob)?;
+    Ok(true)
 }
 
 async fn fetch_and_store_single_blob(
@@ -111,8 +129,8 @@ async fn fetch_and_store_single_blob(
     }
 
     let blob = blobs.pop().expect("Expected 1 blob");
-    let mut kv_lock = kv.write().await;
-    store_blob_preimages(&mut *kv_lock, hash, blob)
+    store_blob_preimages_if_missing(&kv, hash, blob).await?;
+    Ok(())
 }
 
 async fn fetch_and_store_slot_blobs(
@@ -132,8 +150,7 @@ async fn fetch_and_store_slot_blobs(
         let hash = kzg_to_versioned_hash(blob.kzg_commitment.as_slice());
         found_requested_hash |= hash == requested_hash;
 
-        let mut kv_lock = kv.write().await;
-        store_blob_preimages(&mut *kv_lock, hash, blob)?;
+        store_blob_preimages_if_missing(&kv, hash, blob).await?;
     }
 
     Ok(found_requested_hash)
@@ -491,7 +508,9 @@ async fn handle_hint_inner(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, sync::Arc};
+
+    use tokio::sync::RwLock;
 
     use super::*;
 
@@ -570,5 +589,22 @@ mod tests {
 
         assert!(result.is_err());
         assert!(kv.get(PreimageKey::new(*TEST_HASH, PreimageKeyType::Sha256).into()).is_none());
+    }
+
+    #[tokio::test]
+    async fn test_store_blob_preimages_if_missing_skips_cached_blob() {
+        let mut store = HashMap::new();
+        store.insert(PreimageKey::new(*TEST_HASH, PreimageKeyType::Sha256).into(), vec![0x11; 48]);
+        let kv: SharedKeyValueStore =
+            Arc::new(RwLock::new(FailingKeyValueStore { store, fail_on_call: 0, set_calls: 0 }));
+        let blob = BlobWithCommitmentAndProof {
+            blob: Box::default(),
+            kzg_commitment: [0x11u8; 48].into(),
+            kzg_proof: [0x22u8; 48].into(),
+        };
+
+        let stored = store_blob_preimages_if_missing(&kv, TEST_HASH, blob).await.unwrap();
+
+        assert!(!stored);
     }
 }
