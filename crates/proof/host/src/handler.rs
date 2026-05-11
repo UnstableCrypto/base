@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use alloy_consensus::Header;
 use alloy_eips::{eip2718::Encodable2718, eip4844::FIELD_ELEMENTS_PER_BLOB};
 use alloy_primitives::{Address, B256, Bytes, keccak256};
@@ -17,39 +19,74 @@ use crate::{
     HostConfig, HostError, HostProviders, Metrics, Result, SharedKeyValueStore, store_ordered_trie,
 };
 
-/// Parses a blob hint, supporting both legacy (48-byte) and new (40-byte) formats.
+/// Parses a blob hint, supporting legacy (48-byte), new (40-byte), and batched
+/// new-format hints.
 ///
-/// Returns the blob hash and timestamp.
+/// Returns each blob hash and timestamp pair.
 ///
 /// ## Formats
 /// - Legacy: hash (32 bytes) + index (8 bytes) + timestamp (8 bytes) = 48 bytes
 /// - New: hash (32 bytes) + timestamp (8 bytes) = 40 bytes
+/// - Batched new: repeated 40-byte new-format entries
 ///
 /// The legacy index field is parsed but ignored.
-pub fn parse_blob_hint(hint_data: &[u8]) -> Result<(B256, u64)> {
-    match hint_data.len() {
-        48 => {
-            let hash_data_bytes: [u8; 32] = hint_data[0..32].try_into()?;
-            let _index_data_bytes: [u8; 8] = hint_data[32..40].try_into()?;
-            let timestamp_data_bytes: [u8; 8] = hint_data[40..48].try_into()?;
+pub fn parse_blob_hint(hint_data: &[u8]) -> Result<Vec<(B256, u64)>> {
+    if hint_data.len() == 48 {
+        let hash_data_bytes: [u8; 32] = hint_data[0..32].try_into()?;
+        let _index_data_bytes: [u8; 8] = hint_data[32..40].try_into()?;
+        let timestamp_data_bytes: [u8; 8] = hint_data[40..48].try_into()?;
 
-            let hash: B256 = hash_data_bytes.into();
-            let timestamp = u64::from_be_bytes(timestamp_data_bytes);
-            Ok((hash, timestamp))
-        }
-        40 => {
-            let hash_data_bytes: [u8; 32] = hint_data[0..32].try_into()?;
-            let timestamp_data_bytes: [u8; 8] = hint_data[32..40].try_into()?;
-
-            let hash: B256 = hash_data_bytes.into();
-            let timestamp = u64::from_be_bytes(timestamp_data_bytes);
-            Ok((hash, timestamp))
-        }
-        _ => Err(HostError::Custom(format!(
-            "Invalid blob hint length: expected 40 or 48 bytes, got {}",
-            hint_data.len()
-        ))),
+        return Ok(vec![(hash_data_bytes.into(), u64::from_be_bytes(timestamp_data_bytes))]);
     }
+
+    if hint_data.len() % 40 != 0 {
+        return Err(HostError::Custom(format!(
+            "Invalid blob hint length: expected 40, 48, or a multiple of 40 bytes, got {}",
+            hint_data.len()
+        )));
+    }
+
+    hint_data
+        .chunks_exact(40)
+        .map(|chunk| {
+            let hash_data_bytes: [u8; 32] = chunk[0..32].try_into()?;
+            let timestamp_data_bytes: [u8; 8] = chunk[32..40].try_into()?;
+
+            Ok((hash_data_bytes.into(), u64::from_be_bytes(timestamp_data_bytes)))
+        })
+        .collect()
+}
+
+async fn store_blob_preimages(
+    kv: SharedKeyValueStore,
+    hash: B256,
+    BlobWithCommitmentAndProof { blob, kzg_proof: proof, kzg_commitment: commitment }: BlobWithCommitmentAndProof,
+) -> Result<()> {
+    let mut kv_lock = kv.write().await;
+
+    kv_lock.set(PreimageKey::new(*hash, PreimageKeyType::Sha256).into(), commitment.to_vec())?;
+
+    let mut blob_key = [0u8; 80];
+    blob_key[..48].copy_from_slice(commitment.as_ref());
+    for i in 0..FIELD_ELEMENTS_PER_BLOB {
+        blob_key[48..]
+            .copy_from_slice(ROOTS_OF_UNITY[i as usize].into_bigint().to_bytes_be().as_ref());
+        let blob_key_hash = keccak256(blob_key.as_ref());
+
+        kv_lock.set(PreimageKey::new_keccak256(*blob_key_hash).into(), blob_key.into())?;
+        kv_lock.set(
+            PreimageKey::new(*blob_key_hash, PreimageKeyType::Blob).into(),
+            blob.as_ref()[(i as usize) << 5..(i as usize + 1) << 5].to_vec(),
+        )?;
+    }
+
+    blob_key[72..].copy_from_slice(FIELD_ELEMENTS_PER_BLOB.to_be_bytes().as_ref());
+    let blob_key_hash = keccak256(blob_key.as_ref());
+
+    kv_lock.set(PreimageKey::new_keccak256(*blob_key_hash).into(), blob_key.into())?;
+    kv_lock.set(PreimageKey::new(*blob_key_hash, PreimageKeyType::Blob).into(), proof.to_vec())?;
+
+    Ok(())
 }
 
 /// Fetches data in response to a hint.
@@ -123,51 +160,35 @@ async fn handle_hint_inner(
             store_ordered_trie(kv.as_ref(), raw_receipts.as_slice()).await?;
         }
         HintType::L1Blob => {
-            let (hash, timestamp) = parse_blob_hint(&hint.data)?;
+            let hints = parse_blob_hint(&hint.data)?;
+            let Some((_, timestamp)) = hints.first().copied() else {
+                return Err(HostError::InvalidHintDataLength);
+            };
+
+            if hints.iter().any(|(_, hint_timestamp)| *hint_timestamp != timestamp) {
+                return Err(HostError::Custom(
+                    "batched blob hints must share the same timestamp".into(),
+                ));
+            }
 
             let partial_block_ref = BlockInfo { timestamp, ..Default::default() };
+            let hashes = hints.iter().map(|(hash, _)| *hash).collect::<Vec<_>>();
 
-            let mut blobs = providers
+            let blobs = providers
                 .blobs
-                .fetch_blobs_with_proofs(&partial_block_ref, &[hash])
+                .fetch_blobs_with_proofs(&partial_block_ref, &hashes)
                 .await
                 .map_err(|e| HostError::BlobSidecarFetchFailed(e.to_string()))?;
-            if blobs.len() != 1 {
-                return Err(HostError::BlobCountMismatch { expected: 1, actual: blobs.len() });
-            }
-            let BlobWithCommitmentAndProof { blob, kzg_proof: proof, kzg_commitment: commitment } =
-                blobs.pop().expect("Expected 1 blob");
-
-            let mut kv_lock = kv.write().await;
-
-            kv_lock.set(
-                PreimageKey::new(*hash, PreimageKeyType::Sha256).into(),
-                commitment.to_vec(),
-            )?;
-
-            let mut blob_key = [0u8; 80];
-            blob_key[..48].copy_from_slice(commitment.as_ref());
-            for i in 0..FIELD_ELEMENTS_PER_BLOB {
-                blob_key[48..].copy_from_slice(
-                    ROOTS_OF_UNITY[i as usize].into_bigint().to_bytes_be().as_ref(),
-                );
-                let blob_key_hash = keccak256(blob_key.as_ref());
-
-                kv_lock.set(PreimageKey::new_keccak256(*blob_key_hash).into(), blob_key.into())?;
-                kv_lock.set(
-                    PreimageKey::new(*blob_key_hash, PreimageKeyType::Blob).into(),
-                    blob.as_ref()[(i as usize) << 5..(i as usize + 1) << 5].to_vec(),
-                )?;
+            if blobs.len() != hashes.len() {
+                return Err(HostError::BlobCountMismatch {
+                    expected: hashes.len(),
+                    actual: blobs.len(),
+                });
             }
 
-            blob_key[72..].copy_from_slice(FIELD_ELEMENTS_PER_BLOB.to_be_bytes().as_ref());
-            let blob_key_hash = keccak256(blob_key.as_ref());
-
-            kv_lock.set(PreimageKey::new_keccak256(*blob_key_hash).into(), blob_key.into())?;
-            kv_lock.set(
-                PreimageKey::new(*blob_key_hash, PreimageKeyType::Blob).into(),
-                proof.to_vec(),
-            )?;
+            for (hash, blob) in hashes.into_iter().zip(blobs) {
+                store_blob_preimages(Arc::clone(&kv), hash, blob).await?;
+            }
         }
         HintType::L1Precompile => {
             if hint.data.len() < 28 {
@@ -436,13 +457,21 @@ mod tests {
 
     #[test]
     fn test_parse_blob_hint_formats() {
-        let (legacy_hash, legacy_timestamp) = parse_blob_hint(&LEGACY_HINT).unwrap();
-        let (new_hash, new_timestamp) = parse_blob_hint(&NEW_HINT).unwrap();
+        let legacy = parse_blob_hint(&LEGACY_HINT).unwrap();
+        let new = parse_blob_hint(&NEW_HINT).unwrap();
 
-        assert_eq!(legacy_hash, TEST_HASH);
-        assert_eq!(legacy_timestamp, TEST_TIMESTAMP);
-        assert_eq!(new_hash, TEST_HASH);
-        assert_eq!(new_timestamp, TEST_TIMESTAMP);
+        assert_eq!(legacy, vec![(TEST_HASH, TEST_TIMESTAMP)]);
+        assert_eq!(new, vec![(TEST_HASH, TEST_TIMESTAMP)]);
+    }
+
+    #[test]
+    fn test_parse_blob_hint_batched() {
+        let mut batched = Vec::new();
+        batched.extend_from_slice(&NEW_HINT);
+        batched.extend_from_slice(&NEW_HINT);
+
+        let parsed = parse_blob_hint(&batched).unwrap();
+        assert_eq!(parsed, vec![(TEST_HASH, TEST_TIMESTAMP), (TEST_HASH, TEST_TIMESTAMP)]);
     }
 
     #[test]
@@ -453,7 +482,7 @@ mod tests {
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Invalid blob hint length"));
-        assert!(err_msg.contains("expected 40 or 48 bytes"));
+        assert!(err_msg.contains("expected 40, 48, or a multiple of 40 bytes"));
         assert!(err_msg.contains("got 35"));
     }
 }
