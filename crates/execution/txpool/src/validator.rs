@@ -318,9 +318,7 @@ mod tests {
     use alloy_primitives::{Address, TxKind, U256, bytes, hex::decode};
     use alloy_signer::SignerSync;
     use base_common_chains::ChainConfig;
-    use base_common_consensus::{
-        BasePrimitives, BaseTransactionSigned, BaseTxEnvelope, TxDeposit,
-    };
+    use base_common_consensus::{BasePrimitives, BaseTransactionSigned, BaseTxEnvelope, TxDeposit};
     use base_execution_chainspec::BaseChainSpec;
     use base_execution_evm::BaseEvmConfig;
     use base_test_utils::Account;
@@ -413,7 +411,8 @@ mod tests {
             .no_shanghai()
             .no_cancun()
             .build(InMemoryBlobStore::default());
-        let validator = BaseTransactionValidator::with_block_info(inner, BaseL1BlockInfo::default());
+        let validator =
+            BaseTransactionValidator::with_block_info(inner, BaseL1BlockInfo::default());
 
         let header = alloy_consensus::Header {
             timestamp: chain_config.isthmus_timestamp,
