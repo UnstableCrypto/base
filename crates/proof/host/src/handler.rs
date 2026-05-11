@@ -228,6 +228,10 @@ async fn handle_hint_inner(
                     fetch_and_store_single_blob(providers, kv, &partial_block_ref, hash).await?;
                 }
                 Err(err) => {
+                    if !matches!(err, HostError::BlobSidecarFetchFailed(_)) {
+                        return Err(err);
+                    }
+
                     warn!(
                         target: "blob_provider",
                         error = %err,

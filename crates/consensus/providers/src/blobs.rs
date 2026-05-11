@@ -114,7 +114,7 @@ impl<B: BeaconClient> OnlineBlobProvider<B> {
 
     /// Fetches all blobs for the given slot.
     async fn fetch_all_blobs(&self, slot: u64) -> Result<Vec<BoxedBlob>, BlobProviderError> {
-        Metrics::blob_fetches().increment(1);
+        Metrics::blob_prefetches().increment(1);
 
         let result = self.beacon_client.beacon_blobs(slot).await.map_err(|e| {
             let Some(missing_slot) = B::slot_not_found(&e) else {
@@ -130,7 +130,7 @@ impl<B: BeaconClient> OnlineBlobProvider<B> {
         });
 
         if result.is_err() {
-            Metrics::blob_fetch_errors().increment(1);
+            Metrics::blob_prefetch_errors().increment(1);
         }
 
         result
