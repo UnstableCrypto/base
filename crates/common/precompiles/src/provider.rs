@@ -1,5 +1,6 @@
 use alloc::{boxed::Box, string::String};
 
+use base_common_chains::BaseUpgrade;
 use revm::{
     context::Cfg,
     context_interface::ContextTr,
@@ -9,35 +10,52 @@ use revm::{
     primitives::{Address, OnceLock, hardfork::SpecId},
 };
 
-use super::{bls12_381, bn254_pair};
-use crate::BaseSpecId;
+use crate::{BasePrecompileSpec, bls12_381, bn254_pair};
 
 /// Base precompile provider.
 #[derive(Debug, Clone)]
-pub struct BasePrecompiles {
+pub struct BasePrecompiles<S = BaseUpgrade> {
     /// Inner precompile provider is the same as Ethereum's.
     inner: EthPrecompiles,
     /// Spec id of the precompile provider.
-    spec: BaseSpecId,
+    spec: S,
 }
 
-impl BasePrecompiles {
-    /// Create a new precompile provider with the given [`BaseSpecId`].
+impl<S: BasePrecompileSpec> BasePrecompiles<S> {
+    /// Create a new precompile provider with the given spec.
     #[inline]
-    pub fn new_with_spec(spec: BaseSpecId) -> Self {
-        let precompiles = match spec {
-            spec @ (BaseSpecId::BEDROCK
-            | BaseSpecId::REGOLITH
-            | BaseSpecId::CANYON
-            | BaseSpecId::ECOTONE) => Precompiles::new(spec.into_eth_spec().into()),
-            BaseSpecId::FJORD => Self::fjord(),
-            BaseSpecId::GRANITE | BaseSpecId::HOLOCENE => Self::granite(),
-            BaseSpecId::ISTHMUS => Self::isthmus(),
-            BaseSpecId::JOVIAN => Self::jovian(),
-            BaseSpecId::AZUL | BaseSpecId::BERYL => Self::azul(),
+    pub fn new_with_spec(spec: S) -> Self {
+        let precompiles = match spec.upgrade() {
+            BaseUpgrade::Bedrock
+            | BaseUpgrade::Regolith
+            | BaseUpgrade::Canyon
+            | BaseUpgrade::Ecotone => Precompiles::new(Self::eth_spec(spec.upgrade()).into()),
+            BaseUpgrade::Fjord => Self::fjord(),
+            BaseUpgrade::Granite | BaseUpgrade::Holocene => Self::granite(),
+            BaseUpgrade::Isthmus => Self::isthmus(),
+            BaseUpgrade::Jovian => Self::jovian(),
+            // Azul, Beryl, and newer Base upgrades inherit the latest known precompile set until
+            // explicitly mapped.
+            _ => Self::azul(),
         };
 
         Self { inner: EthPrecompiles { precompiles, spec: SpecId::default() }, spec }
+    }
+
+    /// Converts a Base upgrade into its Ethereum precompile spec.
+    pub const fn eth_spec(upgrade: BaseUpgrade) -> SpecId {
+        match upgrade {
+            BaseUpgrade::Bedrock | BaseUpgrade::Regolith => SpecId::MERGE,
+            BaseUpgrade::Canyon => SpecId::SHANGHAI,
+            BaseUpgrade::Ecotone
+            | BaseUpgrade::Fjord
+            | BaseUpgrade::Granite
+            | BaseUpgrade::Holocene => SpecId::CANCUN,
+            BaseUpgrade::Isthmus | BaseUpgrade::Jovian => SpecId::PRAGUE,
+            // Azul, Beryl, and newer Base upgrades inherit the latest known Ethereum precompile
+            // spec until explicitly mapped.
+            _ => SpecId::OSAKA,
+        }
     }
 
     /// Precompiles getter.
@@ -127,9 +145,10 @@ impl BasePrecompiles {
     }
 }
 
-impl<CTX> PrecompileProvider<CTX> for BasePrecompiles
+impl<CTX, S> PrecompileProvider<CTX> for BasePrecompiles<S>
 where
-    CTX: ContextTr<Cfg: Cfg<Spec = BaseSpecId>>,
+    S: BasePrecompileSpec,
+    CTX: ContextTr<Cfg: Cfg<Spec = S>>,
 {
     type Output = InterpreterResult;
 
@@ -162,9 +181,9 @@ where
     }
 }
 
-impl Default for BasePrecompiles {
+impl<S: BasePrecompileSpec> Default for BasePrecompiles<S> {
     fn default() -> Self {
-        Self::new_with_spec(BaseSpecId::JOVIAN)
+        Self::new_with_spec(S::default_precompile_spec())
     }
 }
 
@@ -178,10 +197,9 @@ mod tests {
     };
 
     use super::*;
-    use crate::{
-        BaseSpecId,
-        precompiles::{bls12_381, bn254_pair},
-    };
+    use crate::{bls12_381, bn254_pair};
+
+    type TestPrecompiles = BasePrecompiles<BaseUpgrade>;
 
     fn encode_length(len: usize) -> [u8; 32] {
         let mut encoded = [0u8; 32];
@@ -206,7 +224,7 @@ mod tests {
         input
     }
 
-    fn assert_jovian_input_limits(spec: BaseSpecId) {
+    fn assert_jovian_input_limits(spec: BaseUpgrade) {
         let precompiles = BasePrecompiles::new_with_spec(spec);
         let bn254_pair_precompile = precompiles.precompiles().get(&bn254::pair::ADDRESS).unwrap();
 
@@ -245,18 +263,18 @@ mod tests {
 
     #[test]
     fn test_get_jovian_precompile_with_bad_input_len() {
-        assert_jovian_input_limits(BaseSpecId::JOVIAN);
+        assert_jovian_input_limits(BaseUpgrade::Jovian);
     }
 
     #[test]
     fn test_get_azul_precompile_with_bad_input_len() {
-        assert_jovian_input_limits(BaseSpecId::AZUL);
+        assert_jovian_input_limits(BaseUpgrade::Azul);
     }
 
     #[test]
     fn test_get_azul_precompile_with_osaka_rules() {
-        let jovian_precompiles = BasePrecompiles::new_with_spec(BaseSpecId::JOVIAN);
-        let azul_precompiles = BasePrecompiles::new_with_spec(BaseSpecId::AZUL);
+        let jovian_precompiles = BasePrecompiles::new_with_spec(BaseUpgrade::Jovian);
+        let azul_precompiles = BasePrecompiles::new_with_spec(BaseUpgrade::Azul);
 
         let jovian_p256 =
             jovian_precompiles.precompiles().get(secp256r1::P256VERIFY.address()).unwrap();
@@ -283,14 +301,14 @@ mod tests {
     #[test]
     fn test_cancun_precompiles_in_fjord() {
         // additional to cancun, fjord has p256verify
-        assert_eq!(BasePrecompiles::fjord().difference(Precompiles::cancun()).len(), 1)
+        assert_eq!(TestPrecompiles::fjord().difference(Precompiles::cancun()).len(), 1)
     }
 
     #[test]
     fn test_cancun_precompiles_in_granite() {
         // granite has p256verify (fjord)
         // granite has modification of cancun's bn254 pair (doesn't count as new precompile)
-        assert_eq!(BasePrecompiles::granite().difference(Precompiles::cancun()).len(), 1)
+        assert_eq!(TestPrecompiles::granite().difference(Precompiles::cancun()).len(), 1)
     }
 
     #[test]
@@ -298,7 +316,7 @@ mod tests {
         let new_prague_precompiles = Precompiles::prague().difference(Precompiles::cancun());
 
         // isthmus contains all precompiles that were new in prague, without modifications
-        assert!(new_prague_precompiles.difference(BasePrecompiles::isthmus()).is_empty())
+        assert!(new_prague_precompiles.difference(TestPrecompiles::isthmus()).is_empty())
     }
 
     #[test]
@@ -306,21 +324,21 @@ mod tests {
         let new_prague_precompiles = Precompiles::prague().difference(Precompiles::cancun());
 
         // jovian contains all precompiles that were new in prague, without modifications
-        assert!(new_prague_precompiles.difference(BasePrecompiles::jovian()).is_empty())
+        assert!(new_prague_precompiles.difference(TestPrecompiles::jovian()).is_empty())
     }
 
     #[test]
     fn test_isthmus_precompiles_in_jovian() {
-        let new_isthmus_precompiles = BasePrecompiles::isthmus().difference(Precompiles::cancun());
+        let new_isthmus_precompiles = TestPrecompiles::isthmus().difference(Precompiles::cancun());
 
         // jovian contains all precompiles that were new in isthmus, without modifications
-        assert!(new_isthmus_precompiles.difference(BasePrecompiles::jovian()).is_empty())
+        assert!(new_isthmus_precompiles.difference(TestPrecompiles::jovian()).is_empty())
     }
 
     #[test]
     fn test_default_precompiles_matches_jovian() {
-        let jovian = BasePrecompiles::new_with_spec(BaseSpecId::JOVIAN).inner.precompiles;
-        let default = BasePrecompiles::default().inner.precompiles;
+        let jovian = BasePrecompiles::new_with_spec(BaseUpgrade::Jovian).inner.precompiles;
+        let default = TestPrecompiles::default().inner.precompiles;
         assert_eq!(jovian.len(), default.len());
 
         let intersection = default.intersection(jovian);

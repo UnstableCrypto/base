@@ -1,6 +1,6 @@
 use alloy_hardforks::{ForkCondition, hardfork};
 
-use crate::ChainConfig;
+use crate::{ChainConfig, Upgrades};
 
 hardfork!(
     /// The name of a Base network upgrade.
@@ -37,6 +37,35 @@ hardfork!(
 );
 
 impl BaseUpgrade {
+    /// Returns the active Base upgrade at the given timestamp.
+    ///
+    /// This is intended for post-Bedrock timestamp-based fork resolution.
+    pub fn from_timestamp(chain_spec: impl Upgrades, timestamp: u64) -> Self {
+        if chain_spec.is_beryl_active_at_timestamp(timestamp) {
+            Self::Beryl
+        } else if chain_spec.is_base_azul_active_at_timestamp(timestamp) {
+            Self::Azul
+        } else if chain_spec.is_jovian_active_at_timestamp(timestamp) {
+            Self::Jovian
+        } else if chain_spec.is_isthmus_active_at_timestamp(timestamp) {
+            Self::Isthmus
+        } else if chain_spec.is_holocene_active_at_timestamp(timestamp) {
+            Self::Holocene
+        } else if chain_spec.is_granite_active_at_timestamp(timestamp) {
+            Self::Granite
+        } else if chain_spec.is_fjord_active_at_timestamp(timestamp) {
+            Self::Fjord
+        } else if chain_spec.is_ecotone_active_at_timestamp(timestamp) {
+            Self::Ecotone
+        } else if chain_spec.is_canyon_active_at_timestamp(timestamp) {
+            Self::Canyon
+        } else if chain_spec.is_regolith_active_at_timestamp(timestamp) {
+            Self::Regolith
+        } else {
+            Self::Bedrock
+        }
+    }
+
     /// Returns the list of upgrades with their activation conditions for the given chain config.
     pub const fn forks_for(cfg: &ChainConfig) -> [(Self, ForkCondition); 11] {
         let azul = match cfg.azul_timestamp {
@@ -137,18 +166,10 @@ mod tests {
     }
 
     fn upgrade_from_config_and_timestamp(cfg: &ChainConfig, timestamp: u64) -> BaseUpgrade {
-        match timestamp {
-            _ if timestamp < cfg.canyon_timestamp => BaseUpgrade::Regolith,
-            _ if timestamp < cfg.ecotone_timestamp => BaseUpgrade::Canyon,
-            _ if timestamp < cfg.fjord_timestamp => BaseUpgrade::Ecotone,
-            _ if timestamp < cfg.granite_timestamp => BaseUpgrade::Fjord,
-            _ if timestamp < cfg.holocene_timestamp => BaseUpgrade::Granite,
-            _ if timestamp < cfg.isthmus_timestamp => BaseUpgrade::Holocene,
-            _ if timestamp < cfg.jovian_timestamp => BaseUpgrade::Isthmus,
-            _ if timestamp < cfg.azul_timestamp.unwrap_or(u64::MAX) => BaseUpgrade::Jovian,
-            _ if timestamp < cfg.beryl_timestamp.unwrap_or(u64::MAX) => BaseUpgrade::Azul,
-            _ => BaseUpgrade::Beryl,
-        }
+        BaseUpgrade::from_timestamp(
+            crate::ChainUpgrades::new(BaseUpgrade::forks_for(cfg)),
+            timestamp,
+        )
     }
 
     #[test]
