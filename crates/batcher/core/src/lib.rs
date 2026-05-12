@@ -28,7 +28,7 @@ mod config;
 pub use config::BatchDriverConfig;
 
 mod event;
-pub use event::DriverEvent;
+pub use event::{DriverEvent, ResetSafeHeadResult};
 
 mod local_safe_head;
 pub use local_safe_head::{LocalSafeHeadProvider, LocalSafeHeadResult};

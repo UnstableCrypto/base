@@ -14,11 +14,18 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
     AdminCommand, BatchDriverConfig, BatchDriverError, BatcherStatus, DaThrottle,
-    LocalSafeHeadProvider, SubmissionQueue, ThrottleClient, ThrottleController, event::DriverEvent,
+    LocalSafeHeadProvider, SubmissionQueue, ThrottleClient, ThrottleController,
+    event::{DriverEvent, ResetSafeHeadResult},
 };
 
 /// Delay between reset-boundary local-safe-head retries.
 const RESET_SAFE_HEAD_RETRY_DELAY: Duration = Duration::from_secs(5);
+
+#[derive(Debug)]
+struct PendingResetSafeHead {
+    rx: mpsc::Receiver<Option<u64>>,
+    fallback: Option<u64>,
+}
 
 /// Async orchestration loop for the batcher.
 ///
@@ -57,8 +64,8 @@ where
     safe_head_rx: Option<tokio::sync::watch::Receiver<u64>>,
     /// Optional provider used to fetch a fresh local safe head for reset boundaries.
     local_safe_head_provider: Option<Arc<dyn LocalSafeHeadProvider>>,
-    /// Result channel for an in-flight reset-boundary local-safe lookup.
-    reset_safe_head_rx: Option<mpsc::Receiver<Option<u64>>>,
+    /// In-flight reset-boundary lookup.
+    pending_reset_safe_head: Option<PendingResetSafeHead>,
     /// Maximum wall-clock time to wait for in-flight submissions to settle
     /// when draining on cancellation or source exhaustion.
     drain_timeout: Duration,
@@ -109,7 +116,7 @@ where
             l1_head_source: Some(l1_head_source),
             safe_head_rx: None,
             local_safe_head_provider: None,
-            reset_safe_head_rx: None,
+            pending_reset_safe_head: None,
             drain_timeout: config.drain_timeout,
             stopped: false,
             admin_rx: None,
@@ -228,9 +235,20 @@ where
                     self.pipeline.prune_safe(n);
                     debug!(local_safe_l2 = %n, "pruned safe blocks via watch");
                 }
-                DriverEvent::ResetSafeHead(n) => {
-                    self.reset_safe_head_rx = None;
-                    self.catch_up_from_safe_head(n);
+                DriverEvent::ResetSafeHead(result) => {
+                    self.pending_reset_safe_head = None;
+                    match result {
+                        ResetSafeHeadResult::Resolved { safe_head } => {
+                            self.catch_up_from_safe_head(safe_head);
+                        }
+                        ResetSafeHeadResult::Closed { fallback } => {
+                            warn!(
+                                fallback_safe_head = ?fallback,
+                                "local safe head reset boundary task closed without result, using fallback"
+                            );
+                            self.catch_up_from_safe_head(fallback);
+                        }
+                    }
                 }
                 DriverEvent::L1SourceClosed => {
                     debug!("L1 head source closed, disabling arm");
@@ -310,13 +328,12 @@ where
             return;
         };
 
-        if self.reset_safe_head_rx.is_some() {
-            warn!("local safe head reset boundary lookup already pending");
-            return;
+        if self.pending_reset_safe_head.is_some() {
+            warn!("replacing pending local safe head reset boundary lookup");
         }
 
         let (tx, rx) = mpsc::channel(1);
-        self.reset_safe_head_rx = Some(rx);
+        self.pending_reset_safe_head = Some(PendingResetSafeHead { rx, fallback: watch_value });
 
         let runtime = self.runtime.clone();
         let provider = Arc::clone(provider);
@@ -386,14 +403,14 @@ where
     /// return type with a no-op variant.
     async fn next_event(&mut self) -> Result<DriverEvent, BatchDriverError> {
         loop {
-            let reset_pending = self.reset_safe_head_rx.is_some();
+            let reset_pending = self.pending_reset_safe_head.is_some();
             let event = tokio::select! {
                 biased;
 
                 _ = self.runtime.cancelled() => DriverEvent::Shutdown,
 
-                safe_head = Self::next_reset_safe_head(&mut self.reset_safe_head_rx) => {
-                    DriverEvent::ResetSafeHead(safe_head)
+                result = Self::next_reset_safe_head(&mut self.pending_reset_safe_head) => {
+                    DriverEvent::ResetSafeHead(result)
                 },
 
                 cmd = Self::next_admin_cmd(&mut self.admin_rx) => {
@@ -516,9 +533,14 @@ where
     }
 
     /// Returns a completed reset-boundary lookup, or parks forever if none is pending.
-    async fn next_reset_safe_head(rx: &mut Option<mpsc::Receiver<Option<u64>>>) -> Option<u64> {
-        match rx {
-            Some(rx) => rx.recv().await.flatten(),
+    async fn next_reset_safe_head(
+        pending: &mut Option<PendingResetSafeHead>,
+    ) -> ResetSafeHeadResult {
+        match pending {
+            Some(pending) => match pending.rx.recv().await {
+                Some(safe_head) => ResetSafeHeadResult::Resolved { safe_head },
+                None => ResetSafeHeadResult::Closed { fallback: pending.fallback },
+            },
             None => std::future::pending().await,
         }
     }

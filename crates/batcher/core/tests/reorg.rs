@@ -2,7 +2,10 @@
 
 use std::{
     collections::VecDeque,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::Duration,
 };
 
@@ -65,6 +68,18 @@ struct FailingLocalSafeHeadProvider;
 impl LocalSafeHeadProvider for FailingLocalSafeHeadProvider {
     fn local_safe_l2_number(&self) -> BoxFuture<'_, LocalSafeHeadResult> {
         Box::pin(async { Err("sync status unavailable".into()) })
+    }
+}
+
+#[derive(Debug, Default)]
+struct FirstCallPendingLocalSafeHeadProvider {
+    calls: AtomicUsize,
+}
+
+impl LocalSafeHeadProvider for FirstCallPendingLocalSafeHeadProvider {
+    fn local_safe_l2_number(&self) -> BoxFuture<'_, LocalSafeHeadResult> {
+        let call = self.calls.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async move { if call == 0 { std::future::pending().await } else { Ok(100) } })
     }
 }
 
@@ -369,6 +384,61 @@ fn test_l2_reorg_event_local_safe_head_retry_does_not_block_admin() {
             assert!(handle.await.unwrap().is_ok());
         },
     );
+}
+
+/// A second reset while a local-safe lookup is already pending should replace
+/// the pending lookup. Otherwise an old unresolved task can keep the source
+/// parked forever.
+#[test]
+fn test_l2_reorg_event_replaces_pending_local_safe_head_lookup() {
+    Runner::start(Config::seeded(0), |ctx| async move {
+        let recorded = Arc::new(Mutex::new(Recorded::default()));
+        let pipeline = TrackingPipeline::new(Arc::clone(&recorded));
+        let reorg_head =
+            L2BlockInfo::new(BlockInfo::new(B256::ZERO, 150, B256::ZERO, 0), Default::default(), 0);
+        let (source, catchup_args) =
+            ReorgThenPendingSource::new(L2BlockEvent::Reorg { new_safe_head: reorg_head });
+        let (admin_handle, admin_rx) = AdminHandle::channel();
+        let (safe_head_tx, safe_head_rx) = watch::channel::<u64>(150);
+
+        let provider = Arc::new(FirstCallPendingLocalSafeHeadProvider::default());
+        let driver = BatchDriver::new(
+            ctx.clone(),
+            pipeline,
+            source,
+            ImmediateConfirmTxManager { l1_block: 1 },
+            BatchDriverConfig {
+                inbox: Address::ZERO,
+                max_pending_transactions: 1,
+                drain_timeout: Duration::from_millis(10),
+                force_blobs_when_throttling: true,
+            },
+            DaThrottle::new(ThrottleController::noop(), Arc::new(NoopThrottleClient)),
+            PendingL1HeadSource,
+        )
+        .with_admin_rx(admin_rx)
+        .with_safe_head_rx(safe_head_rx)
+        .with_local_safe_head_provider(provider);
+        let handle = ctx.spawn(driver.run());
+
+        ctx.sleep(Duration::from_millis(10)).await;
+        admin_handle.resume().await.unwrap();
+        ctx.sleep(Duration::from_millis(10)).await;
+        ctx.cancel();
+
+        drop(safe_head_tx);
+        assert!(handle.await.unwrap().is_ok());
+        assert_eq!(
+            *catchup_args.lock().unwrap(),
+            vec![101],
+            "second reset must replace the unresolved local-safe lookup and catch up"
+        );
+        assert_eq!(
+            recorded.lock().unwrap().resets,
+            2,
+            "pipeline should be reset for the original reorg and the replacement reset"
+        );
+    });
 }
 
 /// Parent-hash mismatch reorgs use the same reset boundary as explicit source
