@@ -30,6 +30,10 @@ impl BaseDexPrecompile {
             ));
         }
 
+        if !input.value.is_zero() {
+            return Ok(Self::raw_revert(gas.used(), Bytes::new()));
+        }
+
         let storage = DexStorage::new(BASE_DEX_ADDRESS, input.internals);
         Self::dispatch(storage, &mut gas, input.data, input.caller, input.is_static)
     }
@@ -233,6 +237,28 @@ mod tests {
         let call = IBaseDexCalls::BASE_TOKEN(IBaseDex::BASE_TOKENCall {});
 
         assert!(BaseDexPrecompile::static_revert(&call, true).is_none());
+    }
+
+    #[test]
+    fn nonzero_value_reverts_before_dispatch() {
+        let calldata = IBaseDex::BASE_TOKENCall {}.abi_encode();
+        let mut context = EthEvmContext::new(EmptyDB::default(), Default::default());
+        let result = BaseDexPrecompile::precompile()
+            .call(PrecompileInput {
+                data: &calldata,
+                gas: u64::MAX,
+                caller: Address::ZERO,
+                value: U256::from(1),
+                target_address: BASE_DEX_ADDRESS,
+                is_static: false,
+                bytecode_address: BASE_DEX_ADDRESS,
+                internals: EvmInternals::from_context(&mut context),
+            })
+            .unwrap();
+
+        assert!(result.reverted);
+        assert!(result.gas_used > 0);
+        assert!(result.bytes.is_empty());
     }
 
     #[test]
