@@ -17,4 +17,7 @@ pub enum BatchDriverError {
     /// in the submitted L2 block sequence.
     #[error("fatal pipeline step error: {0}")]
     Step(#[from] StepError),
+    /// The current local safe L2 head could not be fetched for a reset boundary.
+    #[error("local safe head provider error: {0}")]
+    LocalSafeHead(String),
 }

@@ -24,8 +24,8 @@ use url::Url;
 
 use crate::{
     BatcherConfig, MAX_CHECK_RECENT_TXS_DEPTH, NullL1HeadSubscription, NullSubscription,
-    RecentTxScanner, RpcL1HeadPollingSource, RpcPollingSource, RpcThrottleClient, SafeHeadPoller,
-    WsBlockSubscription, WsL1HeadSubscription,
+    RecentTxScanner, RpcL1HeadPollingSource, RpcLocalSafeHeadProvider, RpcPollingSource,
+    RpcThrottleClient, SafeHeadPoller, WsBlockSubscription, WsL1HeadSubscription,
 };
 
 /// Service-internal throttle client variant: either a no-op or an RPC client.
@@ -312,6 +312,7 @@ impl BatcherService {
                     info!(
                         current_l1 = %status.current_l1.number,
                         unsafe_l2 = %status.unsafe_l2.block_info.number,
+                        local_safe_l2 = %status.local_safe_l2.block_info.number,
                         safe_l2 = %status.safe_l2.block_info.number,
                         "rollup node reports sync, proceeding with batcher startup"
                     );
@@ -472,16 +473,16 @@ impl BatcherService {
             .await?;
         }
 
-        // Fetch sync status to determine the safe L2 head for startup backfill.
+        // Fetch sync status to determine the local safe L2 head for startup backfill.
         let sync_status = rollup_client
             .sync_status()
             .await
             .map_err(|e| eyre::eyre!("optimism_syncStatus RPC failed: {e}"))?;
-        let safe_l2_number = sync_status.safe_l2.block_info.number;
+        let local_safe_l2_number = sync_status.local_safe_l2.block_info.number;
         let next_l2_timestamp =
-            sync_status.safe_l2.block_info.timestamp.saturating_add(rollup_config.block_time);
+            sync_status.local_safe_l2.block_info.timestamp.saturating_add(rollup_config.block_time);
         self.config.encoder_config.validate_for_rollup_config(&rollup_config, next_l2_timestamp)?;
-        info!(safe_l2 = %safe_l2_number, "fetched safe L2 head");
+        info!(local_safe_l2 = %local_safe_l2_number, "fetched local safe L2 head");
 
         // Validate the recent-tx scan depth against the maximum. Do this early so
         // the error surfaces before any network I/O for the scan.
@@ -533,14 +534,14 @@ impl BatcherService {
             .map_err(|e| eyre::eyre!("failed to fetch L2 latest block number: {e}"))?;
 
         // Advance the cursor past any L2 blocks that are already on L1 but not yet safe.
-        // Use the higher of the safe head and the scan result as the backfill start.
-        let cursor_start = safe_l2_number.max(scanned_highest.unwrap_or(0));
+        // Use the higher of the local safe head and the scan result as the backfill start.
+        let cursor_start = local_safe_l2_number.max(scanned_highest.unwrap_or(0));
 
         // Build the L2 polling source. If blocks between cursor_start+1 and latest
         // were not yet submitted, use sequential catchup mode to avoid skipping them.
         let poller = if cursor_start < latest_l2 {
             info!(
-                safe_l2 = %safe_l2_number,
+                local_safe_l2 = %local_safe_l2_number,
                 cursor_start = %cursor_start,
                 latest_l2 = %latest_l2,
                 "starting sequential backfill from cursor"
@@ -623,15 +624,20 @@ impl BatcherService {
         .map_err(|e| eyre::eyre!("failed to create tx manager: {e}"))?;
 
         // Create a safe-head watch channel for runtime pruning of confirmed blocks.
-        let (safe_head_tx, safe_head_rx) = watch::channel::<u64>(safe_l2_number);
+        let (safe_head_tx, safe_head_rx) = watch::channel::<u64>(local_safe_l2_number);
+        let local_safe_head_provider = RpcLocalSafeHeadProvider::new(rollup_client.clone());
 
         // Spawn the safe-head poller. It polls `optimism_syncStatus` at the
-        // configured interval and advances the watch when the safe L2 head
-        // moves forward, allowing the encoder to prune confirmed blocks.
+        // configured interval and updates the watch when the local safe L2 head
+        // changes, allowing the encoder to prune confirmed blocks.
         // Extract the raw token so the poller can use it before the runtime
         // moves into the driver below.
-        SafeHeadPoller::new(rollup_client, self.config.poll_interval, safe_head_tx)
-            .spawn(runtime.token().clone());
+        SafeHeadPoller::new(
+            local_safe_head_provider.clone(),
+            self.config.poll_interval,
+            safe_head_tx,
+        )
+        .spawn(runtime.token().clone());
 
         // Build the driver — all fallible setup is complete at this point.
         let mut driver = BatchDriver::new(
@@ -649,6 +655,7 @@ impl BatcherService {
             l1_head_source,
         )
         .with_safe_head_rx(safe_head_rx)
+        .with_local_safe_head_provider(Arc::new(local_safe_head_provider))
         .with_stopped(self.config.stopped);
 
         let admin_server = match self.config.admin_addr {

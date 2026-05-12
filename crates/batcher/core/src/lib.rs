@@ -30,6 +30,9 @@ pub use config::BatchDriverConfig;
 mod event;
 pub use event::DriverEvent;
 
+mod local_safe_head;
+pub use local_safe_head::{LocalSafeHeadProvider, LocalSafeHeadResult};
+
 mod admin;
 pub use admin::{
     ADMIN_CHANNEL_CAPACITY, AdminCommand, AdminError, AdminHandle, AdminResult, BatcherStatus,

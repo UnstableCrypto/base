@@ -1,6 +1,6 @@
 //! The async batch driver that orchestrates encoding, block sourcing, and L1 submission.
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use base_batcher_encoder::{BatchPipeline, StepResult};
 use base_batcher_source::{
@@ -13,8 +13,8 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    AdminCommand, BatchDriverConfig, BatchDriverError, BatcherStatus, DaThrottle, SubmissionQueue,
-    ThrottleClient, ThrottleController, event::DriverEvent,
+    AdminCommand, BatchDriverConfig, BatchDriverError, BatcherStatus, DaThrottle,
+    LocalSafeHeadProvider, SubmissionQueue, ThrottleClient, ThrottleController, event::DriverEvent,
 };
 
 /// Async orchestration loop for the batcher.
@@ -52,6 +52,8 @@ where
     l1_head_source: Option<L>,
     /// Optional external L2 safe head feed for pruning confirmed blocks.
     safe_head_rx: Option<tokio::sync::watch::Receiver<u64>>,
+    /// Optional provider used to fetch a fresh local safe head for reset boundaries.
+    local_safe_head_provider: Option<Arc<dyn LocalSafeHeadProvider>>,
     /// Maximum wall-clock time to wait for in-flight submissions to settle
     /// when draining on cancellation or source exhaustion.
     drain_timeout: Duration,
@@ -101,6 +103,7 @@ where
             throttle,
             l1_head_source: Some(l1_head_source),
             safe_head_rx: None,
+            local_safe_head_provider: None,
             drain_timeout: config.drain_timeout,
             stopped: false,
             admin_rx: None,
@@ -115,6 +118,18 @@ where
     /// free blocks that are confirmed safe on L2.
     pub fn with_safe_head_rx(mut self, rx: tokio::sync::watch::Receiver<u64>) -> Self {
         self.safe_head_rx = Some(rx);
+        self
+    }
+
+    /// Attach a provider for fetching the current local safe L2 head.
+    ///
+    /// Reorg and resume resets use this provider instead of the pruning watch so
+    /// the catchup boundary can move backward after an L1 reorg.
+    pub fn with_local_safe_head_provider(
+        mut self,
+        provider: Arc<dyn LocalSafeHeadProvider>,
+    ) -> Self {
+        self.local_safe_head_provider = Some(provider);
         self
     }
 
@@ -181,20 +196,25 @@ where
                     draining = true;
                 }
                 DriverEvent::Block(b) => {
-                    self.on_block(b);
+                    self.on_block(b).await?;
                 }
                 DriverEvent::Flush => {
                     self.pipeline.force_close_channel();
                     debug!("flush signal received, force-closed channel");
                 }
                 DriverEvent::Reorg(head) => {
-                    let safe_head = self.safe_head_rx.as_ref().map(|rx| *rx.borrow()).unwrap_or(0);
+                    let safe_head = Self::reset_safe_head(
+                        self.local_safe_head_provider.clone(),
+                        self.safe_head_rx.as_ref().map(|rx| *rx.borrow()),
+                    )
+                    .await?
+                    .unwrap_or(0);
                     let catchup_from = safe_head + 1;
                     warn!(
                         reorg_head = %head.block_info.number,
-                        safe_head = %safe_head,
+                        local_safe_l2 = %safe_head,
                         catchup_from = %catchup_from,
-                        "L2 reorg detected, resetting pipeline and catching up from safe head"
+                        "L2 reorg detected, resetting pipeline and catching up from local safe head"
                     );
                     self.submissions.discard();
                     self.pipeline.reset();
@@ -209,7 +229,7 @@ where
                 }
                 DriverEvent::SafeHead(n) => {
                     self.pipeline.prune_safe(n);
-                    debug!(safe_l2_number = %n, "pruned safe blocks via watch");
+                    debug!(local_safe_l2 = %n, "pruned safe blocks via watch");
                 }
                 DriverEvent::L1SourceClosed => {
                     debug!("L1 head source closed, disabling arm");
@@ -252,29 +272,55 @@ where
     ///
     /// If the pipeline signals a reorg via `add_block` (parent-hash mismatch),
     /// discards in-flight submissions, resets the pipeline, and restarts
-    /// sequential catchup from `safe_head + 1`. The triggering block will be
+    /// sequential catchup from `local_safe_l2 + 1`. The triggering block will be
     /// re-delivered by the sequential poller.
-    fn on_block(&mut self, block: Box<BaseBlock>) {
+    async fn on_block(&mut self, block: Box<BaseBlock>) -> Result<(), BatchDriverError> {
         let number = block.header.number;
         match self.pipeline.add_block(*block) {
             Ok(()) => {
                 debug!(block = %number, "added unsafe block to pipeline");
             }
             Err((e, _block)) => {
-                let safe_head = self.safe_head_rx.as_ref().map(|rx| *rx.borrow()).unwrap_or(0);
+                let safe_head = Self::reset_safe_head(
+                    self.local_safe_head_provider.clone(),
+                    self.safe_head_rx.as_ref().map(|rx| *rx.borrow()),
+                )
+                .await?
+                .unwrap_or(0);
                 let catchup_from = safe_head + 1;
                 warn!(
                     block = %number,
-                    safe_head = %safe_head,
+                    local_safe_l2 = %safe_head,
                     catchup_from = %catchup_from,
                     error = %e,
-                    "reorg detected during block ingestion, resetting pipeline and catching up from safe head"
+                    "reorg detected during block ingestion, resetting pipeline and catching up from local safe head"
                 );
                 self.submissions.discard();
                 self.pipeline.reset();
                 self.source.reset_catchup(catchup_from);
             }
         }
+        Ok(())
+    }
+
+    /// Return the reset boundary local safe head.
+    ///
+    /// Prefer a fresh local-safe-head provider when one is configured. The watch
+    /// channel is retained as a fallback for tests and custom embedders that do
+    /// not wire a provider.
+    async fn reset_safe_head(
+        provider: Option<Arc<dyn LocalSafeHeadProvider>>,
+        watch_value: Option<u64>,
+    ) -> Result<Option<u64>, BatchDriverError> {
+        if let Some(provider) = provider {
+            let n = provider
+                .local_safe_l2_number()
+                .await
+                .map_err(|e| BatchDriverError::LocalSafeHead(e.to_string()))?;
+            return Ok(Some(n));
+        }
+
+        Ok(watch_value)
     }
 
     /// Block on the next external event using a biased `tokio::select!`.
@@ -288,7 +334,7 @@ where
     /// resets the pipeline, then drops `Block` and `Flush` source events until
     /// [`AdminCommand::Resume`] is received. Reorg events propagate regardless
     /// of pause state. On resume the source is reset to catch up sequentially
-    /// from the last known safe L2 head.
+    /// from the last known local safe L2 head.
     ///
     /// Non-fatal L1 head source errors loop internally to avoid polluting the
     /// return type with a no-op variant.
@@ -309,14 +355,17 @@ where
                             info!(stopped = true, "batcher paused via admin");
                         }
                         AdminCommand::Resume => {
-                            let safe_head =
-                                self.safe_head_rx.as_ref().map(|rx| *rx.borrow());
+                            let safe_head = Self::reset_safe_head(
+                                self.local_safe_head_provider.clone(),
+                                self.safe_head_rx.as_ref().map(|rx| *rx.borrow()),
+                            )
+                            .await?;
                             if let Some(n) = safe_head {
                                 self.source.reset_catchup(n + 1);
                                 info!(
                                     stopped = false,
                                     catchup_from = %(n + 1),
-                                    "batcher resumed via admin, catching up from safe head"
+                                    "batcher resumed via admin, catching up from local safe head"
                                 );
                             } else {
                                 info!(stopped = false, "batcher resumed via admin");

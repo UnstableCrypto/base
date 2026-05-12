@@ -26,7 +26,7 @@ mod throttle;
 pub use throttle::RpcThrottleClient;
 
 mod safe_head_poller;
-pub use safe_head_poller::{SafeHeadPoller, SafeHeadProvider};
+pub use safe_head_poller::{RpcLocalSafeHeadProvider, SafeHeadPoller, SafeHeadProvider};
 
 mod service;
 pub use service::{BatcherService, ReadyBatcher};

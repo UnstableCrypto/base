@@ -8,8 +8,8 @@ use std::{
 use alloy_primitives::Address;
 use async_trait::async_trait;
 use base_batcher_core::{
-    AdminHandle, BatchDriver, BatchDriverConfig, DaThrottle, NoopThrottleClient,
-    ThrottleController,
+    AdminHandle, BatchDriver, BatchDriverConfig, DaThrottle, LocalSafeHeadProvider,
+    LocalSafeHeadResult, NoopThrottleClient, ThrottleController,
     test_utils::{
         DriverFixture, ImmediateConfirmTxManager, PendingL1HeadSource, Recorded, TrackingPipeline,
     },
@@ -23,7 +23,19 @@ use base_runtime::{
     Cancellation, Clock, Spawner,
     deterministic::{Config, Runner},
 };
+use futures::future::BoxFuture;
 use tokio::sync::watch;
+
+#[derive(Debug)]
+struct StaticLocalSafeHeadProvider {
+    number: u64,
+}
+
+impl LocalSafeHeadProvider for StaticLocalSafeHeadProvider {
+    fn local_safe_l2_number(&self) -> BoxFuture<'_, LocalSafeHeadResult> {
+        Box::pin(async move { Ok(self.number) })
+    }
+}
 
 /// Source that tracks `reset_catchup` calls and parks forever on `next()`.
 #[derive(Debug)]
@@ -120,6 +132,51 @@ fn test_resume_triggers_catchup_from_safe_head() {
             *catchup_args.lock().unwrap(),
             vec![43],
             "source must be reset to safe_head + 1 on resume"
+        );
+    });
+}
+
+/// Resume uses a fresh local safe head provider when available, so a stale
+/// pre-reorg pruning watch cannot skip canonical blocks during catchup.
+#[test]
+fn test_resume_uses_fresh_local_safe_head_over_stale_watch() {
+    Runner::start(Config::seeded(0), |ctx| async move {
+        let (source, catchup_args) = TrackingSource::new();
+        let (admin_handle, admin_rx) = AdminHandle::channel();
+        let (safe_head_tx, safe_head_rx) = watch::channel::<u64>(150);
+
+        let driver = BatchDriver::new(
+            ctx.clone(),
+            TrackingPipeline::new(Arc::new(Mutex::new(Recorded::default()))),
+            source,
+            ImmediateConfirmTxManager { l1_block: 1 },
+            BatchDriverConfig {
+                inbox: Address::ZERO,
+                max_pending_transactions: 1,
+                drain_timeout: Duration::from_millis(10),
+                force_blobs_when_throttling: true,
+            },
+            DaThrottle::new(ThrottleController::noop(), Arc::new(NoopThrottleClient)),
+            PendingL1HeadSource,
+        )
+        .with_admin_rx(admin_rx)
+        .with_safe_head_rx(safe_head_rx)
+        .with_local_safe_head_provider(Arc::new(StaticLocalSafeHeadProvider { number: 100 }));
+
+        let handle = ctx.spawn(driver.run());
+
+        admin_handle.pause().await.unwrap();
+        ctx.sleep(Duration::from_millis(10)).await;
+        admin_handle.resume().await.unwrap();
+        ctx.sleep(Duration::from_millis(10)).await;
+        ctx.cancel();
+
+        drop(safe_head_tx);
+        assert!(handle.await.unwrap().is_ok());
+        assert_eq!(
+            *catchup_args.lock().unwrap(),
+            vec![101],
+            "resume catchup must start from fresh local_safe_l2 + 1"
         );
     });
 }
