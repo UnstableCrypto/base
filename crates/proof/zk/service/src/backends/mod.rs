@@ -1,9 +1,14 @@
 //! Proving backends for ZK proof generation.
 
+mod session_progress;
+pub use session_progress::ProofSessionProgress;
+
 mod op_succinct;
 pub use op_succinct::{
     ClusterBackend as OpSuccinctClusterBackend, MockBackend as OpSuccinctMockBackend,
     NetworkBackend as OpSuccinctNetworkBackend, OpSuccinctProvider,
+    SnarkSession as OpSuccinctSnarkSession,
+    SnarkSessionRunOutcome as OpSuccinctSnarkSessionRunOutcome,
     WitnessParams as OpSuccinctWitnessParams,
 };
 

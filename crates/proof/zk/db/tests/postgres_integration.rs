@@ -387,7 +387,8 @@ async fn test_create_proof_session() {
             metadata: Some(serde_json::json!({"key": "value"})),
         })
         .await
-        .unwrap();
+        .unwrap()
+        .expect("expected proof session insert");
 
     assert!(session_id > 0);
 }
@@ -408,7 +409,8 @@ async fn test_get_session_by_backend_id() {
         metadata: None,
     })
     .await
-    .unwrap();
+    .unwrap()
+    .expect("expected proof session insert");
 
     let session =
         repo.get_session_by_backend_id(&backend_id).await.unwrap().expect("should find session");
@@ -434,7 +436,8 @@ async fn test_get_sessions_for_request() {
         metadata: None,
     })
     .await
-    .unwrap();
+    .unwrap()
+    .expect("expected proof session insert");
 
     // Create SNARK session
     repo.create_proof_session(CreateProofSession {
@@ -444,12 +447,157 @@ async fn test_get_sessions_for_request() {
         metadata: None,
     })
     .await
-    .unwrap();
+    .unwrap()
+    .expect("expected proof session insert");
 
     let sessions = repo.get_sessions_for_request(req_id).await.unwrap();
     assert_eq!(sessions.len(), 2);
     assert_eq!(sessions[0].session_type, SessionType::Stark);
     assert_eq!(sessions[1].session_type, SessionType::Snark);
+}
+
+#[tokio::test]
+#[ignore = "requires a running Postgres with the prover schema (set DATABASE_URL); run with `cargo nextest run --run-ignored all -p base-zk-db --test postgres_integration --test-threads=1`"]
+async fn test_reserve_proof_session_is_single_winner() {
+    let pool = test_pool().await;
+    let repo = test_repo(pool);
+
+    let req_id = repo.create(snark_request()).await.unwrap();
+
+    let first = repo.reserve_proof_session(req_id, SessionType::Snark).await.unwrap();
+    let second = repo.reserve_proof_session(req_id, SessionType::Snark).await.unwrap();
+
+    assert!(first.is_some(), "first reservation should win");
+    assert!(second.is_none(), "second reservation should observe existing session");
+
+    let sessions = repo.get_sessions_for_request(req_id).await.unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].session_type, SessionType::Snark);
+    assert_eq!(sessions[0].status, SessionStatus::Submitting);
+}
+
+#[tokio::test]
+#[ignore = "requires a running Postgres with the prover schema (set DATABASE_URL); run with `cargo nextest run --run-ignored all -p base-zk-db --test postgres_integration --test-threads=1`"]
+async fn test_activate_reserved_proof_session() {
+    let pool = test_pool().await;
+    let repo = test_repo(pool);
+
+    let req_id = repo.create(snark_request()).await.unwrap();
+    let reservation_id = repo
+        .reserve_proof_session(req_id, SessionType::Snark)
+        .await
+        .unwrap()
+        .expect("reservation should win");
+    let backend_id = format!("snark-{}", Uuid::new_v4());
+
+    let activated = repo
+        .activate_reserved_proof_session(
+            &reservation_id,
+            CreateProofSession {
+                proof_request_id: req_id,
+                session_type: SessionType::Snark,
+                backend_session_id: backend_id.clone(),
+                metadata: Some(serde_json::json!({"proof_id": backend_id.clone()})),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert!(activated);
+
+    let sessions = repo.get_sessions_for_request(req_id).await.unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].backend_session_id, backend_id);
+    assert_eq!(sessions[0].status, SessionStatus::Running);
+    assert!(sessions[0].metadata.is_some());
+
+    let activated_again = repo
+        .activate_reserved_proof_session(
+            &reservation_id,
+            CreateProofSession {
+                proof_request_id: req_id,
+                session_type: SessionType::Snark,
+                backend_session_id: format!("snark-{}", Uuid::new_v4()),
+                metadata: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!activated_again, "reservation should only activate once");
+}
+
+#[tokio::test]
+#[ignore = "requires a running Postgres with the prover schema (set DATABASE_URL); run with `cargo nextest run --run-ignored all -p base-zk-db --test postgres_integration --test-threads=1`"]
+async fn test_unique_index_allows_new_session_after_terminal() {
+    // Regression: the active-only unique index must not block a retried request from
+    // creating a fresh session for a (proof_request_id, session_type) pair that already
+    // has terminal (FAILED/COMPLETED) rows from a prior attempt.
+    let pool = test_pool().await;
+    let repo = test_repo(pool);
+
+    let req_id = repo.create(snark_request()).await.unwrap();
+
+    // Terminal STARK from a prior attempt.
+    let prior_stark_id = format!("stark-prior-{}", Uuid::new_v4());
+    repo.create_proof_session(CreateProofSession {
+        proof_request_id: req_id,
+        session_type: SessionType::Stark,
+        backend_session_id: prior_stark_id.clone(),
+        metadata: None,
+    })
+    .await
+    .unwrap()
+    .expect("expected proof session insert");
+    repo.update_proof_session(UpdateProofSession {
+        backend_session_id: prior_stark_id,
+        status: SessionStatus::Failed,
+        error_message: Some("prior attempt".into()),
+        metadata: None,
+    })
+    .await
+    .unwrap();
+
+    // Retried attempt: a fresh STARK insert for the same request must succeed.
+    let new_stark_id = format!("stark-retry-{}", Uuid::new_v4());
+    repo.create_proof_session(CreateProofSession {
+        proof_request_id: req_id,
+        session_type: SessionType::Stark,
+        backend_session_id: new_stark_id.clone(),
+        metadata: None,
+    })
+    .await
+    .unwrap()
+    .expect("retry STARK insert must not violate the partial unique index");
+
+    // Likewise, the SNARK reservation flow must not see a stale FAILED SNARK as a winner.
+    let prior_snark_id = format!("snark-prior-{}", Uuid::new_v4());
+    repo.create_proof_session(CreateProofSession {
+        proof_request_id: req_id,
+        session_type: SessionType::Snark,
+        backend_session_id: prior_snark_id.clone(),
+        metadata: None,
+    })
+    .await
+    .unwrap()
+    .expect("expected proof session insert");
+    repo.update_proof_session(UpdateProofSession {
+        backend_session_id: prior_snark_id,
+        status: SessionStatus::Failed,
+        error_message: Some("prior snark failed".into()),
+        metadata: None,
+    })
+    .await
+    .unwrap();
+
+    let reservation = repo.reserve_proof_session(req_id, SessionType::Snark).await.unwrap();
+    assert!(
+        reservation.is_some(),
+        "reserve_proof_session must succeed when only terminal SNARK rows exist"
+    );
+
+    // And the active-only invariant still holds against concurrent reservers.
+    let racer = repo.reserve_proof_session(req_id, SessionType::Snark).await.unwrap();
+    assert!(racer.is_none(), "second concurrent reservation must lose to the active row");
 }
 
 #[tokio::test]
@@ -468,7 +616,8 @@ async fn test_update_proof_session() {
         metadata: None,
     })
     .await
-    .unwrap();
+    .unwrap()
+    .expect("expected proof session insert");
 
     repo.update_proof_session(UpdateProofSession {
         backend_session_id: backend_id.clone(),
@@ -501,7 +650,8 @@ async fn test_update_proof_session_if_non_terminal() {
         metadata: None,
     })
     .await
-    .unwrap();
+    .unwrap()
+    .expect("expected proof session insert");
 
     // First update: RUNNING -> COMPLETED (should succeed)
     let updated = repo
@@ -645,7 +795,8 @@ async fn test_complete_session_and_update_receipt_skips_non_running() {
         metadata: None,
     })
     .await
-    .unwrap();
+    .unwrap()
+    .expect("expected proof session insert");
 
     let updated = repo
         .complete_session_and_update_receipt(
@@ -730,6 +881,74 @@ async fn test_retry_or_fail_stuck_request_wrong_state() {
 
     let req = repo.get(id).await.unwrap().unwrap();
     assert_eq!(req.status, ProofStatus::Running); // unchanged
+}
+
+#[tokio::test]
+#[ignore = "requires a running Postgres with the prover schema (set DATABASE_URL); run with `cargo nextest run --run-ignored all -p base-zk-db --test postgres_integration --test-threads=1`"]
+async fn test_get_stuck_requests_excludes_submitting_session() {
+    let pool = test_pool().await;
+    let repo = test_repo(pool.clone());
+
+    let id = repo.create(snark_request()).await.unwrap();
+    repo.atomic_claim_task(id).await.unwrap();
+    repo.reserve_proof_session(id, SessionType::Snark).await.unwrap().expect("reservation wins");
+
+    sqlx::query(
+        r#"
+        UPDATE proof_requests
+        SET updated_at = NOW() - INTERVAL '10 minutes'
+        WHERE id = $1
+        "#,
+    )
+    .bind(id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let stuck = repo.get_stuck_requests(1).await.unwrap();
+    assert!(!stuck.iter().any(|request| request.id == id));
+}
+
+#[tokio::test]
+#[ignore = "requires a running Postgres with the prover schema (set DATABASE_URL); run with `cargo nextest run --run-ignored all -p base-zk-db --test postgres_integration --test-threads=1`"]
+async fn test_fail_stale_submitting_sessions_marks_request_failed() {
+    let pool = test_pool().await;
+    let repo = test_repo(pool.clone());
+
+    let id = repo.create(snark_request()).await.unwrap();
+    repo.atomic_claim_task(id).await.unwrap();
+    let reservation_id = repo
+        .reserve_proof_session(id, SessionType::Snark)
+        .await
+        .unwrap()
+        .expect("reservation wins");
+
+    sqlx::query(
+        r#"
+        UPDATE proof_sessions
+        SET created_at = NOW() - INTERVAL '10 minutes'
+        WHERE backend_session_id = $1
+        "#,
+    )
+    .bind(&reservation_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let outcome =
+        repo.fail_stale_submitting_sessions(1, "stale submitting reservation").await.unwrap();
+    assert_eq!(outcome.proof_types, vec![ProofType::OpSuccinctSp1ClusterSnarkGroth16]);
+    assert_eq!(outcome.proof_requests_failed, 1);
+    assert_eq!(outcome.sessions_marked_failed, 1);
+
+    let request = repo.get(id).await.unwrap().unwrap();
+    assert_eq!(request.status, ProofStatus::Failed);
+    assert_eq!(request.error_message.as_deref(), Some("stale submitting reservation"));
+
+    let session =
+        repo.get_session_by_backend_id(&reservation_id).await.unwrap().expect("session exists");
+    assert_eq!(session.status, SessionStatus::Failed);
+    assert_eq!(session.error_message.as_deref(), Some("stale submitting reservation"));
 }
 
 // ============================================================
@@ -851,7 +1070,8 @@ async fn test_get_running_sessions() {
         metadata: None,
     })
     .await
-    .unwrap();
+    .unwrap()
+    .expect("expected proof session insert");
 
     // Create and complete another session
     repo.create_proof_session(CreateProofSession {
@@ -861,7 +1081,8 @@ async fn test_get_running_sessions() {
         metadata: None,
     })
     .await
-    .unwrap();
+    .unwrap()
+    .expect("expected proof session insert");
     repo.update_proof_session(UpdateProofSession {
         backend_session_id: completed_id.clone(),
         status: SessionStatus::Completed,
@@ -971,7 +1192,8 @@ async fn test_full_snark_pipeline() {
         metadata: None,
     })
     .await
-    .unwrap();
+    .unwrap()
+    .expect("expected proof session insert");
 
     // 6. SNARK completes — store receipt, mark SUCCEEDED
     let snark_receipt = vec![0xAA, 0xBB, 0xCC];

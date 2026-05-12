@@ -5,7 +5,8 @@ mod backends;
 pub use backends::{
     ArtifactClientWrapper, ArtifactStorageConfig, BackendConfig, BackendRegistry, BackendType,
     L1HeadCalculator, OpSuccinctClusterBackend, OpSuccinctMockBackend, OpSuccinctNetworkBackend,
-    OpSuccinctProvider, OpSuccinctWitnessParams, ProofProcessingResult, ProveResult,
+    OpSuccinctProvider, OpSuccinctSnarkSession, OpSuccinctSnarkSessionRunOutcome,
+    OpSuccinctWitnessParams, ProofProcessingResult, ProofSessionProgress, ProveResult,
     ProvingBackend, SessionStatus,
 };
 

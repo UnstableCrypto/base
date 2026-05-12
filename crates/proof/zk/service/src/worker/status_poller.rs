@@ -21,20 +21,28 @@ pub struct StatusPoller {
     manager: ProofRequestManager,
     poll_interval_secs: u64,
     stuck_timeout_mins: i32,
+    stale_submitting_session_timeout_mins: i32,
     max_proof_retries: i32,
 }
 
 impl StatusPoller {
-    /// Creates a status poller (`poll_interval_secs=<secs>`, `stuck_timeout_mins=<mins>`,
-    /// `max_proof_retries=<n>`).
+    /// Creates a status poller.
     pub const fn new(
         repo: ProofRequestRepo,
         manager: ProofRequestManager,
         poll_interval_secs: u64,
         stuck_timeout_mins: i32,
+        stale_submitting_session_timeout_mins: i32,
         max_proof_retries: i32,
     ) -> Self {
-        Self { repo, manager, poll_interval_secs, stuck_timeout_mins, max_proof_retries }
+        Self {
+            repo,
+            manager,
+            poll_interval_secs,
+            stuck_timeout_mins,
+            stale_submitting_session_timeout_mins,
+            max_proof_retries,
+        }
     }
 
     /// Run the status poller in a loop
@@ -52,6 +60,44 @@ impl StatusPoller {
 
     /// Poll once for all RUNNING proof requests and detect stuck requests
     async fn poll_once(&self) -> anyhow::Result<()> {
+        let stale_submitting_error = format!(
+            "Session stuck in SUBMITTING state for {}+ minutes",
+            self.stale_submitting_session_timeout_mins
+        );
+        let stale_outcome = match self
+            .repo
+            .fail_stale_submitting_sessions(
+                self.stale_submitting_session_timeout_mins,
+                &stale_submitting_error,
+            )
+            .await
+        {
+            Ok(outcome) => Some(outcome),
+            Err(e) => {
+                warn!(
+                    error = %e,
+                    "failed to reap stale SUBMITTING sessions; continuing status poll"
+                );
+                None
+            }
+        };
+        if let Some(stale_outcome) = stale_outcome
+            && stale_outcome.proof_requests_failed > 0
+        {
+            metrics::inc_stale_submitting_requests_failed(stale_outcome.proof_requests_failed);
+            warn!(
+                proof_requests_failed = stale_outcome.proof_requests_failed,
+                sessions_marked_failed = stale_outcome.sessions_marked_failed,
+                stale_submitting_session_timeout_mins = self.stale_submitting_session_timeout_mins,
+                "Failed proof requests with stale SUBMITTING sessions"
+            );
+            for proof_type in stale_outcome.proof_types {
+                let proof_type_label = metrics::proof_type_label(proof_type);
+                metrics::inc_stuck_requests(proof_type_label);
+                metrics::inc_proof_requests_completed("failed", proof_type_label);
+            }
+        }
+
         // Get all RUNNING proof_requests
         let running_requests = self.repo.get_running_proof_requests().await?;
 

@@ -18,11 +18,13 @@ use serde_json::json;
 use sp1_sdk::{
     SP1_CIRCUIT_VERSION, SP1ProofMode, SP1ProofWithPublicValues, SP1PublicValues, SP1VerifyingKey,
 };
-use tracing::info;
+use tracing::{error, info};
 use uuid::Uuid;
 
-use crate::backends::traits::{
-    BackendType, ProofProcessingResult, ProveResult, ProvingBackend, SessionStatus,
+use super::{SnarkSession, SnarkSessionRunOutcome};
+use crate::backends::{
+    ProofSessionProgress,
+    traits::{BackendType, ProofProcessingResult, ProveResult, ProvingBackend, SessionStatus},
 };
 
 /// Mock backend that produces instant fake proofs.
@@ -210,43 +212,63 @@ impl ProvingBackend for MockBackend {
         // Re-query sessions after updates.
         let updated_sessions = repo.get_sessions_for_request(proof_request.id).await?;
 
-        // For SNARK_GROTH16, check if STARK is done and SNARK session needs creation.
-        if proof_request.proof_type == ProofType::OpSuccinctSp1ClusterSnarkGroth16 {
-            let has_stark_completed = updated_sessions.iter().any(|s| {
-                s.session_type == SessionType::Stark && s.status == DbSessionStatus::Completed
-            });
-            let has_snark_session =
-                updated_sessions.iter().any(|s| s.session_type == SessionType::Snark);
-
-            if has_stark_completed && !has_snark_session {
+        // For SNARK_GROTH16, atomically reserve and "submit" the mock SNARK session so
+        // concurrent pollers never create duplicate rows. The submit closure is infallible, but
+        // `SnarkSession::run_if_needed` still runs the same activate/fail path as cluster and
+        // network (including `fail_reserved_proof_session` on activate store errors).
+        let snark_run =
+            SnarkSession::run_if_needed(repo, proof_request, &updated_sessions, || async {
                 info!(
                     proof_request_id = %proof_request.id,
                     "MockBackend: STARK done, creating SNARK session"
                 );
-
-                let snark_session_id = format!("mock-snark-{}", Uuid::new_v4());
-                let metadata = json!({
-                    "mock": true,
-                    "proof_output_id": format!("mock-snark-output-{}", Uuid::new_v4()),
-                    "deadline_secs": 0u64,
-                    "start_time_secs": 0u64,
-                });
-
-                let session = CreateProofSession {
+                Ok(CreateProofSession {
                     proof_request_id: proof_request.id,
                     session_type: SessionType::Snark,
-                    backend_session_id: snark_session_id,
-                    metadata: Some(metadata),
-                };
+                    backend_session_id: format!("mock-snark-{}", Uuid::new_v4()),
+                    metadata: Some(json!({
+                        "mock": true,
+                        "proof_output_id": format!("mock-snark-output-{}", Uuid::new_v4()),
+                        "deadline_secs": 0u64,
+                        "start_time_secs": 0u64,
+                    })),
+                })
+            })
+            .await;
 
-                repo.create_proof_session(session).await?;
-
+        match snark_run {
+            Ok(SnarkSessionRunOutcome::NotNeeded)
+            | Ok(SnarkSessionRunOutcome::TransientReservationStore) => {
+                Ok(ProofSessionProgress::processing_result(
+                    proof_request.proof_type,
+                    &updated_sessions,
+                ))
+            }
+            Ok(
+                SnarkSessionRunOutcome::ReservationNotAcquired
+                | SnarkSessionRunOutcome::Activated
+                | SnarkSessionRunOutcome::ActivationDidNotApply,
+            ) => {
                 let final_sessions = repo.get_sessions_for_request(proof_request.id).await?;
-                return Ok(determine_mock_status(proof_request.proof_type, &final_sessions));
+                Ok(ProofSessionProgress::processing_result(
+                    proof_request.proof_type,
+                    &final_sessions,
+                ))
+            }
+            Err(e) => {
+                error!(
+                    proof_request_id = %proof_request.id,
+                    error = %e,
+                    "MockBackend: failed to create SNARK session"
+                );
+                Ok(ProofProcessingResult {
+                    status: ProofStatus::Failed,
+                    error_message: Some(format!(
+                        "MockBackend: failed to create SNARK session: {e}"
+                    )),
+                })
             }
         }
-
-        Ok(determine_mock_status(proof_request.proof_type, &updated_sessions))
     }
 
     async fn get_session_status(&self, _session: &ProofSession) -> anyhow::Result<SessionStatus> {
@@ -255,51 +277,6 @@ impl ProvingBackend for MockBackend {
 
     fn name(&self) -> &'static str {
         "Mock (instant fake proofs)"
-    }
-}
-
-/// Determine status from sessions.
-fn determine_mock_status(
-    proof_type: ProofType,
-    sessions: &[ProofSession],
-) -> ProofProcessingResult {
-    if sessions.is_empty() {
-        return ProofProcessingResult { status: ProofStatus::Pending, error_message: None };
-    }
-
-    for session in sessions {
-        if session.status == DbSessionStatus::Failed {
-            return ProofProcessingResult {
-                status: ProofStatus::Failed,
-                error_message: session.error_message.clone(),
-            };
-        }
-    }
-
-    match proof_type {
-        ProofType::OpSuccinctSp1ClusterCompressed => {
-            let all_completed = sessions.iter().all(|s| s.status == DbSessionStatus::Completed);
-            ProofProcessingResult {
-                status: if all_completed { ProofStatus::Succeeded } else { ProofStatus::Running },
-                error_message: None,
-            }
-        }
-        ProofType::OpSuccinctSp1ClusterSnarkGroth16 => {
-            let stark_done = sessions.iter().any(|s| {
-                s.session_type == SessionType::Stark && s.status == DbSessionStatus::Completed
-            });
-            let snark_done = sessions.iter().any(|s| {
-                s.session_type == SessionType::Snark && s.status == DbSessionStatus::Completed
-            });
-            ProofProcessingResult {
-                status: if stark_done && snark_done {
-                    ProofStatus::Succeeded
-                } else {
-                    ProofStatus::Running
-                },
-                error_message: None,
-            }
-        }
     }
 }
 

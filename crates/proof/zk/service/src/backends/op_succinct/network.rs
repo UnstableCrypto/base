@@ -13,7 +13,7 @@ use base_proof_succinct_elfs::RANGE_ELF_EMBEDDED;
 use base_proof_succinct_host_utils::get_agg_proof_stdin;
 use base_zk_client::ProveBlockRequest;
 use base_zk_db::{
-    CreateProofSession, ProofRequest, ProofRequestRepo, ProofSession, ProofStatus, ProofType,
+    CreateProofSession, ProofRequest, ProofRequestRepo, ProofSession, ProofStatus,
     SessionStatus as DbSessionStatus, SessionType, UpdateProofSession, UpdateReceipt,
 };
 use serde_json::json;
@@ -23,9 +23,16 @@ use sp1_sdk::{
 };
 use tracing::{error, info, warn};
 
-use super::provider::{OpSuccinctProvider, WitnessParams};
-use crate::backends::traits::{
-    BackendConfig, BackendType, ProofProcessingResult, ProveResult, ProvingBackend, SessionStatus,
+use super::{
+    SnarkSession, SnarkSessionRunOutcome,
+    provider::{OpSuccinctProvider, WitnessParams},
+};
+use crate::backends::{
+    ProofSessionProgress,
+    traits::{
+        BackendConfig, BackendType, ProofProcessingResult, ProveResult, ProvingBackend,
+        SessionStatus,
+    },
 };
 
 /// SP1 Network proving backend.
@@ -210,39 +217,52 @@ impl ProvingBackend for NetworkBackend {
 
         let updated_sessions = repo.get_sessions_for_request(proof_request.id).await?;
 
-        // If SNARK requested, check if STARK completed and SNARK session needs triggering.
-        if proof_request.proof_type == ProofType::OpSuccinctSp1ClusterSnarkGroth16 {
-            let has_stark_completed = updated_sessions.iter().any(|s| {
-                s.session_type == SessionType::Stark && s.status == DbSessionStatus::Completed
-            });
-            let has_snark_session =
-                updated_sessions.iter().any(|s| s.session_type == SessionType::Snark);
-
-            if has_stark_completed && !has_snark_session {
+        // If SNARK requested, atomically reserve and submit the aggregation stage so
+        // concurrent pollers cannot enqueue duplicate Groth16 jobs.
+        let snark_run =
+            SnarkSession::run_if_needed(repo, proof_request, &updated_sessions, || async {
                 info!(
                     proof_request_id = %proof_request.id,
                     "STARK completed, triggering stage-2 aggregation proof via SP1 Network"
                 );
-                let fresh_proof_request = repo.get(proof_request.id).await?.ok_or_else(|| {
+                let fresh = repo.get(proof_request.id).await?.ok_or_else(|| {
                     anyhow::anyhow!("proof request not found after STARK completion")
                 })?;
-                if let Err(e) = self.submit_aggregation_proof(&fresh_proof_request, repo).await {
-                    error!(
-                        proof_request_id = %proof_request.id,
-                        error = %e,
-                        "failed to submit aggregation proof"
-                    );
-                    return Ok(ProofProcessingResult {
-                        status: ProofStatus::Failed,
-                        error_message: Some(format!("failed to submit aggregation proof: {e}")),
-                    });
-                }
+                self.build_aggregation_session(&fresh).await
+            })
+            .await;
+
+        match snark_run {
+            Ok(SnarkSessionRunOutcome::NotNeeded)
+            | Ok(SnarkSessionRunOutcome::TransientReservationStore) => {
+                Ok(ProofSessionProgress::processing_result(
+                    proof_request.proof_type,
+                    &updated_sessions,
+                ))
+            }
+            Ok(
+                SnarkSessionRunOutcome::ReservationNotAcquired
+                | SnarkSessionRunOutcome::Activated
+                | SnarkSessionRunOutcome::ActivationDidNotApply,
+            ) => {
                 let updated_sessions = repo.get_sessions_for_request(proof_request.id).await?;
-                return Ok(Self::determine_status(proof_request.proof_type, &updated_sessions));
+                Ok(ProofSessionProgress::processing_result(
+                    proof_request.proof_type,
+                    &updated_sessions,
+                ))
+            }
+            Err(e) => {
+                error!(
+                    proof_request_id = %proof_request.id,
+                    error = %e,
+                    "failed to submit aggregation proof"
+                );
+                Ok(ProofProcessingResult {
+                    status: ProofStatus::Failed,
+                    error_message: Some(format!("failed to submit aggregation proof: {e}")),
+                })
             }
         }
-
-        Ok(Self::determine_status(proof_request.proof_type, &updated_sessions))
     }
 
     async fn get_session_status(&self, session: &ProofSession) -> anyhow::Result<SessionStatus> {
@@ -374,50 +394,13 @@ impl NetworkBackend {
         Ok(())
     }
 
-    fn determine_status(proof_type: ProofType, sessions: &[ProofSession]) -> ProofProcessingResult {
-        if sessions.is_empty() {
-            return ProofProcessingResult { status: ProofStatus::Pending, error_message: None };
-        }
-
-        for session in sessions {
-            if session.status == DbSessionStatus::Failed {
-                return ProofProcessingResult {
-                    status: ProofStatus::Failed,
-                    error_message: session.error_message.clone(),
-                };
-            }
-        }
-
-        match proof_type {
-            ProofType::OpSuccinctSp1ClusterCompressed => {
-                let all_completed = sessions.iter().all(|s| s.status == DbSessionStatus::Completed);
-                if all_completed {
-                    ProofProcessingResult { status: ProofStatus::Succeeded, error_message: None }
-                } else {
-                    ProofProcessingResult { status: ProofStatus::Running, error_message: None }
-                }
-            }
-            ProofType::OpSuccinctSp1ClusterSnarkGroth16 => {
-                let stark_done = sessions.iter().any(|s| {
-                    s.session_type == SessionType::Stark && s.status == DbSessionStatus::Completed
-                });
-                let snark_done = sessions.iter().any(|s| {
-                    s.session_type == SessionType::Snark && s.status == DbSessionStatus::Completed
-                });
-                if stark_done && snark_done {
-                    ProofProcessingResult { status: ProofStatus::Succeeded, error_message: None }
-                } else {
-                    ProofProcessingResult { status: ProofStatus::Running, error_message: None }
-                }
-            }
-        }
-    }
-
-    async fn submit_aggregation_proof(
+    /// Submit a stage-2 aggregation proof to the SP1 Network and return the
+    /// [`CreateProofSession`] describing the resulting SNARK row. The caller (via
+    /// [`SnarkSession::run_if_needed`]) is responsible for activating the reserved DB row.
+    async fn build_aggregation_session(
         &self,
         proof_request: &ProofRequest,
-        repo: &ProofRequestRepo,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<CreateProofSession> {
         let BackendConfig::Network { network_prover, agg_pk, range_vk, .. } = &self.config else {
             unreachable!("validated in constructor");
         };
@@ -504,26 +487,23 @@ impl NetworkBackend {
             "proof_id": proof_id.to_string(),
         });
 
-        let session = CreateProofSession {
+        info!(
+            proof_request_id = %proof_request.id,
+            "built SNARK proof session for aggregation"
+        );
+
+        Ok(CreateProofSession {
             proof_request_id: proof_request.id,
             session_type: SessionType::Snark,
             backend_session_id: proof_id.to_string(),
             metadata: Some(metadata),
-        };
-
-        repo.create_proof_session(session).await?;
-
-        info!(
-            proof_request_id = %proof_request.id,
-            "created SNARK proof session for aggregation"
-        );
-
-        Ok(())
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use base_zk_db::ProofType;
     use chrono::Utc;
 
     use super::*;
@@ -552,7 +532,7 @@ mod tests {
     #[test]
     fn test_determine_status_no_sessions_returns_pending() {
         let result =
-            NetworkBackend::determine_status(ProofType::OpSuccinctSp1ClusterCompressed, &[]);
+            ProofSessionProgress::processing_result(ProofType::OpSuccinctSp1ClusterCompressed, &[]);
         assert_eq!(result.status, ProofStatus::Pending);
         assert!(result.error_message.is_none());
     }
@@ -560,24 +540,30 @@ mod tests {
     #[test]
     fn test_determine_status_compressed_all_completed() {
         let sessions = vec![make_session(SessionType::Stark, DbSessionStatus::Completed)];
-        let result =
-            NetworkBackend::determine_status(ProofType::OpSuccinctSp1ClusterCompressed, &sessions);
+        let result = ProofSessionProgress::processing_result(
+            ProofType::OpSuccinctSp1ClusterCompressed,
+            &sessions,
+        );
         assert_eq!(result.status, ProofStatus::Succeeded);
     }
 
     #[test]
     fn test_determine_status_compressed_running() {
         let sessions = vec![make_session(SessionType::Stark, DbSessionStatus::Running)];
-        let result =
-            NetworkBackend::determine_status(ProofType::OpSuccinctSp1ClusterCompressed, &sessions);
+        let result = ProofSessionProgress::processing_result(
+            ProofType::OpSuccinctSp1ClusterCompressed,
+            &sessions,
+        );
         assert_eq!(result.status, ProofStatus::Running);
     }
 
     #[test]
     fn test_determine_status_compressed_failed() {
         let sessions = vec![make_failed_session(SessionType::Stark, "network timeout")];
-        let result =
-            NetworkBackend::determine_status(ProofType::OpSuccinctSp1ClusterCompressed, &sessions);
+        let result = ProofSessionProgress::processing_result(
+            ProofType::OpSuccinctSp1ClusterCompressed,
+            &sessions,
+        );
         assert_eq!(result.status, ProofStatus::Failed);
         assert_eq!(result.error_message.as_deref(), Some("network timeout"));
     }
@@ -588,7 +574,7 @@ mod tests {
             make_session(SessionType::Stark, DbSessionStatus::Completed),
             make_session(SessionType::Snark, DbSessionStatus::Completed),
         ];
-        let result = NetworkBackend::determine_status(
+        let result = ProofSessionProgress::processing_result(
             ProofType::OpSuccinctSp1ClusterSnarkGroth16,
             &sessions,
         );
@@ -598,7 +584,7 @@ mod tests {
     #[test]
     fn test_determine_status_snark_only_stark_completed() {
         let sessions = vec![make_session(SessionType::Stark, DbSessionStatus::Completed)];
-        let result = NetworkBackend::determine_status(
+        let result = ProofSessionProgress::processing_result(
             ProofType::OpSuccinctSp1ClusterSnarkGroth16,
             &sessions,
         );
@@ -611,8 +597,10 @@ mod tests {
             make_session(SessionType::Stark, DbSessionStatus::Completed),
             make_failed_session(SessionType::Snark, "failure wins"),
         ];
-        let result =
-            NetworkBackend::determine_status(ProofType::OpSuccinctSp1ClusterCompressed, &sessions);
+        let result = ProofSessionProgress::processing_result(
+            ProofType::OpSuccinctSp1ClusterCompressed,
+            &sessions,
+        );
         assert_eq!(result.status, ProofStatus::Failed);
     }
 

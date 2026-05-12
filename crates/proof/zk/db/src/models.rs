@@ -59,6 +59,8 @@ impl TryFrom<&str> for ProofStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "VARCHAR", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SessionStatus {
+    /// Backend session is being submitted and does not have a backend ID yet.
+    Submitting,
     /// Backend session is actively running.
     Running,
     /// Backend session completed successfully.
@@ -71,6 +73,7 @@ impl SessionStatus {
     /// Convert enum to static string representation
     pub const fn as_str(&self) -> &'static str {
         match self {
+            Self::Submitting => "SUBMITTING",
             Self::Running => "RUNNING",
             Self::Completed => "COMPLETED",
             Self::Failed => "FAILED",
@@ -89,6 +92,7 @@ impl TryFrom<&str> for SessionStatus {
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         match s {
+            "SUBMITTING" => Ok(Self::Submitting),
             "RUNNING" => Ok(Self::Running),
             "COMPLETED" => Ok(Self::Completed),
             "FAILED" => Ok(Self::Failed),
@@ -133,6 +137,18 @@ impl TryFrom<&str> for SessionType {
             other => Err(format!("Unknown session type: {other}")),
         }
     }
+}
+
+/// Outcome of [`ProofRequestRepo::fail_stale_submitting_sessions`].
+#[derive(Debug, Clone)]
+pub struct FailStaleSubmittingSessionsOutcome {
+    /// Proof types for requests that were marked failed.
+    pub proof_types: Vec<ProofType>,
+    /// Proof requests terminalized by the reaper (matches `proof_types.len()` for the current query).
+    pub proof_requests_failed: u64,
+    /// `proof_sessions` rows moved from `SUBMITTING` to `FAILED` (can exceed `proof_requests_failed`
+    /// if one request had multiple stale SNARK rows; today the query typically yields one each).
+    pub sessions_marked_failed: u64,
 }
 
 /// Outcome of attempting to retry or fail a stuck proof request.

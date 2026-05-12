@@ -92,7 +92,10 @@ struct ZkArgs {
     status_poller_interval_secs: u64,
 
     #[arg(long, env = "STUCK_REQUEST_TIMEOUT_MINS", default_value_t = 10)]
-    stuck_request_timeout_mins: i32,
+    stuck_request_timeout_mins: u32,
+
+    #[arg(long, env = "STALE_SUBMITTING_SESSION_TIMEOUT_MINS", default_value_t = 120)]
+    stale_submitting_session_timeout_mins: u32,
 
     #[arg(long, env = "MAX_PROOF_RETRIES", default_value_t = 3)]
     max_proof_retries: u32,
@@ -338,12 +341,30 @@ impl ZkArgs {
 
         let manager = ProofRequestManager::new(repo.clone(), Arc::clone(&backend_registry));
 
+        let stuck_request_timeout_mins: i32 =
+            self.stuck_request_timeout_mins.try_into().map_err(|_| {
+                eyre!(
+                    "STUCK_REQUEST_TIMEOUT_MINS out of range for status poller (max {})",
+                    i32::MAX
+                )
+            })?;
+        let stale_submitting_session_timeout_mins: i32 = self
+            .stale_submitting_session_timeout_mins
+            .try_into()
+            .map_err(|_| {
+                eyre!(
+                    "STALE_SUBMITTING_SESSION_TIMEOUT_MINS out of range for status poller (max {})",
+                    i32::MAX
+                )
+            })?;
+
         info!("starting status poller");
         let status_poller = StatusPoller::new(
             repo.clone(),
             manager.clone(),
             self.status_poller_interval_secs,
-            self.stuck_request_timeout_mins,
+            stuck_request_timeout_mins,
+            stale_submitting_session_timeout_mins,
             self.max_proof_retries as i32,
         );
         let status_handle = tokio::spawn(async move {
@@ -428,6 +449,19 @@ impl ZkArgs {
     }
 
     fn validate_config(&self) -> eyre::Result<()> {
+        if self.stuck_request_timeout_mins == 0 {
+            eyre::bail!(
+                "STUCK_REQUEST_TIMEOUT_MINS must be positive, got {}",
+                self.stuck_request_timeout_mins
+            );
+        }
+        if self.stale_submitting_session_timeout_mins == 0 {
+            eyre::bail!(
+                "STALE_SUBMITTING_SESSION_TIMEOUT_MINS must be positive, got {}",
+                self.stale_submitting_session_timeout_mins
+            );
+        }
+
         if !matches!(self.prover_mode.as_str(), "cluster" | "mock" | "network") {
             eyre::bail!(
                 "SP1_PROVER must be set to 'cluster', 'mock', or 'network', got '{}'",
