@@ -3392,6 +3392,9 @@ dependencies = [
 name = "base-common-precompiles"
 version = "0.0.0"
 dependencies = [
+ "alloy-evm",
+ "alloy-primitives",
+ "alloy-sol-types",
  "base-common-chains",
  "revm",
 ]
@@ -8048,8 +8051,10 @@ dependencies = [
  "alloy-provider",
  "alloy-rpc-client",
  "alloy-rpc-types-engine",
+ "alloy-rpc-types-eth",
  "alloy-signer",
  "alloy-signer-local",
+ "alloy-sol-types",
  "base-batcher-service",
  "base-builder-core",
  "base-bundle-extension",

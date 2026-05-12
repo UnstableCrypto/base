@@ -9,6 +9,7 @@ use alloy_rpc_types_engine::JwtSecret;
 use base_common_network::Base;
 use base_tx_forwarding::TxForwardingConfig;
 use eyre::{Result, WrapErr};
+use serde_json::{Value, json};
 use tempfile::TempDir;
 use url::Url;
 
@@ -130,6 +131,8 @@ pub struct DevnetBuilder {
     output_dir: Option<PathBuf>,
     stable_config: Option<StableDevnetConfig>,
     tx_forwarding_config: Option<TxForwardingConfig>,
+    base_azul_time: Option<u64>,
+    base_beryl_time: Option<u64>,
     verifier_l1_confs: u64,
 }
 
@@ -174,6 +177,24 @@ impl DevnetBuilder {
     /// the `base_insertValidatedTransaction` RPC endpoint.
     pub fn with_tx_forwarding(mut self, config: TxForwardingConfig) -> Self {
         self.tx_forwarding_config = Some(config);
+        self
+    }
+
+    /// Sets the Base Azul activation timestamp in generated L2 artifacts.
+    pub const fn with_azul_at(mut self, timestamp: u64) -> Self {
+        self.base_azul_time = Some(timestamp);
+        self
+    }
+
+    /// Sets the Base Beryl activation timestamp in generated L2 artifacts.
+    ///
+    /// Beryl requires Azul, so this defaults Azul to the same timestamp when Azul has not been
+    /// configured explicitly.
+    pub const fn with_beryl_at(mut self, timestamp: u64) -> Self {
+        self.base_beryl_time = Some(timestamp);
+        if self.base_azul_time.is_none() {
+            self.base_azul_time = Some(timestamp);
+        }
         self
     }
 
@@ -263,12 +284,19 @@ impl DevnetBuilder {
 
         let jwt_secret = JwtSecret::random();
 
-        let l2_genesis_bytes =
+        let mut l2_genesis_bytes =
             std::fs::read(l2_deployment.genesis_path()).wrap_err("Failed to read L2 genesis")?;
-        let rollup_config_bytes = std::fs::read(l2_deployment.rollup_config_path())
+        let mut rollup_config_bytes = std::fs::read(l2_deployment.rollup_config_path())
             .wrap_err("Failed to read rollup config")?;
         let l1_genesis_bytes =
             std::fs::read(l1_genesis.el_genesis_path()).wrap_err("Failed to read L1 genesis")?;
+
+        apply_base_hardfork_overrides(
+            &mut l2_genesis_bytes,
+            &mut rollup_config_bytes,
+            self.base_azul_time,
+            self.base_beryl_time,
+        )?;
 
         let l2_config = L2StackConfig {
             l2_genesis: l2_genesis_bytes,
@@ -289,4 +317,66 @@ impl DevnetBuilder {
 
         Ok(Devnet { _temp_dir: temp_dir, l1_genesis, l2_deployment, l1_stack, l2_stack })
     }
+}
+
+fn apply_base_hardfork_overrides(
+    l2_genesis_bytes: &mut Vec<u8>,
+    rollup_config_bytes: &mut Vec<u8>,
+    azul_time: Option<u64>,
+    beryl_time: Option<u64>,
+) -> Result<()> {
+    if azul_time.is_none() && beryl_time.is_none() {
+        return Ok(());
+    }
+
+    if let Some(beryl) = beryl_time
+        && let Some(azul) = azul_time
+    {
+        eyre::ensure!(azul <= beryl, "Base Azul activation must be before or at Beryl");
+    }
+
+    let mut l2_genesis: Value =
+        serde_json::from_slice(l2_genesis_bytes).wrap_err("Failed to parse L2 genesis")?;
+    let genesis_config = l2_genesis
+        .get_mut("config")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| eyre::eyre!("L2 genesis config must be an object"))?;
+    if let Some(azul) = azul_time {
+        genesis_config.insert("osakaTime".to_string(), json!(azul));
+    }
+
+    let base_config = genesis_config.entry("base").or_insert_with(|| json!({}));
+    let base_config = base_config
+        .as_object_mut()
+        .ok_or_else(|| eyre::eyre!("L2 genesis config.base must be an object"))?;
+
+    if let Some(azul) = azul_time {
+        base_config.insert("azul".to_string(), json!(azul));
+    }
+    if let Some(beryl) = beryl_time {
+        base_config.insert("beryl".to_string(), json!(beryl));
+    }
+    *l2_genesis_bytes =
+        serde_json::to_vec_pretty(&l2_genesis).wrap_err("Failed to serialize L2 genesis")?;
+
+    let mut rollup_config: Value =
+        serde_json::from_slice(rollup_config_bytes).wrap_err("Failed to parse rollup config")?;
+    let rollup_object = rollup_config
+        .as_object_mut()
+        .ok_or_else(|| eyre::eyre!("Rollup config must be an object"))?;
+    let base_config = rollup_object.entry("base").or_insert_with(|| json!({}));
+    let base_config = base_config
+        .as_object_mut()
+        .ok_or_else(|| eyre::eyre!("Rollup config base field must be an object"))?;
+
+    if let Some(azul) = azul_time {
+        base_config.insert("azul".to_string(), json!(azul));
+    }
+    if let Some(beryl) = beryl_time {
+        base_config.insert("beryl".to_string(), json!(beryl));
+    }
+    *rollup_config_bytes =
+        serde_json::to_vec_pretty(&rollup_config).wrap_err("Failed to serialize rollup config")?;
+
+    Ok(())
 }

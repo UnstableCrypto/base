@@ -46,6 +46,7 @@ serde_json = { workspace = true, default-features = false, features = ["alloc", 
 
 [features]
 default = [ "blst", "c-kzg", "portable", "secp256k1", "std" ]
+native-dex = [ "base-common-precompiles/native-dex" ]
 std = [
 	"alloy-consensus/std",
 	"alloy-eips/std",

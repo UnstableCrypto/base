@@ -48,6 +48,7 @@ base-common-consensus = { workspace = true, features = ["arbitrary"] }
 
 [features]
 default = [ "std" ]
+native-dex = [ "base-common-evm/native-dex" ]
 std = [
 	"alloy-consensus/std",
 	"alloy-eips/std",

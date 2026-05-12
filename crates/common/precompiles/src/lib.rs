@@ -11,6 +11,11 @@ pub use provider::BasePrecompiles;
 mod spec;
 pub use spec::BasePrecompileSpec;
 
+#[cfg(feature = "native-dex")]
+mod dex;
+#[cfg(feature = "native-dex")]
+pub use dex::{BASE_DEX_ADDRESS, BaseDexPrecompile};
+
 mod bn254_pair;
 
 mod bls12_381;

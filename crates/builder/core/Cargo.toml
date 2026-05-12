@@ -189,6 +189,7 @@ http-body-util.workspace = true
 
 [features]
 default = [ "jemalloc", "metrics" ]
+native-dex = [ "base-execution-evm/native-dex" ]
 metrics = [
 	"base-metrics/metrics",
 	"dep:metrics",

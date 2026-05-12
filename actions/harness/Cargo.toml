@@ -81,3 +81,6 @@ serde_json.workspace = true
 base-blobs.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+[features]
+native-dex = [ "base-execution-evm/native-dex" ]

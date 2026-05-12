@@ -84,8 +84,13 @@ testcontainers = { workspace = true, features = ["blocking", "host-port-exposure
 [dev-dependencies]
 # alloy
 alloy-signer.workspace = true
+alloy-sol-types.workspace = true
 alloy-eips = { workspace = true, features = ["std"] }
 alloy-consensus = { workspace = true, features = ["std"] }
+alloy-rpc-types-eth = { workspace = true, features = ["std"] }
 
 # base-alloy
 base-common-rpc-types.workspace = true
+
+[features]
+native-dex = [ "base-builder-core/native-dex" ]

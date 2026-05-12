@@ -1,0 +1,308 @@
+//! Native DEX precompile implementation.
+
+use alloy_primitives::{Address, U256};
+
+mod abi;
+pub use abi::BASE_DEX_ADDRESS;
+use abi::{BASE_TOKEN_ADDRESS, BaseDexError, IBaseDex, IBaseDexCalls};
+
+mod dispatch;
+pub use dispatch::BaseDexPrecompile;
+
+mod math;
+use math::ConstantProduct;
+
+mod storage;
+use storage::{DexStorage, PoolState};
+
+mod token;
+use token::DexToken;
+
+#[derive(Debug)]
+struct BaseDex<'a> {
+    storage: DexStorage<'a>,
+}
+
+impl<'a> BaseDex<'a> {
+    const fn new(storage: DexStorage<'a>) -> Self {
+        Self { storage }
+    }
+
+    const fn base_token(&self) -> Address {
+        BASE_TOKEN_ADDRESS
+    }
+
+    fn get_pool(&mut self, token: Address) -> Result<PoolState, BaseDexError> {
+        self.storage.pool(token).map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))
+    }
+
+    fn quote_exact_input(
+        &mut self,
+        token_in: Address,
+        token_out: Address,
+        amount_in: U256,
+    ) -> Result<U256, BaseDexError> {
+        self.validate_path(token_in, token_out)?;
+
+        if token_in == self.base_token() {
+            let pool = self.get_pool(token_out)?;
+            return ConstantProduct::amount_out(
+                amount_in,
+                U256::from(pool.reserve_base),
+                U256::from(pool.reserve_token),
+            );
+        }
+
+        if token_out == self.base_token() {
+            let pool = self.get_pool(token_in)?;
+            return ConstantProduct::amount_out(
+                amount_in,
+                U256::from(pool.reserve_token),
+                U256::from(pool.reserve_base),
+            );
+        }
+
+        let base_out = self.quote_exact_input(token_in, self.base_token(), amount_in)?;
+        self.quote_exact_input(self.base_token(), token_out, base_out)
+    }
+
+    fn add_liquidity(
+        &mut self,
+        caller: Address,
+        token: Address,
+        amount_token: U256,
+        amount_base: U256,
+        to: Address,
+    ) -> Result<U256, BaseDexError> {
+        if token == self.base_token() {
+            return Err(BaseDexError::InvalidToken(IBaseDex::InvalidToken {}));
+        }
+
+        DexToken::validate(token)?;
+        DexToken::pull(token, caller, BASE_DEX_ADDRESS, amount_token)?;
+        DexToken::pull(self.base_token(), caller, BASE_DEX_ADDRESS, amount_base)?;
+
+        let mut pool = self.get_pool(token)?;
+        let liquidity = if pool.total_lp_supply.is_zero() {
+            ConstantProduct::initial_liquidity(amount_token, amount_base)?
+        } else {
+            ConstantProduct::minted_liquidity(
+                amount_token,
+                amount_base,
+                U256::from(pool.reserve_token),
+                U256::from(pool.reserve_base),
+                pool.total_lp_supply,
+            )?
+        };
+
+        pool.reserve_token = Self::u128_amount(
+            U256::from(pool.reserve_token)
+                .checked_add(amount_token)
+                .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?,
+        )?;
+        pool.reserve_base = Self::u128_amount(
+            U256::from(pool.reserve_base)
+                .checked_add(amount_base)
+                .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?,
+        )?;
+        pool.total_lp_supply = pool
+            .total_lp_supply
+            .checked_add(liquidity)
+            .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
+
+        let lp_balance = self
+            .storage
+            .lp_balance(token, to)
+            .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))?
+            .checked_add(liquidity)
+            .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
+        self.storage
+            .write_lp_balance(token, to, lp_balance)
+            .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))?;
+        self.storage
+            .write_pool(token, pool)
+            .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))?;
+        self.storage.emit(IBaseDex::Mint {
+            sender: caller,
+            token,
+            amountToken: amount_token,
+            amountBase: amount_base,
+            liquidity,
+            to,
+        });
+
+        Ok(liquidity)
+    }
+
+    fn remove_liquidity(
+        &mut self,
+        caller: Address,
+        token: Address,
+        liquidity: U256,
+        to: Address,
+    ) -> Result<(U256, U256), BaseDexError> {
+        if token == self.base_token() || liquidity.is_zero() {
+            return Err(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}));
+        }
+
+        DexToken::validate(token)?;
+
+        let mut pool = self.get_pool(token)?;
+        let lp_balance = self
+            .storage
+            .lp_balance(token, caller)
+            .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))?;
+        if lp_balance < liquidity {
+            return Err(BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {}));
+        }
+
+        let (amount_token, amount_base) = ConstantProduct::burn_amounts(
+            liquidity,
+            U256::from(pool.reserve_token),
+            U256::from(pool.reserve_base),
+            pool.total_lp_supply,
+        )?;
+
+        DexToken::push(token, BASE_DEX_ADDRESS, to, amount_token)?;
+        DexToken::push(self.base_token(), BASE_DEX_ADDRESS, to, amount_base)?;
+
+        pool.reserve_token = Self::u128_amount(
+            U256::from(pool.reserve_token).checked_sub(amount_token).ok_or_else(|| {
+                BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {})
+            })?,
+        )?;
+        pool.reserve_base =
+            Self::u128_amount(U256::from(pool.reserve_base).checked_sub(amount_base).ok_or_else(
+                || BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {}),
+            )?)?;
+        pool.total_lp_supply = pool.total_lp_supply.checked_sub(liquidity).ok_or_else(|| {
+            BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {})
+        })?;
+
+        self.storage
+            .write_lp_balance(token, caller, lp_balance - liquidity)
+            .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))?;
+        self.storage
+            .write_pool(token, pool)
+            .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))?;
+        self.storage.emit(IBaseDex::Burn {
+            sender: caller,
+            token,
+            amountToken: amount_token,
+            amountBase: amount_base,
+            liquidity,
+            to,
+        });
+
+        Ok((amount_token, amount_base))
+    }
+
+    fn swap_exact_tokens_for_tokens(
+        &mut self,
+        caller: Address,
+        token_in: Address,
+        token_out: Address,
+        amount_in: U256,
+        min_amount_out: U256,
+        to: Address,
+    ) -> Result<U256, BaseDexError> {
+        let amount_out = self.quote_exact_input(token_in, token_out, amount_in)?;
+        if amount_out < min_amount_out {
+            return Err(BaseDexError::InsufficientOutputAmount(
+                IBaseDex::InsufficientOutputAmount {},
+            ));
+        }
+
+        DexToken::pull(token_in, caller, BASE_DEX_ADDRESS, amount_in)?;
+        DexToken::push(token_out, BASE_DEX_ADDRESS, to, amount_out)?;
+        self.apply_swap(token_in, token_out, amount_in, amount_out)?;
+        self.storage.emit(IBaseDex::Swap {
+            sender: caller,
+            tokenIn: token_in,
+            tokenOut: token_out,
+            amountIn: amount_in,
+            amountOut: amount_out,
+            to,
+        });
+
+        Ok(amount_out)
+    }
+
+    fn apply_swap(
+        &mut self,
+        token_in: Address,
+        token_out: Address,
+        amount_in: U256,
+        amount_out: U256,
+    ) -> Result<(), BaseDexError> {
+        if token_in == self.base_token() {
+            return self.apply_base_to_token_swap(token_out, amount_in, amount_out);
+        }
+
+        if token_out == self.base_token() {
+            return self.apply_token_to_base_swap(token_in, amount_in, amount_out);
+        }
+
+        let base_out = self.quote_exact_input(token_in, self.base_token(), amount_in)?;
+        self.apply_token_to_base_swap(token_in, amount_in, base_out)?;
+        self.apply_base_to_token_swap(token_out, base_out, amount_out)
+    }
+
+    fn apply_token_to_base_swap(
+        &mut self,
+        token: Address,
+        amount_token_in: U256,
+        amount_base_out: U256,
+    ) -> Result<(), BaseDexError> {
+        let mut pool = self.get_pool(token)?;
+        pool.reserve_token = Self::u128_amount(
+            U256::from(pool.reserve_token)
+                .checked_add(amount_token_in)
+                .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?,
+        )?;
+        pool.reserve_base = Self::u128_amount(
+            U256::from(pool.reserve_base).checked_sub(amount_base_out).ok_or_else(|| {
+                BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {})
+            })?,
+        )?;
+        self.storage
+            .write_pool(token, pool)
+            .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))
+    }
+
+    fn apply_base_to_token_swap(
+        &mut self,
+        token: Address,
+        amount_base_in: U256,
+        amount_token_out: U256,
+    ) -> Result<(), BaseDexError> {
+        let mut pool = self.get_pool(token)?;
+        pool.reserve_base = Self::u128_amount(
+            U256::from(pool.reserve_base)
+                .checked_add(amount_base_in)
+                .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?,
+        )?;
+        pool.reserve_token = Self::u128_amount(
+            U256::from(pool.reserve_token).checked_sub(amount_token_out).ok_or_else(|| {
+                BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {})
+            })?,
+        )?;
+        self.storage
+            .write_pool(token, pool)
+            .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))
+    }
+
+    fn validate_path(&self, token_in: Address, token_out: Address) -> Result<(), BaseDexError> {
+        if token_in == token_out {
+            return Err(BaseDexError::IdenticalTokens(IBaseDex::IdenticalTokens {}));
+        }
+        if token_in == self.base_token() && token_out == self.base_token() {
+            return Err(BaseDexError::InvalidSwapPath(IBaseDex::InvalidSwapPath {}));
+        }
+        Ok(())
+    }
+
+    fn u128_amount(amount: U256) -> Result<u128, BaseDexError> {
+        amount.try_into().map_err(|_| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))
+    }
+}
