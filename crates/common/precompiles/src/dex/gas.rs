@@ -55,7 +55,7 @@ impl DexGasMeter {
     }
 
     const fn input_cost(calldata_len: usize) -> u64 {
-        calldata_len.saturating_add(31) as u64 / 32 * INPUT_PER_WORD_COST
+        calldata_len.div_ceil(32) as u64 * INPUT_PER_WORD_COST
     }
 
     const fn call_cost(call: &IBaseDexCalls) -> u64 {

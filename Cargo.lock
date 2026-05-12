@@ -3397,6 +3397,7 @@ dependencies = [
  "alloy-sol-types",
  "base-common-chains",
  "revm",
+ "tracing",
 ]
 
 [[package]]

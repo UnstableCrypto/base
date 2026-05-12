@@ -1,6 +1,7 @@
 //! Storage layout for the native DEX precompile.
 
-use alloc::string::ToString;
+use alloc::string::{String, ToString};
+use core::fmt;
 
 use alloy_evm::EvmInternals;
 use alloy_primitives::{Address, Bytes, U256, keccak256};
@@ -17,6 +18,23 @@ pub(crate) struct PoolState {
     pub total_lp_supply: U256,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum DexStorageError {
+    Database(String),
+    ReserveTokenOverflow,
+    ReserveBaseOverflow,
+}
+
+impl fmt::Display for DexStorageError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Database(error) => write!(f, "database error: {error}"),
+            Self::ReserveTokenOverflow => f.write_str("reserve token overflow"),
+            Self::ReserveBaseOverflow => f.write_str("reserve base overflow"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct DexStorage<'a> {
     address: Address,
@@ -29,28 +47,36 @@ impl<'a> DexStorage<'a> {
         Self { address, internals, storage_account_initialized: false }
     }
 
-    pub(crate) fn pool(&mut self, token: Address) -> Result<PoolState, String> {
+    pub(crate) fn pool(&mut self, token: Address) -> Result<PoolState, DexStorageError> {
         Ok(PoolState {
             reserve_token: self
                 .read(Self::pool_reserve_token_slot(token))?
                 .try_into()
-                .map_err(|_| "reserve token overflow".to_string())?,
+                .map_err(|_| DexStorageError::ReserveTokenOverflow)?,
             reserve_base: self
                 .read(Self::pool_reserve_base_slot(token))?
                 .try_into()
-                .map_err(|_| "reserve base overflow".to_string())?,
+                .map_err(|_| DexStorageError::ReserveBaseOverflow)?,
             total_lp_supply: self.read(Self::pool_total_supply_slot(token))?,
         })
     }
 
-    pub(crate) fn write_pool(&mut self, token: Address, pool: PoolState) -> Result<(), String> {
+    pub(crate) fn write_pool(
+        &mut self,
+        token: Address,
+        pool: PoolState,
+    ) -> Result<(), DexStorageError> {
         self.ensure_storage_account()?;
         self.write(Self::pool_reserve_token_slot(token), U256::from(pool.reserve_token))?;
         self.write(Self::pool_reserve_base_slot(token), U256::from(pool.reserve_base))?;
         self.write(Self::pool_total_supply_slot(token), pool.total_lp_supply)
     }
 
-    pub(crate) fn lp_balance(&mut self, token: Address, user: Address) -> Result<U256, String> {
+    pub(crate) fn lp_balance(
+        &mut self,
+        token: Address,
+        user: Address,
+    ) -> Result<U256, DexStorageError> {
         self.read(Self::lp_balance_slot(token, user))
     }
 
@@ -59,7 +85,7 @@ impl<'a> DexStorage<'a> {
         token: Address,
         user: Address,
         balance: U256,
-    ) -> Result<(), String> {
+    ) -> Result<(), DexStorageError> {
         self.ensure_storage_account()?;
         self.write(Self::lp_balance_slot(token, user), balance)
     }
@@ -84,21 +110,21 @@ impl<'a> DexStorage<'a> {
         U256::from_be_bytes(keccak256((token, user, U256::from(1)).abi_encode()).0)
     }
 
-    fn read(&mut self, slot: U256) -> Result<U256, String> {
+    fn read(&mut self, slot: U256) -> Result<U256, DexStorageError> {
         self.internals
             .sload(self.address, StorageKey::from(slot))
             .map(|value| value.data)
-            .map_err(|error| error.to_string())
+            .map_err(|error| DexStorageError::Database(error.to_string()))
     }
 
-    fn write(&mut self, slot: U256, value: U256) -> Result<(), String> {
+    fn write(&mut self, slot: U256, value: U256) -> Result<(), DexStorageError> {
         self.internals
             .sstore(self.address, StorageKey::from(slot), StorageValue::from(value))
             .map(|_| ())
-            .map_err(|error| error.to_string())
+            .map_err(|error| DexStorageError::Database(error.to_string()))
     }
 
-    fn ensure_storage_account(&mut self) -> Result<(), String> {
+    fn ensure_storage_account(&mut self) -> Result<(), DexStorageError> {
         if self.storage_account_initialized {
             return Ok(());
         }
@@ -106,7 +132,7 @@ impl<'a> DexStorage<'a> {
         // Keep the DEX account non-empty so storage writes survive EIP-161 empty-account pruning.
         self.internals
             .set_code(self.address, Bytecode::new_legacy(Bytes::from_static(&[0x00])))
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| DexStorageError::Database(error.to_string()))?;
         self.storage_account_initialized = true;
         Ok(())
     }

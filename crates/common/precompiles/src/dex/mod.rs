@@ -1,6 +1,7 @@
 //! Native DEX precompile implementation.
 
 use alloy_primitives::{Address, U256};
+use tracing::warn;
 
 mod abi;
 pub use abi::{BASE_DEX_ADDRESS, IBaseDex};
@@ -16,7 +17,7 @@ mod math;
 use math::{ConstantProduct, MINIMUM_LIQUIDITY};
 
 mod storage;
-use storage::{DexStorage, PoolState};
+use storage::{DexStorage, DexStorageError, PoolState};
 
 mod token;
 use token::DexToken;
@@ -36,7 +37,7 @@ impl<'a> BaseDex<'a> {
     }
 
     fn get_pool(&mut self, token: Address) -> Result<PoolState, BaseDexError> {
-        self.storage.pool(token).map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))
+        self.storage.pool(token).map_err(|error| Self::storage_error("pool", error))
     }
 
     fn quote_exact_input(
@@ -121,15 +122,15 @@ impl<'a> BaseDex<'a> {
         let lp_balance = self
             .storage
             .lp_balance(token, to)
-            .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))?
+            .map_err(|error| Self::storage_error("lp_balance", error))?
             .checked_add(liquidity)
             .ok_or(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
         self.storage
             .write_lp_balance(token, to, lp_balance)
-            .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))?;
+            .map_err(|error| Self::storage_error("write_lp_balance", error))?;
         self.storage
             .write_pool(token, pool)
-            .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))?;
+            .map_err(|error| Self::storage_error("write_pool", error))?;
         self.storage.emit(IBaseDex::Mint {
             sender: caller,
             token,
@@ -159,7 +160,7 @@ impl<'a> BaseDex<'a> {
         let lp_balance = self
             .storage
             .lp_balance(token, caller)
-            .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))?;
+            .map_err(|error| Self::storage_error("lp_balance", error))?;
         if lp_balance < liquidity {
             return Err(BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {}));
         }
@@ -189,12 +190,15 @@ impl<'a> BaseDex<'a> {
             .checked_sub(liquidity)
             .ok_or(BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {}))?;
 
+        let updated_lp_balance = lp_balance
+            .checked_sub(liquidity)
+            .ok_or(BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {}))?;
         self.storage
-            .write_lp_balance(token, caller, lp_balance - liquidity)
-            .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))?;
+            .write_lp_balance(token, caller, updated_lp_balance)
+            .map_err(|error| Self::storage_error("write_lp_balance", error))?;
         self.storage
             .write_pool(token, pool)
-            .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))?;
+            .map_err(|error| Self::storage_error("write_pool", error))?;
         self.storage.emit(IBaseDex::Burn {
             sender: caller,
             token,
@@ -299,7 +303,7 @@ impl<'a> BaseDex<'a> {
         )?;
         self.storage
             .write_pool(token, pool)
-            .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))
+            .map_err(|error| Self::storage_error("write_pool", error))
     }
 
     fn apply_base_to_token_swap(
@@ -321,7 +325,7 @@ impl<'a> BaseDex<'a> {
         )?;
         self.storage
             .write_pool(token, pool)
-            .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))
+            .map_err(|error| Self::storage_error("write_pool", error))
     }
 
     fn validate_path(token_in: Address, token_out: Address) -> Result<(), BaseDexError> {
@@ -336,6 +340,11 @@ impl<'a> BaseDex<'a> {
 
     fn u128_amount(amount: U256) -> Result<u128, BaseDexError> {
         amount.try_into().map_err(|_| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))
+    }
+
+    fn storage_error(operation: &'static str, error: DexStorageError) -> BaseDexError {
+        warn!(operation, error = %error, "native DEX storage operation failed");
+        BaseDexError::InvalidToken(IBaseDex::InvalidToken {})
     }
 }
 
