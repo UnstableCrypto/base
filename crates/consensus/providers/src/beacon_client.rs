@@ -93,7 +93,11 @@ pub trait BeaconClient {
         slot: u64,
         blob_hashes: &[B256],
     ) -> Result<Vec<BoxedBlob>, Self::Error>;
+}
 
+/// The [`BeaconBlobClient`] extends [`BeaconClient`] with full-slot blob fetches.
+#[async_trait]
+pub trait BeaconBlobClient: BeaconClient {
     /// Fetches all blobs that were confirmed in the specified L1 slot.
     async fn beacon_blobs(&self, slot: u64) -> Result<Vec<BoxedBlob>, Self::Error>;
 }
@@ -298,7 +302,10 @@ impl BeaconClient for OnlineBeaconClient {
 
         result
     }
+}
 
+#[async_trait]
+impl BeaconBlobClient for OnlineBeaconClient {
     async fn beacon_blobs(&self, slot: u64) -> Result<Vec<BoxedBlob>, BeaconClientError> {
         Metrics::beacon_requests("all_blobs").increment(1);
 

@@ -9,7 +9,7 @@ use base_consensus_derive::{BlobProvider, BlobProviderError};
 use base_protocol::BlockInfo;
 use tracing::warn;
 
-use crate::{BeaconClient, Metrics};
+use crate::{BeaconBlobClient, BeaconClient, Metrics};
 
 /// A boxed blob.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -112,30 +112,6 @@ impl<B: BeaconClient> OnlineBlobProvider<B> {
         result
     }
 
-    /// Fetches all blobs for the given slot.
-    async fn fetch_all_blobs(&self, slot: u64) -> Result<Vec<BoxedBlob>, BlobProviderError> {
-        Metrics::blob_prefetches().increment(1);
-
-        let result = self.beacon_client.beacon_blobs(slot).await.map_err(|e| {
-            let Some(missing_slot) = B::slot_not_found(&e) else {
-                return BlobProviderError::Backend(e.to_string());
-            };
-            warn!(
-                target: "blob_provider",
-                slot = missing_slot,
-                "Beacon slot not found (404); slot may be missed or orphaned, \
-                 triggering pipeline reset"
-            );
-            BlobProviderError::BlobNotFound { slot: missing_slot, reason: e.to_string() }
-        });
-
-        if result.is_err() {
-            Metrics::blob_prefetch_errors().increment(1);
-        }
-
-        result
-    }
-
     /// Converts a vector of boxed blobs to a vector of blobs with their KZG commitments and proofs.
     ///
     /// Note: for performance reasons, we need to transmute the blobs to the `c_kzg::Blob` type to
@@ -198,6 +174,32 @@ impl<B: BeaconClient> OnlineBlobProvider<B> {
         Self::blobs_with_proofs(blobs)
             .map_err(|e| BlobProviderError::Backend(format!("KZG commitment error: {e}")))
     }
+}
+
+impl<B: BeaconBlobClient> OnlineBlobProvider<B> {
+    /// Fetches all blobs for the given slot.
+    async fn fetch_all_blobs(&self, slot: u64) -> Result<Vec<BoxedBlob>, BlobProviderError> {
+        Metrics::blob_prefetches().increment(1);
+
+        let result = self.beacon_client.beacon_blobs(slot).await.map_err(|e| {
+            let Some(missing_slot) = B::slot_not_found(&e) else {
+                return BlobProviderError::Backend(e.to_string());
+            };
+            warn!(
+                target: "blob_provider",
+                slot = missing_slot,
+                "Beacon slot not found (404); slot may be missed or orphaned, \
+                 triggering pipeline reset"
+            );
+            BlobProviderError::BlobNotFound { slot: missing_slot, reason: e.to_string() }
+        });
+
+        if result.is_err() {
+            Metrics::blob_prefetch_errors().increment(1);
+        }
+
+        result
+    }
 
     /// Fetches and computes KZG commitments/proofs for every blob in the block's L1 slot.
     pub async fn fetch_all_blobs_with_proofs(
@@ -254,7 +256,7 @@ mod tests {
     use base_protocol::BlockInfo;
 
     use super::{BlobWithCommitmentAndProof, BoxedBlob, OnlineBlobProvider};
-    use crate::{APIConfigResponse, APIGenesisResponse, BeaconClient};
+    use crate::{APIConfigResponse, APIGenesisResponse, BeaconBlobClient, BeaconClient};
 
     /// Local error type for [`MockBeaconClient`].
     #[derive(Debug)]
@@ -317,7 +319,10 @@ mod tests {
                 })
                 .collect()
         }
+    }
 
+    #[async_trait]
+    impl BeaconBlobClient for MockBeaconClient {
         async fn beacon_blobs(&self, _slot: u64) -> Result<Vec<BoxedBlob>, Self::Error> {
             if self.fail_with_slot_not_found {
                 return Err(MockBeaconError::SlotNotFound);
