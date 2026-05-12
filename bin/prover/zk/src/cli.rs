@@ -350,7 +350,8 @@ impl ZkArgs {
             status_poller.run().await;
         });
 
-        let prover_server = ProverServiceServer::new(repo.clone(), manager.clone());
+        let prover_server =
+            ProverServiceServer::new(repo.clone(), manager.clone(), self.max_proof_retries as i32);
 
         let addr = self.grpc_listen_addr.parse()?;
 
