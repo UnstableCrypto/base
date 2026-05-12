@@ -29,7 +29,12 @@ tracing = { workspace = true, optional = true }
 
 [features]
 default = [ "blst", "c-kzg", "portable", "secp256k1", "std" ]
-native-dex = [ "dep:alloy-evm", "dep:alloy-primitives", "dep:alloy-sol-types", "dep:tracing" ]
+native-dex = [
+	"dep:alloy-evm",
+	"dep:alloy-primitives",
+	"dep:alloy-sol-types",
+	"dep:tracing",
+]
 std = [
 	"alloy-evm?/std",
 	"alloy-primitives?/std",

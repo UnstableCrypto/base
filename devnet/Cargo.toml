@@ -94,4 +94,7 @@ base-common-rpc-types.workspace = true
 base-common-precompiles.workspace = true
 
 [features]
-native-dex = [ "base-builder-core/native-dex", "base-common-precompiles/native-dex" ]
+native-dex = [
+	"base-builder-core/native-dex",
+	"base-common-precompiles/native-dex",
+]
