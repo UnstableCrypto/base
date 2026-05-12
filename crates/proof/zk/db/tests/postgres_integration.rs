@@ -68,6 +68,10 @@ fn snark_request() -> CreateProofRequest {
     }
 }
 
+fn expect_inserted_session_id(result: sqlx::Result<Option<i64>>) -> i64 {
+    result.expect("create_proof_session").expect("inserted row")
+}
+
 /// Create a request in RUNNING state with an associated proof session.
 /// Returns `(request_id, backend_session_id)`.
 async fn setup_running_request(repo: &ProofRequestRepo) -> (Uuid, String) {
@@ -379,15 +383,15 @@ async fn test_create_proof_session() {
     let repo = test_repo(pool);
 
     let req_id = repo.create(compressed_request()).await.unwrap();
-    let session_id = repo
-        .create_proof_session(CreateProofSession {
+    let session_id = expect_inserted_session_id(
+        repo.create_proof_session(CreateProofSession {
             proof_request_id: req_id,
             session_type: SessionType::Stark,
             backend_session_id: format!("test-session-{}", Uuid::new_v4()),
             metadata: Some(serde_json::json!({"key": "value"})),
         })
-        .await
-        .unwrap();
+        .await,
+    );
 
     assert!(session_id > 0);
 }
@@ -401,14 +405,15 @@ async fn test_get_session_by_backend_id() {
     let req_id = repo.create(compressed_request()).await.unwrap();
     let backend_id = format!("backend-{}", Uuid::new_v4());
 
-    repo.create_proof_session(CreateProofSession {
-        proof_request_id: req_id,
-        session_type: SessionType::Stark,
-        backend_session_id: backend_id.clone(),
-        metadata: None,
-    })
-    .await
-    .unwrap();
+    expect_inserted_session_id(
+        repo.create_proof_session(CreateProofSession {
+            proof_request_id: req_id,
+            session_type: SessionType::Stark,
+            backend_session_id: backend_id.clone(),
+            metadata: None,
+        })
+        .await,
+    );
 
     let session =
         repo.get_session_by_backend_id(&backend_id).await.unwrap().expect("should find session");
@@ -427,29 +432,87 @@ async fn test_get_sessions_for_request() {
     let req_id = repo.create(snark_request()).await.unwrap();
 
     // Create STARK session
-    repo.create_proof_session(CreateProofSession {
-        proof_request_id: req_id,
-        session_type: SessionType::Stark,
-        backend_session_id: format!("stark-{}", Uuid::new_v4()),
-        metadata: None,
-    })
-    .await
-    .unwrap();
+    expect_inserted_session_id(
+        repo.create_proof_session(CreateProofSession {
+            proof_request_id: req_id,
+            session_type: SessionType::Stark,
+            backend_session_id: format!("stark-{}", Uuid::new_v4()),
+            metadata: None,
+        })
+        .await,
+    );
 
     // Create SNARK session
-    repo.create_proof_session(CreateProofSession {
-        proof_request_id: req_id,
-        session_type: SessionType::Snark,
-        backend_session_id: format!("snark-{}", Uuid::new_v4()),
-        metadata: None,
-    })
-    .await
-    .unwrap();
+    expect_inserted_session_id(
+        repo.create_proof_session(CreateProofSession {
+            proof_request_id: req_id,
+            session_type: SessionType::Snark,
+            backend_session_id: format!("snark-{}", Uuid::new_v4()),
+            metadata: None,
+        })
+        .await,
+    );
 
     let sessions = repo.get_sessions_for_request(req_id).await.unwrap();
     assert_eq!(sessions.len(), 2);
     assert_eq!(sessions[0].session_type, SessionType::Stark);
     assert_eq!(sessions[1].session_type, SessionType::Snark);
+}
+
+#[tokio::test]
+#[ignore = "requires a running Postgres with the prover schema (set DATABASE_URL); run with `cargo nextest run --run-ignored all -p base-zk-db --test postgres_integration --test-threads=1`"]
+async fn test_reserve_proof_session_is_single_winner() {
+    let pool = test_pool().await;
+    let repo = test_repo(pool);
+
+    let req_id = repo.create(snark_request()).await.unwrap();
+
+    let first = repo.reserve_proof_session(req_id, SessionType::Snark).await.unwrap();
+    let second = repo.reserve_proof_session(req_id, SessionType::Snark).await.unwrap();
+
+    assert!(first.is_some(), "first reservation should win");
+    assert!(second.is_none(), "second reservation should observe existing session");
+
+    let sessions = repo.get_sessions_for_request(req_id).await.unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].session_type, SessionType::Snark);
+    assert_eq!(sessions[0].status, SessionStatus::Submitting);
+}
+
+#[tokio::test]
+#[ignore = "requires a running Postgres with the prover schema (set DATABASE_URL); run with `cargo nextest run --run-ignored all -p base-zk-db --test postgres_integration --test-threads=1`"]
+async fn test_activate_reserved_proof_session() {
+    let pool = test_pool().await;
+    let repo = test_repo(pool);
+
+    let req_id = repo.create(snark_request()).await.unwrap();
+    let reservation_id = repo
+        .reserve_proof_session(req_id, SessionType::Snark)
+        .await
+        .unwrap()
+        .expect("reservation should win");
+    let backend_id = format!("snark-{}", Uuid::new_v4());
+
+    let activated = repo
+        .activate_reserved_proof_session(
+            &reservation_id,
+            CreateProofSession {
+                proof_request_id: req_id,
+                session_type: SessionType::Snark,
+                backend_session_id: backend_id.clone(),
+                metadata: Some(serde_json::json!({"proof_id": backend_id.clone()})),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert!(activated);
+
+    let sessions = repo.get_sessions_for_request(req_id).await.unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].backend_session_id, backend_id);
+    assert_eq!(sessions[0].status, SessionStatus::Running);
+    assert!(sessions[0].metadata.is_some());
 }
 
 #[tokio::test]
@@ -461,14 +524,15 @@ async fn test_update_proof_session() {
     let req_id = repo.create(compressed_request()).await.unwrap();
     let backend_id = format!("session-update-{}", Uuid::new_v4());
 
-    repo.create_proof_session(CreateProofSession {
-        proof_request_id: req_id,
-        session_type: SessionType::Stark,
-        backend_session_id: backend_id.clone(),
-        metadata: None,
-    })
-    .await
-    .unwrap();
+    expect_inserted_session_id(
+        repo.create_proof_session(CreateProofSession {
+            proof_request_id: req_id,
+            session_type: SessionType::Stark,
+            backend_session_id: backend_id.clone(),
+            metadata: None,
+        })
+        .await,
+    );
 
     repo.update_proof_session(UpdateProofSession {
         backend_session_id: backend_id.clone(),
@@ -494,14 +558,15 @@ async fn test_update_proof_session_if_non_terminal() {
     let req_id = repo.create(compressed_request()).await.unwrap();
     let backend_id = format!("session-nonterminal-{}", Uuid::new_v4());
 
-    repo.create_proof_session(CreateProofSession {
-        proof_request_id: req_id,
-        session_type: SessionType::Stark,
-        backend_session_id: backend_id.clone(),
-        metadata: None,
-    })
-    .await
-    .unwrap();
+    expect_inserted_session_id(
+        repo.create_proof_session(CreateProofSession {
+            proof_request_id: req_id,
+            session_type: SessionType::Stark,
+            backend_session_id: backend_id.clone(),
+            metadata: None,
+        })
+        .await,
+    );
 
     // First update: RUNNING -> COMPLETED (should succeed)
     let updated = repo
@@ -638,14 +703,15 @@ async fn test_complete_session_and_update_receipt_skips_non_running() {
     repo.atomic_claim_task(id).await.unwrap();
     // Request is PENDING, not RUNNING
     let backend_id = format!("complete-pending-{}", Uuid::new_v4());
-    repo.create_proof_session(CreateProofSession {
-        proof_request_id: id,
-        session_type: SessionType::Stark,
-        backend_session_id: backend_id.clone(),
-        metadata: None,
-    })
-    .await
-    .unwrap();
+    expect_inserted_session_id(
+        repo.create_proof_session(CreateProofSession {
+            proof_request_id: id,
+            session_type: SessionType::Stark,
+            backend_session_id: backend_id.clone(),
+            metadata: None,
+        })
+        .await,
+    );
 
     let updated = repo
         .complete_session_and_update_receipt(
@@ -844,24 +910,26 @@ async fn test_get_running_sessions() {
     let completed_id = format!("completed-session-{}", Uuid::new_v4());
 
     // Create a running session
-    repo.create_proof_session(CreateProofSession {
-        proof_request_id: req_id,
-        session_type: SessionType::Stark,
-        backend_session_id: running_id.clone(),
-        metadata: None,
-    })
-    .await
-    .unwrap();
+    expect_inserted_session_id(
+        repo.create_proof_session(CreateProofSession {
+            proof_request_id: req_id,
+            session_type: SessionType::Stark,
+            backend_session_id: running_id.clone(),
+            metadata: None,
+        })
+        .await,
+    );
 
     // Create and complete another session
-    repo.create_proof_session(CreateProofSession {
-        proof_request_id: req_id,
-        session_type: SessionType::Snark,
-        backend_session_id: completed_id.clone(),
-        metadata: None,
-    })
-    .await
-    .unwrap();
+    expect_inserted_session_id(
+        repo.create_proof_session(CreateProofSession {
+            proof_request_id: req_id,
+            session_type: SessionType::Snark,
+            backend_session_id: completed_id.clone(),
+            metadata: None,
+        })
+        .await,
+    );
     repo.update_proof_session(UpdateProofSession {
         backend_session_id: completed_id.clone(),
         status: SessionStatus::Completed,
@@ -964,14 +1032,15 @@ async fn test_full_snark_pipeline() {
 
     // 5. Submit SNARK session
     let snark_backend_id = format!("snark-pipeline-{}", Uuid::new_v4());
-    repo.create_proof_session(CreateProofSession {
-        proof_request_id: req_id,
-        session_type: SessionType::Snark,
-        backend_session_id: snark_backend_id.clone(),
-        metadata: None,
-    })
-    .await
-    .unwrap();
+    expect_inserted_session_id(
+        repo.create_proof_session(CreateProofSession {
+            proof_request_id: req_id,
+            session_type: SessionType::Snark,
+            backend_session_id: snark_backend_id.clone(),
+            metadata: None,
+        })
+        .await,
+    );
 
     // 6. SNARK completes — store receipt, mark SUCCEEDED
     let snark_receipt = vec![0xAA, 0xBB, 0xCC];

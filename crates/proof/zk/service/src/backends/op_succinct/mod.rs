@@ -11,3 +11,6 @@ pub use network::NetworkBackend;
 
 mod provider;
 pub use provider::{OpSuccinctProvider, WitnessParams};
+
+mod snark_session;
+pub use snark_session::{SnarkSession, SnarkSessionRunOutcome};

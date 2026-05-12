@@ -23,7 +23,10 @@ use sp1_sdk::{
 };
 use tracing::{error, info, warn};
 
-use super::provider::{OpSuccinctProvider, WitnessParams};
+use super::{
+    SnarkSession, SnarkSessionRunOutcome,
+    provider::{OpSuccinctProvider, WitnessParams},
+};
 use crate::backends::traits::{
     BackendConfig, BackendType, ProofProcessingResult, ProveResult, ProvingBackend, SessionStatus,
 };
@@ -210,39 +213,41 @@ impl ProvingBackend for NetworkBackend {
 
         let updated_sessions = repo.get_sessions_for_request(proof_request.id).await?;
 
-        // If SNARK requested, check if STARK completed and SNARK session needs triggering.
-        if proof_request.proof_type == ProofType::OpSuccinctSp1ClusterSnarkGroth16 {
-            let has_stark_completed = updated_sessions.iter().any(|s| {
-                s.session_type == SessionType::Stark && s.status == DbSessionStatus::Completed
-            });
-            let has_snark_session =
-                updated_sessions.iter().any(|s| s.session_type == SessionType::Snark);
-
-            if has_stark_completed && !has_snark_session {
+        // If SNARK requested, atomically reserve and submit the aggregation stage so
+        // concurrent pollers cannot enqueue duplicate Groth16 jobs.
+        let snark_run =
+            SnarkSession::run_if_needed(repo, proof_request, &updated_sessions, || async {
                 info!(
                     proof_request_id = %proof_request.id,
                     "STARK completed, triggering stage-2 aggregation proof via SP1 Network"
                 );
-                let fresh_proof_request = repo.get(proof_request.id).await?.ok_or_else(|| {
+                let fresh = repo.get(proof_request.id).await?.ok_or_else(|| {
                     anyhow::anyhow!("proof request not found after STARK completion")
                 })?;
-                if let Err(e) = self.submit_aggregation_proof(&fresh_proof_request, repo).await {
-                    error!(
-                        proof_request_id = %proof_request.id,
-                        error = %e,
-                        "failed to submit aggregation proof"
-                    );
-                    return Ok(ProofProcessingResult {
-                        status: ProofStatus::Failed,
-                        error_message: Some(format!("failed to submit aggregation proof: {e}")),
-                    });
-                }
+                self.build_aggregation_session(&fresh).await
+            })
+            .await;
+
+        match snark_run {
+            Ok(SnarkSessionRunOutcome::NotNeeded) => {
+                Ok(Self::determine_status(proof_request.proof_type, &updated_sessions))
+            }
+            Ok(_) => {
                 let updated_sessions = repo.get_sessions_for_request(proof_request.id).await?;
-                return Ok(Self::determine_status(proof_request.proof_type, &updated_sessions));
+                Ok(Self::determine_status(proof_request.proof_type, &updated_sessions))
+            }
+            Err(e) => {
+                error!(
+                    proof_request_id = %proof_request.id,
+                    error = %e,
+                    "failed to submit aggregation proof"
+                );
+                Ok(ProofProcessingResult {
+                    status: ProofStatus::Failed,
+                    error_message: Some(format!("failed to submit aggregation proof: {e}")),
+                })
             }
         }
-
-        Ok(Self::determine_status(proof_request.proof_type, &updated_sessions))
     }
 
     async fn get_session_status(&self, session: &ProofSession) -> anyhow::Result<SessionStatus> {
@@ -413,11 +418,13 @@ impl NetworkBackend {
         }
     }
 
-    async fn submit_aggregation_proof(
+    /// Submit a stage-2 aggregation proof to the SP1 Network and return the
+    /// [`CreateProofSession`] describing the resulting SNARK row. The caller (via
+    /// [`SnarkSession::run_if_needed`]) is responsible for activating the reserved DB row.
+    async fn build_aggregation_session(
         &self,
         proof_request: &ProofRequest,
-        repo: &ProofRequestRepo,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<CreateProofSession> {
         let BackendConfig::Network { network_prover, agg_pk, range_vk, .. } = &self.config else {
             unreachable!("validated in constructor");
         };
@@ -504,21 +511,17 @@ impl NetworkBackend {
             "proof_id": proof_id.to_string(),
         });
 
-        let session = CreateProofSession {
+        info!(
+            proof_request_id = %proof_request.id,
+            "built SNARK proof session for aggregation"
+        );
+
+        Ok(CreateProofSession {
             proof_request_id: proof_request.id,
             session_type: SessionType::Snark,
             backend_session_id: proof_id.to_string(),
             metadata: Some(metadata),
-        };
-
-        repo.create_proof_session(session).await?;
-
-        info!(
-            proof_request_id = %proof_request.id,
-            "created SNARK proof session for aggregation"
-        );
-
-        Ok(())
+        })
     }
 }
 

@@ -18,9 +18,10 @@ use serde_json::json;
 use sp1_sdk::{
     SP1_CIRCUIT_VERSION, SP1ProofMode, SP1ProofWithPublicValues, SP1PublicValues, SP1VerifyingKey,
 };
-use tracing::info;
+use tracing::{error, info};
 use uuid::Uuid;
 
+use super::{SnarkSession, SnarkSessionRunOutcome};
 use crate::backends::traits::{
     BackendType, ProofProcessingResult, ProveResult, ProvingBackend, SessionStatus,
 };
@@ -210,43 +211,50 @@ impl ProvingBackend for MockBackend {
         // Re-query sessions after updates.
         let updated_sessions = repo.get_sessions_for_request(proof_request.id).await?;
 
-        // For SNARK_GROTH16, check if STARK is done and SNARK session needs creation.
-        if proof_request.proof_type == ProofType::OpSuccinctSp1ClusterSnarkGroth16 {
-            let has_stark_completed = updated_sessions.iter().any(|s| {
-                s.session_type == SessionType::Stark && s.status == DbSessionStatus::Completed
-            });
-            let has_snark_session =
-                updated_sessions.iter().any(|s| s.session_type == SessionType::Snark);
-
-            if has_stark_completed && !has_snark_session {
+        // For SNARK_GROTH16, atomically reserve and "submit" the mock SNARK session so
+        // concurrent pollers never create duplicate rows.
+        let snark_run =
+            SnarkSession::run_if_needed(repo, proof_request, &updated_sessions, || async {
                 info!(
                     proof_request_id = %proof_request.id,
                     "MockBackend: STARK done, creating SNARK session"
                 );
-
-                let snark_session_id = format!("mock-snark-{}", Uuid::new_v4());
-                let metadata = json!({
-                    "mock": true,
-                    "proof_output_id": format!("mock-snark-output-{}", Uuid::new_v4()),
-                    "deadline_secs": 0u64,
-                    "start_time_secs": 0u64,
-                });
-
-                let session = CreateProofSession {
+                Ok(CreateProofSession {
                     proof_request_id: proof_request.id,
                     session_type: SessionType::Snark,
-                    backend_session_id: snark_session_id,
-                    metadata: Some(metadata),
-                };
+                    backend_session_id: format!("mock-snark-{}", Uuid::new_v4()),
+                    metadata: Some(json!({
+                        "mock": true,
+                        "proof_output_id": format!("mock-snark-output-{}", Uuid::new_v4()),
+                        "deadline_secs": 0u64,
+                        "start_time_secs": 0u64,
+                    })),
+                })
+            })
+            .await;
 
-                repo.create_proof_session(session).await?;
-
+        match snark_run {
+            Ok(SnarkSessionRunOutcome::NotNeeded) => {
+                Ok(determine_mock_status(proof_request.proof_type, &updated_sessions))
+            }
+            Ok(_) => {
                 let final_sessions = repo.get_sessions_for_request(proof_request.id).await?;
-                return Ok(determine_mock_status(proof_request.proof_type, &final_sessions));
+                Ok(determine_mock_status(proof_request.proof_type, &final_sessions))
+            }
+            Err(e) => {
+                error!(
+                    proof_request_id = %proof_request.id,
+                    error = %e,
+                    "MockBackend: failed to create SNARK session"
+                );
+                Ok(ProofProcessingResult {
+                    status: ProofStatus::Failed,
+                    error_message: Some(format!(
+                        "MockBackend: failed to create SNARK session: {e}"
+                    )),
+                })
             }
         }
-
-        Ok(determine_mock_status(proof_request.proof_type, &updated_sessions))
     }
 
     async fn get_session_status(&self, _session: &ProofSession) -> anyhow::Result<SessionStatus> {

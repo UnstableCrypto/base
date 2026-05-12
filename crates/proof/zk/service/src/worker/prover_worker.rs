@@ -113,7 +113,7 @@ impl ProverWorker {
                             warn!(
                                 proof_request_id = %self.proof_request_id,
                                 backend_session_id = %session_id,
-                                "Could not transition to RUNNING — request no longer PENDING (race with stuck detector?)"
+                                "Could not transition to RUNNING — request not pending or concurrent active session"
                             );
                             return Ok(());
                         }
