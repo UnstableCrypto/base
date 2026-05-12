@@ -34,31 +34,13 @@ impl<T: CommsClient> OracleBlobProvider<T> {
     /// Retrieves a blob from the oracle.
     ///
     /// ## Takes
-    /// - `block_ref`: The block reference.
     /// - `blob_hash`: The blob hash.
     ///
     /// ## Returns
     /// - `Ok(blob)`: The blob.
     /// - `Err(e)`: The blob could not be retrieved.
     #[allow(clippy::large_stack_frames)]
-    async fn get_blob(
-        &self,
-        block_ref: &BlockInfo,
-        blob_hash: &B256,
-        send_hint: bool,
-    ) -> Result<Blob, OracleProviderError> {
-        if send_hint {
-            let mut blob_req_meta = [0u8; 40];
-            blob_req_meta[0..32].copy_from_slice(blob_hash.as_ref());
-            blob_req_meta[32..40].copy_from_slice(block_ref.timestamp.to_be_bytes().as_ref());
-
-            // Send a hint for the blob commitment and field elements.
-            HintType::L1Blob
-                .with_data(&[blob_req_meta.as_ref()])
-                .send(self.oracle.as_ref())
-                .await?;
-        }
-
+    async fn get_blob(&self, blob_hash: &B256) -> Result<Blob, OracleProviderError> {
         // Fetch the blob commitment.
         let mut commitment = [0u8; 48];
         self.oracle
@@ -127,23 +109,18 @@ impl<T: CommsClient + Sync + Send> BlobProvider for OracleBlobProvider<T> {
             return Ok(Vec::new());
         }
 
-        if blob_hashes.len() > 1 {
-            let mut blob_req_meta = Vec::with_capacity(blob_hashes.len() * 40);
-            let timestamp = block_ref.timestamp.to_be_bytes();
-            for blob_hash in blob_hashes {
-                blob_req_meta.extend_from_slice(blob_hash.as_ref());
-                blob_req_meta.extend_from_slice(timestamp.as_ref());
-            }
-
-            HintType::L1Blob
-                .with_data(&[blob_req_meta.as_ref()])
-                .send(self.oracle.as_ref())
-                .await?;
+        let mut blob_req_meta = Vec::with_capacity(blob_hashes.len() * 40);
+        let timestamp = block_ref.timestamp.to_be_bytes();
+        for blob_hash in blob_hashes {
+            blob_req_meta.extend_from_slice(blob_hash.as_ref());
+            blob_req_meta.extend_from_slice(timestamp.as_ref());
         }
+
+        HintType::L1Blob.with_data(&[blob_req_meta.as_ref()]).send(self.oracle.as_ref()).await?;
 
         let mut blobs = Vec::with_capacity(blob_hashes.len());
         for hash in blob_hashes {
-            blobs.push(Box::new(self.get_blob(block_ref, hash, blob_hashes.len() == 1).await?));
+            blobs.push(Box::new(self.get_blob(hash).await?));
         }
         Ok(blobs)
     }

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use alloy_consensus::Header;
 use alloy_eips::{eip2718::Encodable2718, eip4844::FIELD_ELEMENTS_PER_BLOB};
 use alloy_primitives::{Address, B256, Bytes, keccak256};
@@ -16,7 +14,8 @@ use base_protocol::{BlockInfo, OutputRoot};
 use tracing::warn;
 
 use crate::{
-    HostConfig, HostError, HostProviders, Metrics, Result, SharedKeyValueStore, store_ordered_trie,
+    HostConfig, HostError, HostProviders, KeyValueStore, Metrics, Result, SharedKeyValueStore,
+    store_ordered_trie,
 };
 
 /// Parses a blob hint, supporting legacy (48-byte), new (40-byte), and batched
@@ -57,14 +56,12 @@ pub fn parse_blob_hint(hint_data: &[u8]) -> Result<Vec<(B256, u64)>> {
         .collect()
 }
 
-async fn store_blob_preimages(
-    kv: SharedKeyValueStore,
+fn store_blob_preimages(
+    kv: &mut (dyn KeyValueStore + Send + Sync),
     hash: B256,
     BlobWithCommitmentAndProof { blob, kzg_proof: proof, kzg_commitment: commitment }: BlobWithCommitmentAndProof,
 ) -> Result<()> {
-    let mut kv_lock = kv.write().await;
-
-    kv_lock.set(PreimageKey::new(*hash, PreimageKeyType::Sha256).into(), commitment.to_vec())?;
+    kv.set(PreimageKey::new(*hash, PreimageKeyType::Sha256).into(), commitment.to_vec())?;
 
     let mut blob_key = [0u8; 80];
     blob_key[..48].copy_from_slice(commitment.as_ref());
@@ -73,8 +70,8 @@ async fn store_blob_preimages(
             .copy_from_slice(ROOTS_OF_UNITY[i as usize].into_bigint().to_bytes_be().as_ref());
         let blob_key_hash = keccak256(blob_key.as_ref());
 
-        kv_lock.set(PreimageKey::new_keccak256(*blob_key_hash).into(), blob_key.into())?;
-        kv_lock.set(
+        kv.set(PreimageKey::new_keccak256(*blob_key_hash).into(), blob_key.into())?;
+        kv.set(
             PreimageKey::new(*blob_key_hash, PreimageKeyType::Blob).into(),
             blob.as_ref()[(i as usize) << 5..(i as usize + 1) << 5].to_vec(),
         )?;
@@ -83,8 +80,8 @@ async fn store_blob_preimages(
     blob_key[72..].copy_from_slice(FIELD_ELEMENTS_PER_BLOB.to_be_bytes().as_ref());
     let blob_key_hash = keccak256(blob_key.as_ref());
 
-    kv_lock.set(PreimageKey::new_keccak256(*blob_key_hash).into(), blob_key.into())?;
-    kv_lock.set(PreimageKey::new(*blob_key_hash, PreimageKeyType::Blob).into(), proof.to_vec())?;
+    kv.set(PreimageKey::new_keccak256(*blob_key_hash).into(), blob_key.into())?;
+    kv.set(PreimageKey::new(*blob_key_hash, PreimageKeyType::Blob).into(), proof.to_vec())?;
 
     Ok(())
 }
@@ -186,8 +183,9 @@ async fn handle_hint_inner(
                 });
             }
 
+            let mut kv_lock = kv.write().await;
             for (hash, blob) in hashes.into_iter().zip(blobs) {
-                store_blob_preimages(Arc::clone(&kv), hash, blob).await?;
+                store_blob_preimages(&mut *kv_lock, hash, blob)?;
             }
         }
         HintType::L1Precompile => {
