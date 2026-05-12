@@ -9,7 +9,10 @@ use base_proof_preimage::{
 use tokio::{sync::RwLock, time};
 use tracing::{debug, error, trace, warn};
 
-use crate::{HostConfig, HostProviders, Metrics, SharedKeyValueStore, handler::handle_hint};
+use crate::{
+    HostConfig, HostProviders, Metrics, SharedKeyValueStore,
+    handler::{PayloadWitnessPrefetcher, handle_hint_with_prefetcher},
+};
 
 /// Cap on `handle_hint` attempts before [`OnlineHostBackend::get_preimage`] gives up; previously
 /// the loop was unbounded and could pin a [`PreimageServer`](crate::PreimageServer) task forever
@@ -29,6 +32,7 @@ pub struct OnlineHostBackend {
     providers: HostProviders,
     proactive_hints: HashSet<HintType>,
     last_hint: Arc<RwLock<Option<Hint<HintType>>>>,
+    payload_witness_prefetcher: PayloadWitnessPrefetcher,
 }
 
 impl fmt::Debug for OnlineHostBackend {
@@ -46,6 +50,7 @@ impl OnlineHostBackend {
             providers,
             proactive_hints: HashSet::default(),
             last_hint: Arc::new(RwLock::new(None)),
+            payload_witness_prefetcher: PayloadWitnessPrefetcher::new(),
         }
     }
 
@@ -66,9 +71,15 @@ impl HintRouter for OnlineHostBackend {
             .map_err(|e| PreimageOracleError::HintParseFailed(e.to_string()))?;
         if self.proactive_hints.contains(&parsed_hint.ty) {
             debug!(target: "host_backend", raw_hint = %hint, "proactive hint received, immediately fetching");
-            handle_hint(parsed_hint, &self.cfg, &self.providers, Arc::clone(&self.kv))
-                .await
-                .map_err(|e| PreimageOracleError::Other(e.to_string()))?;
+            handle_hint_with_prefetcher(
+                parsed_hint,
+                &self.cfg,
+                &self.providers,
+                Arc::clone(&self.kv),
+                Some(self.payload_witness_prefetcher.clone()),
+            )
+            .await
+            .map_err(|e| PreimageOracleError::Other(e.to_string()))?;
         } else {
             let mut hint_lock = self.last_hint.write().await;
             hint_lock.replace(parsed_hint);
@@ -109,7 +120,14 @@ impl PreimageFetcher for OnlineHostBackend {
         let mut backoff = INITIAL_HINT_RETRY_BACKOFF;
         let mut last_error: Option<String> = None;
         for attempt in 1..=MAX_HINT_ATTEMPTS {
-            match handle_hint(hint.clone(), &self.cfg, &self.providers, Arc::clone(&self.kv)).await
+            match handle_hint_with_prefetcher(
+                hint.clone(),
+                &self.cfg,
+                &self.providers,
+                Arc::clone(&self.kv),
+                Some(self.payload_witness_prefetcher.clone()),
+            )
+            .await
             {
                 Ok(()) => {
                     let kv_lock = self.kv.read().await;

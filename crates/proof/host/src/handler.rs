@@ -1,27 +1,549 @@
-use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use alloy_consensus::Header;
 use alloy_eips::{
+    BlockNumberOrTag,
     eip2718::Encodable2718,
     eip4844::{FIELD_ELEMENTS_PER_BLOB, kzg_to_versioned_hash},
 };
-use alloy_primitives::{Address, B256, Bytes, keccak256};
+use alloy_network::Network;
+use alloy_primitives::{Address, B64, B256, Bytes, keccak256};
 use alloy_provider::Provider;
 use alloy_rlp::Decodable;
 use alloy_rpc_types::{Block, debug::ExecutionWitness};
 use ark_ff::{BigInteger, PrimeField};
-use base_common_consensus::Predeploys;
+use base_common_consensus::{HoloceneExtraData, JovianExtraData, Predeploys};
+use base_common_network::Base;
 use base_common_rpc_types_engine::BasePayloadAttributes;
 use base_consensus_providers::BlobWithCommitmentAndProof;
 use base_proof::{Hint, HintType, ROOTS_OF_UNITY};
 use base_proof_preimage::{PreimageKey, PreimageKeyType};
 use base_protocol::{BlockInfo, OutputRoot};
-use tracing::warn;
+use tokio::sync::{Mutex, Notify, Semaphore};
+use tracing::{debug, info, warn};
 
 use crate::{
     HostConfig, HostError, HostProviders, KeyValueStore, Metrics, Result, SharedKeyValueStore,
     store_ordered_trie,
 };
+
+const PAYLOAD_WITNESS_PREFETCH_LOOKAHEAD_BLOCKS: u64 = 10;
+const PAYLOAD_WITNESS_PREFETCH_MAX_IN_FLIGHT: usize = 10;
+const PAYLOAD_WITNESS_PREFETCH_MAX_READY: usize = 16;
+
+#[derive(Debug, Clone, Copy)]
+struct ExecutionWitnessStats {
+    state_count: usize,
+    code_count: usize,
+    key_count: usize,
+    state_bytes: usize,
+    code_bytes: usize,
+    key_bytes: usize,
+}
+
+impl ExecutionWitnessStats {
+    fn total_preimage_count(&self) -> usize {
+        self.state_count + self.code_count + self.key_count
+    }
+
+    fn total_preimage_bytes(&self) -> usize {
+        self.state_bytes + self.code_bytes + self.key_bytes
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PayloadWitnessReady {
+    block_number: u64,
+    parent_block_hash: B256,
+    payload_timestamp: u64,
+    tx_count: usize,
+    stats: ExecutionWitnessStats,
+    rpc_elapsed: Duration,
+    insert_elapsed: Duration,
+}
+
+#[derive(Debug, Clone)]
+enum PayloadWitnessCacheEntry {
+    InFlight { notify: Arc<Notify> },
+    Ready(PayloadWitnessReady),
+}
+
+#[derive(Debug, Default)]
+struct PayloadWitnessPrefetchState {
+    entries: HashMap<B256, PayloadWitnessCacheEntry>,
+    ready_order: VecDeque<B256>,
+    scheduled_blocks: HashSet<u64>,
+}
+
+#[derive(Debug)]
+struct PayloadWitnessPrefetchInner {
+    state: Mutex<PayloadWitnessPrefetchState>,
+    semaphore: Semaphore,
+}
+
+/// Best-effort host-only prefetch cache for `debug_executePayload` witnesses.
+///
+/// The guest still sends and validates the real `L2PayloadWitness` hint. Prefetch results are only
+/// reused when their key matches the exact hint bytes that the guest later emits.
+#[derive(Debug, Clone)]
+pub(crate) struct PayloadWitnessPrefetcher {
+    inner: Arc<PayloadWitnessPrefetchInner>,
+}
+
+impl Default for PayloadWitnessPrefetcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PayloadWitnessPrefetcher {
+    pub(crate) fn new() -> Self {
+        Self {
+            inner: Arc::new(PayloadWitnessPrefetchInner {
+                state: Mutex::new(PayloadWitnessPrefetchState::default()),
+                semaphore: Semaphore::new(PAYLOAD_WITNESS_PREFETCH_MAX_IN_FLIGHT),
+            }),
+        }
+    }
+
+    async fn take_ready_or_wait(&self, key: B256) -> Option<PayloadWitnessReady> {
+        loop {
+            let notify = {
+                let mut state = self.inner.state.lock().await;
+                match state.entries.get(&key) {
+                    Some(PayloadWitnessCacheEntry::Ready(_)) => {
+                        let Some(PayloadWitnessCacheEntry::Ready(ready)) =
+                            state.entries.remove(&key)
+                        else {
+                            unreachable!("entry was checked above");
+                        };
+                        state.ready_order.retain(|ready_key| ready_key != &key);
+                        return Some(ready);
+                    }
+                    Some(PayloadWitnessCacheEntry::InFlight { notify, .. }) => Arc::clone(notify),
+                    None => return None,
+                }
+            };
+
+            notify.notified().await;
+        }
+    }
+
+    pub(crate) fn schedule_lookahead(
+        &self,
+        cfg: HostConfig,
+        providers: HostProviders,
+        kv: SharedKeyValueStore,
+        parent_block_hash: B256,
+    ) {
+        if !cfg.prover.enable_experimental_witness_endpoint {
+            return;
+        }
+
+        let prefetcher = self.clone();
+        tokio::spawn(async move {
+            let parent_block = match providers.l2.get_block_by_hash(parent_block_hash).await {
+                Ok(Some(block)) => block,
+                Ok(None) => {
+                    debug!(
+                        target: "host_server",
+                        ?parent_block_hash,
+                        "payload witness prefetch skipped: parent block not found"
+                    );
+                    return;
+                }
+                Err(err) => {
+                    debug!(
+                        target: "host_server",
+                        ?parent_block_hash,
+                        error = %err,
+                        "payload witness prefetch skipped: failed to fetch parent block"
+                    );
+                    return;
+                }
+            };
+
+            let current_block_number = parent_block.header.inner.number + 1;
+            let first_prefetch_block = current_block_number + 1;
+            let last_prefetch_block =
+                current_block_number + PAYLOAD_WITNESS_PREFETCH_LOOKAHEAD_BLOCKS;
+
+            for block_number in first_prefetch_block..=last_prefetch_block {
+                if !prefetcher.mark_block_scheduled(block_number).await {
+                    continue;
+                }
+
+                let prefetcher = prefetcher.clone();
+                let cfg = cfg.clone();
+                let providers = providers.clone();
+                let kv = Arc::clone(&kv);
+                tokio::spawn(async move {
+                    prefetcher.prefetch_block(cfg, providers, kv, block_number).await;
+                });
+            }
+        });
+    }
+
+    async fn mark_block_scheduled(&self, block_number: u64) -> bool {
+        let mut state = self.inner.state.lock().await;
+        state.scheduled_blocks.insert(block_number)
+    }
+
+    async fn unmark_block_scheduled(&self, block_number: u64) {
+        let mut state = self.inner.state.lock().await;
+        state.scheduled_blocks.remove(&block_number);
+    }
+
+    async fn try_mark_in_flight(&self, keys: &[B256]) -> Option<Arc<Notify>> {
+        let mut state = self.inner.state.lock().await;
+        if keys.iter().any(|key| state.entries.contains_key(key)) {
+            return None;
+        }
+
+        let notify = Arc::new(Notify::new());
+        for key in keys {
+            state
+                .entries
+                .insert(*key, PayloadWitnessCacheEntry::InFlight { notify: Arc::clone(&notify) });
+        }
+        Some(notify)
+    }
+
+    async fn mark_ready(&self, keys: &[B256], ready: PayloadWitnessReady, notify: Arc<Notify>) {
+        let mut state = self.inner.state.lock().await;
+        for key in keys {
+            state.entries.insert(*key, PayloadWitnessCacheEntry::Ready(ready.clone()));
+            state.ready_order.push_back(*key);
+        }
+
+        while state.ready_order.len() > PAYLOAD_WITNESS_PREFETCH_MAX_READY {
+            if let Some(evicted_key) = state.ready_order.pop_front() {
+                state.entries.remove(&evicted_key);
+            }
+        }
+
+        drop(state);
+        notify.notify_waiters();
+        notify.notify_one();
+    }
+
+    async fn mark_failed(&self, keys: &[B256], notify: Arc<Notify>) {
+        let mut state = self.inner.state.lock().await;
+        for key in keys {
+            if matches!(state.entries.get(key), Some(PayloadWitnessCacheEntry::InFlight { .. })) {
+                state.entries.remove(key);
+            }
+        }
+
+        drop(state);
+        notify.notify_waiters();
+        notify.notify_one();
+    }
+
+    async fn prefetch_block(
+        &self,
+        cfg: HostConfig,
+        providers: HostProviders,
+        kv: SharedKeyValueStore,
+        block_number: u64,
+    ) {
+        let _scheduled_guard = ScheduledBlockGuard { prefetcher: self.clone(), block_number };
+
+        let block = match providers
+            .l2
+            .get_block_by_number(BlockNumberOrTag::Number(block_number))
+            .full()
+            .await
+        {
+            Ok(Some(block)) => block,
+            Ok(None) => {
+                debug!(
+                    target: "host_server",
+                    block_number,
+                    "payload witness prefetch skipped: block not found"
+                );
+                return;
+            }
+            Err(err) => {
+                debug!(
+                    target: "host_server",
+                    block_number,
+                    error = %err,
+                    "payload witness prefetch skipped: failed to fetch block"
+                );
+                return;
+            }
+        };
+
+        let parent_block_hash = block.header.inner.parent_hash;
+        let payload_attributes = match payload_attributes_from_l2_block(&cfg, block) {
+            Ok(payload_attributes) => payload_attributes,
+            Err(err) => {
+                debug!(
+                    target: "host_server",
+                    block_number,
+                    error = %err,
+                    "payload witness prefetch skipped: failed to reconstruct payload attributes"
+                );
+                return;
+            }
+        };
+        let payload_timestamp = payload_attributes.payload_attributes.timestamp;
+        let tx_count =
+            payload_attributes.transactions.as_ref().map_or(0, |transactions| transactions.len());
+        let keys = match payload_witness_keys(parent_block_hash, &payload_attributes, &cfg) {
+            Ok(keys) => keys,
+            Err(err) => {
+                debug!(
+                    target: "host_server",
+                    block_number,
+                    error = %err,
+                    "payload witness prefetch skipped: failed to compute cache key"
+                );
+                return;
+            }
+        };
+
+        let permit = match self.inner.semaphore.acquire().await {
+            Ok(permit) => permit,
+            Err(_) => return,
+        };
+        let Some(notify) = self.try_mark_in_flight(&keys).await else {
+            return;
+        };
+
+        info!(
+            target: "host_server",
+            block_number,
+            ?parent_block_hash,
+            payload_timestamp,
+            tx_count,
+            "payload witness prefetch started"
+        );
+
+        let rpc_start = Instant::now();
+        let execute_payload_response = match providers
+            .l2
+            .client()
+            .request::<(B256, BasePayloadAttributes), ExecutionWitness>(
+                "debug_executePayload",
+                (parent_block_hash, payload_attributes),
+            )
+            .await
+        {
+            Ok(response) => response,
+            Err(err) => {
+                warn!(
+                    target: "host_server",
+                    block_number,
+                    ?parent_block_hash,
+                    payload_timestamp,
+                    tx_count,
+                    error = %err,
+                    "payload witness prefetch failed: debug_executePayload failed"
+                );
+                self.mark_failed(&keys, notify).await;
+                drop(permit);
+                return;
+            }
+        };
+        let rpc_elapsed = rpc_start.elapsed();
+
+        let stats = execution_witness_stats(&execute_payload_response);
+        let insert_start = Instant::now();
+        if let Err(err) =
+            insert_execution_witness_preimages(Arc::clone(&kv), execute_payload_response).await
+        {
+            warn!(
+                target: "host_server",
+                block_number,
+                ?parent_block_hash,
+                payload_timestamp,
+                tx_count,
+                error = %err,
+                "payload witness prefetch failed: preimage insertion failed"
+            );
+            self.mark_failed(&keys, notify).await;
+            drop(permit);
+            return;
+        }
+        let insert_elapsed = insert_start.elapsed();
+
+        self.mark_ready(
+            &keys,
+            PayloadWitnessReady {
+                block_number,
+                parent_block_hash,
+                payload_timestamp,
+                tx_count,
+                stats,
+                rpc_elapsed,
+                insert_elapsed,
+            },
+            notify,
+        )
+        .await;
+
+        info!(
+            target: "host_server",
+            block_number,
+            ?parent_block_hash,
+            payload_timestamp,
+            tx_count,
+            state_count = stats.state_count,
+            code_count = stats.code_count,
+            key_count = stats.key_count,
+            state_bytes = stats.state_bytes,
+            code_bytes = stats.code_bytes,
+            key_bytes = stats.key_bytes,
+            total_preimage_count = stats.total_preimage_count(),
+            total_preimage_bytes = stats.total_preimage_bytes(),
+            rpc_elapsed_ms = rpc_elapsed.as_millis(),
+            insert_elapsed_ms = insert_elapsed.as_millis(),
+            total_elapsed_ms = (rpc_elapsed + insert_elapsed).as_millis(),
+            "payload witness prefetch completed"
+        );
+
+        drop(permit);
+    }
+}
+
+struct ScheduledBlockGuard {
+    prefetcher: PayloadWitnessPrefetcher,
+    block_number: u64,
+}
+
+impl Drop for ScheduledBlockGuard {
+    fn drop(&mut self) {
+        let prefetcher = self.prefetcher.clone();
+        let block_number = self.block_number;
+        tokio::spawn(async move {
+            prefetcher.unmark_block_scheduled(block_number).await;
+        });
+    }
+}
+
+fn payload_witness_key(
+    parent_block_hash: B256,
+    payload_attributes: &BasePayloadAttributes,
+) -> Result<B256> {
+    let encoded_attributes = serde_json::to_vec(payload_attributes)?;
+    let mut key_data = Vec::with_capacity(32 + encoded_attributes.len());
+    key_data.extend_from_slice(parent_block_hash.as_slice());
+    key_data.extend_from_slice(&encoded_attributes);
+    Ok(keccak256(key_data))
+}
+
+fn payload_witness_keys(
+    parent_block_hash: B256,
+    payload_attributes: &BasePayloadAttributes,
+    cfg: &HostConfig,
+) -> Result<Vec<B256>> {
+    let mut keys = vec![payload_witness_key(parent_block_hash, payload_attributes)?];
+    let default_base_fee_params = cfg.prover.rollup_config.chain_op_config.post_canyon_params();
+    let (Ok(default_elasticity), Ok(default_denominator)) = (
+        u32::try_from(default_base_fee_params.elasticity_multiplier),
+        u32::try_from(default_base_fee_params.max_change_denominator),
+    ) else {
+        return Ok(keys);
+    };
+
+    let default_params = encode_payload_eip_1559_params(default_elasticity, default_denominator);
+    if payload_attributes.eip_1559_params == Some(default_params) {
+        let mut zero_params_attributes = payload_attributes.clone();
+        zero_params_attributes.eip_1559_params = Some(B64::ZERO);
+        let zero_params_key = payload_witness_key(parent_block_hash, &zero_params_attributes)?;
+        if !keys.contains(&zero_params_key) {
+            keys.push(zero_params_key);
+        }
+    }
+
+    Ok(keys)
+}
+
+fn execution_witness_stats(execute_payload_response: &ExecutionWitness) -> ExecutionWitnessStats {
+    ExecutionWitnessStats {
+        state_count: execute_payload_response.state.len(),
+        code_count: execute_payload_response.codes.len(),
+        key_count: execute_payload_response.keys.len(),
+        state_bytes: execute_payload_response.state.iter().map(|preimage| preimage.len()).sum(),
+        code_bytes: execute_payload_response.codes.iter().map(|preimage| preimage.len()).sum(),
+        key_bytes: execute_payload_response.keys.iter().map(|preimage| preimage.len()).sum(),
+    }
+}
+
+async fn insert_execution_witness_preimages(
+    kv: SharedKeyValueStore,
+    execute_payload_response: ExecutionWitness,
+) -> Result<()> {
+    let preimages = execute_payload_response
+        .state
+        .into_iter()
+        .chain(execute_payload_response.codes)
+        .chain(execute_payload_response.keys);
+
+    let mut kv_lock = kv.write().await;
+    for preimage in preimages {
+        let preimage_bytes: Vec<u8> = preimage.into();
+        let computed_hash = keccak256(&preimage_bytes);
+
+        let key = PreimageKey::new_keccak256(*computed_hash);
+        kv_lock.set(key.into(), preimage_bytes)?;
+    }
+
+    Ok(())
+}
+
+fn payload_attributes_from_l2_block(
+    cfg: &HostConfig,
+    block: Block<<Base as Network>::TransactionResponse, <Base as Network>::HeaderResponse>,
+) -> Result<BasePayloadAttributes> {
+    let timestamp = block.header.inner.timestamp;
+    let mut payload_attributes = BasePayloadAttributes::default();
+    payload_attributes.payload_attributes.timestamp = timestamp;
+    payload_attributes.payload_attributes.prev_randao = block.header.inner.mix_hash;
+    payload_attributes.payload_attributes.suggested_fee_recipient = block.header.inner.beneficiary;
+    payload_attributes.payload_attributes.parent_beacon_block_root =
+        block.header.inner.parent_beacon_block_root;
+    payload_attributes.payload_attributes.withdrawals =
+        block.withdrawals.as_ref().map(|withdrawals| withdrawals.0.clone());
+    payload_attributes.transactions = Some(
+        block
+            .transactions
+            .into_transactions()
+            .map(|tx| tx.as_ref().encoded_2718().into())
+            .collect(),
+    );
+    payload_attributes.no_tx_pool = Some(true);
+    payload_attributes.gas_limit = Some(block.header.inner.gas_limit);
+
+    if cfg.prover.rollup_config.is_jovian_active(timestamp) {
+        let (elasticity, denominator, min_base_fee) =
+            JovianExtraData::decode(&block.header.inner.extra_data)
+                .map_err(|err| HostError::Custom(err.to_string()))?;
+        payload_attributes.eip_1559_params =
+            Some(encode_payload_eip_1559_params(elasticity, denominator));
+        payload_attributes.min_base_fee = Some(min_base_fee);
+    } else if cfg.prover.rollup_config.is_holocene_active(timestamp) {
+        let (elasticity, denominator) = HoloceneExtraData::decode(&block.header.inner.extra_data)
+            .map_err(|err| HostError::Custom(err.to_string()))?;
+        payload_attributes.eip_1559_params =
+            Some(encode_payload_eip_1559_params(elasticity, denominator));
+    }
+
+    Ok(payload_attributes)
+}
+
+fn encode_payload_eip_1559_params(elasticity: u32, denominator: u32) -> B64 {
+    let mut encoded = [0u8; 8];
+    encoded[..4].copy_from_slice(&denominator.to_be_bytes());
+    encoded[4..].copy_from_slice(&elasticity.to_be_bytes());
+    B64::from(encoded)
+}
 
 /// Parses a blob hint, supporting both legacy (48-byte) and new (40-byte) formats.
 ///
@@ -172,12 +694,23 @@ pub async fn handle_hint(
     providers: &HostProviders,
     kv: SharedKeyValueStore,
 ) -> Result<()> {
+    handle_hint_with_prefetcher(hint, cfg, providers, kv, None).await
+}
+
+pub(crate) async fn handle_hint_with_prefetcher(
+    hint: Hint<HintType>,
+    cfg: &HostConfig,
+    providers: &HostProviders,
+    kv: SharedKeyValueStore,
+    payload_witness_prefetcher: Option<PayloadWitnessPrefetcher>,
+) -> Result<()> {
     let hint_type_label: &str = hint.ty.into();
 
     Metrics::hint_requests_total(hint_type_label).increment(1);
     let _timer = base_metrics::timed!(Metrics::hint_duration_seconds(hint_type_label));
 
-    let result = Box::pin(handle_hint_inner(hint, cfg, providers, kv)).await;
+    let result =
+        Box::pin(handle_hint_inner(hint, cfg, providers, kv, payload_witness_prefetcher)).await;
 
     if result.is_err() {
         Metrics::hint_errors_total(hint_type_label).increment(1);
@@ -191,6 +724,7 @@ async fn handle_hint_inner(
     cfg: &HostConfig,
     providers: &HostProviders,
     kv: SharedKeyValueStore,
+    payload_witness_prefetcher: Option<PayloadWitnessPrefetcher>,
 ) -> Result<()> {
     match hint.ty {
         HintType::L1BlockHeader => {
@@ -478,7 +1012,45 @@ async fn handle_hint_inner(
             let parent_block_hash = B256::from_slice(&hint.data.as_ref()[..32]);
             let payload_attributes: BasePayloadAttributes =
                 serde_json::from_slice(&hint.data[32..])?;
+            let payload_witness_key = keccak256(hint.data.as_ref());
 
+            let tx_count = payload_attributes
+                .transactions
+                .as_ref()
+                .map_or(0, |transactions| transactions.len());
+            let payload_timestamp = payload_attributes.payload_attributes.timestamp;
+
+            if let Some(prefetcher) = payload_witness_prefetcher.as_ref() {
+                if let Some(ready) = prefetcher.take_ready_or_wait(payload_witness_key).await {
+                    info!(
+                        target: "host_server",
+                        block_number = ready.block_number,
+                        parent_block_hash = ?ready.parent_block_hash,
+                        payload_timestamp = ready.payload_timestamp,
+                        tx_count = ready.tx_count,
+                        state_count = ready.stats.state_count,
+                        code_count = ready.stats.code_count,
+                        key_count = ready.stats.key_count,
+                        state_bytes = ready.stats.state_bytes,
+                        code_bytes = ready.stats.code_bytes,
+                        key_bytes = ready.stats.key_bytes,
+                        total_preimage_count = ready.stats.total_preimage_count(),
+                        total_preimage_bytes = ready.stats.total_preimage_bytes(),
+                        prefetch_rpc_elapsed_ms = ready.rpc_elapsed.as_millis(),
+                        prefetch_insert_elapsed_ms = ready.insert_elapsed.as_millis(),
+                        "debug_executePayload witness served from host prefetch cache"
+                    );
+                    prefetcher.schedule_lookahead(
+                        cfg.clone(),
+                        providers.clone(),
+                        Arc::clone(&kv),
+                        parent_block_hash,
+                    );
+                    return Ok(());
+                }
+            }
+
+            let rpc_start = Instant::now();
             let execute_payload_response = match providers
                 .l2
                 .client()
@@ -494,20 +1066,40 @@ async fn handle_hint_inner(
                     return Ok(());
                 }
             };
+            let rpc_elapsed = rpc_start.elapsed();
 
-            let preimages = execute_payload_response
-                .state
-                .into_iter()
-                .chain(execute_payload_response.codes)
-                .chain(execute_payload_response.keys);
+            let stats = execution_witness_stats(&execute_payload_response);
 
-            let mut kv_lock = kv.write().await;
-            for preimage in preimages {
-                let preimage_bytes: Vec<u8> = preimage.into();
-                let computed_hash = keccak256(&preimage_bytes);
+            let insert_start = Instant::now();
+            insert_execution_witness_preimages(Arc::clone(&kv), execute_payload_response).await?;
+            let insert_elapsed = insert_start.elapsed();
 
-                let key = PreimageKey::new_keccak256(*computed_hash);
-                kv_lock.set(key.into(), preimage_bytes)?;
+            info!(
+                target: "host_server",
+                parent_block_hash = ?parent_block_hash,
+                payload_timestamp,
+                tx_count,
+                state_count = stats.state_count,
+                code_count = stats.code_count,
+                key_count = stats.key_count,
+                state_bytes = stats.state_bytes,
+                code_bytes = stats.code_bytes,
+                key_bytes = stats.key_bytes,
+                total_preimage_count = stats.total_preimage_count(),
+                total_preimage_bytes = stats.total_preimage_bytes(),
+                rpc_elapsed_ms = rpc_elapsed.as_millis(),
+                insert_elapsed_ms = insert_elapsed.as_millis(),
+                total_elapsed_ms = (rpc_elapsed + insert_elapsed).as_millis(),
+                "debug_executePayload witness captured"
+            );
+
+            if let Some(prefetcher) = payload_witness_prefetcher {
+                prefetcher.schedule_lookahead(
+                    cfg.clone(),
+                    providers.clone(),
+                    Arc::clone(&kv),
+                    parent_block_hash,
+                );
             }
         }
     }
