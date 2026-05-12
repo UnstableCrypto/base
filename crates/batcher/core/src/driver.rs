@@ -17,6 +17,9 @@ use crate::{
     LocalSafeHeadProvider, SubmissionQueue, ThrottleClient, ThrottleController, event::DriverEvent,
 };
 
+/// Delay between reset-boundary local-safe-head retries.
+const RESET_SAFE_HEAD_RETRY_DELAY: Duration = Duration::from_secs(5);
+
 /// Async orchestration loop for the batcher.
 ///
 /// Combines a [`BatchPipeline`] (encoding), an [`UnsafeBlockSource`] (L2 block delivery),
@@ -204,10 +207,11 @@ where
                 }
                 DriverEvent::Reorg(head) => {
                     let safe_head = Self::reset_safe_head(
+                        self.runtime.clone(),
                         self.local_safe_head_provider.clone(),
                         self.safe_head_rx.as_ref().map(|rx| *rx.borrow()),
                     )
-                    .await?
+                    .await
                     .unwrap_or(0);
                     let catchup_from = safe_head + 1;
                     warn!(
@@ -282,10 +286,11 @@ where
             }
             Err((e, _block)) => {
                 let safe_head = Self::reset_safe_head(
+                    self.runtime.clone(),
                     self.local_safe_head_provider.clone(),
                     self.safe_head_rx.as_ref().map(|rx| *rx.borrow()),
                 )
-                .await?
+                .await
                 .unwrap_or(0);
                 let catchup_from = safe_head + 1;
                 warn!(
@@ -307,20 +312,35 @@ where
     ///
     /// Prefer a fresh local-safe-head provider when one is configured. The watch
     /// channel is retained as a fallback for tests and custom embedders that do
-    /// not wire a provider.
+    /// not wire a provider. Provider errors are retried until the fetch succeeds
+    /// or the runtime is cancelled; falling back to a stale watch value while a
+    /// provider exists would reintroduce the reorg skip hazard.
     async fn reset_safe_head(
+        runtime: R,
         provider: Option<Arc<dyn LocalSafeHeadProvider>>,
         watch_value: Option<u64>,
-    ) -> Result<Option<u64>, BatchDriverError> {
+    ) -> Option<u64> {
         if let Some(provider) = provider {
-            let n = provider
-                .local_safe_l2_number()
-                .await
-                .map_err(|e| BatchDriverError::LocalSafeHead(e.to_string()))?;
-            return Ok(Some(n));
+            loop {
+                match provider.local_safe_l2_number().await {
+                    Ok(n) => return Some(n),
+                    Err(e) => {
+                        warn!(
+                            error = %e,
+                            retry_delay = ?RESET_SAFE_HEAD_RETRY_DELAY,
+                            "failed to fetch local safe head for reset boundary, retrying"
+                        );
+                        tokio::select! {
+                            biased;
+                            _ = runtime.cancelled() => return watch_value,
+                            _ = runtime.sleep(RESET_SAFE_HEAD_RETRY_DELAY) => {}
+                        }
+                    }
+                }
+            }
         }
 
-        Ok(watch_value)
+        watch_value
     }
 
     /// Block on the next external event using a biased `tokio::select!`.
@@ -356,10 +376,11 @@ where
                         }
                         AdminCommand::Resume => {
                             let safe_head = Self::reset_safe_head(
+                                self.runtime.clone(),
                                 self.local_safe_head_provider.clone(),
                                 self.safe_head_rx.as_ref().map(|rx| *rx.borrow()),
                             )
-                            .await?;
+                            .await;
                             if let Some(n) = safe_head {
                                 self.source.reset_catchup(n + 1);
                                 info!(

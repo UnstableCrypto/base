@@ -9,9 +9,6 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
-/// Compatibility export for callers that import the provider trait from this crate.
-pub use base_batcher_core::LocalSafeHeadProvider as SafeHeadProvider;
-
 /// RPC-backed provider for the current local safe L2 head.
 #[derive(Clone)]
 pub struct RpcLocalSafeHeadProvider {

@@ -1,6 +1,7 @@
 //! Integration tests for reorg handling in [`BatchDriver`].
 
 use std::{
+    collections::VecDeque,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -33,6 +34,28 @@ struct StaticLocalSafeHeadProvider {
 impl LocalSafeHeadProvider for StaticLocalSafeHeadProvider {
     fn local_safe_l2_number(&self) -> BoxFuture<'_, LocalSafeHeadResult> {
         Box::pin(async move { Ok(self.number) })
+    }
+}
+
+#[derive(Debug)]
+struct QueuedLocalSafeHeadProvider {
+    values: Mutex<VecDeque<Result<u64, &'static str>>>,
+}
+
+impl QueuedLocalSafeHeadProvider {
+    fn new(values: impl IntoIterator<Item = Result<u64, &'static str>>) -> Self {
+        Self { values: Mutex::new(values.into_iter().collect()) }
+    }
+}
+
+impl LocalSafeHeadProvider for QueuedLocalSafeHeadProvider {
+    fn local_safe_l2_number(&self) -> BoxFuture<'_, LocalSafeHeadResult> {
+        Box::pin(async move {
+            match self.values.lock().unwrap().pop_front().expect("missing queued value") {
+                Ok(n) => Ok(n),
+                Err(e) => Err(e.into()),
+            }
+        })
     }
 }
 
@@ -229,6 +252,58 @@ fn test_l2_reorg_event_uses_fresh_local_safe_head_over_stale_watch() {
             "reorg catchup must start from fresh local_safe_l2 + 1"
         );
         assert_eq!(recorded.lock().unwrap().resets, 1, "pipeline must still be reset on reorg");
+    });
+}
+
+/// If fetching the fresh local safe head fails during reorg handling, the
+/// driver should retry instead of crashing or falling back to the stale watch.
+#[test]
+fn test_l2_reorg_event_retries_local_safe_head_fetch_failure() {
+    Runner::start(Config::seeded(0), |ctx| async move {
+        let recorded = Arc::new(Mutex::new(Recorded::default()));
+        let pipeline = TrackingPipeline::new(Arc::clone(&recorded));
+        let reorg_head =
+            L2BlockInfo::new(BlockInfo::new(B256::ZERO, 150, B256::ZERO, 0), Default::default(), 0);
+        let (source, catchup_args) =
+            ReorgThenPendingSource::new(L2BlockEvent::Reorg { new_safe_head: reorg_head });
+        let (safe_head_tx, safe_head_rx) = watch::channel::<u64>(150);
+
+        let driver = BatchDriver::new(
+            ctx.clone(),
+            pipeline,
+            source,
+            ImmediateConfirmTxManager { l1_block: 1 },
+            BatchDriverConfig {
+                inbox: Address::ZERO,
+                max_pending_transactions: 1,
+                drain_timeout: Duration::from_millis(10),
+                force_blobs_when_throttling: true,
+            },
+            DaThrottle::new(ThrottleController::noop(), Arc::new(NoopThrottleClient)),
+            PendingL1HeadSource,
+        )
+        .with_safe_head_rx(safe_head_rx)
+        .with_local_safe_head_provider(Arc::new(QueuedLocalSafeHeadProvider::new([
+            Err("sync status unavailable"),
+            Ok(100),
+        ])));
+        let handle = ctx.spawn(driver.run());
+
+        ctx.sleep(Duration::from_secs(6)).await;
+        ctx.cancel();
+
+        drop(safe_head_tx);
+        assert!(handle.await.unwrap().is_ok());
+        assert_eq!(
+            *catchup_args.lock().unwrap(),
+            vec![101],
+            "reorg catchup must retry fresh local_safe_l2 and not use stale watch"
+        );
+        assert_eq!(
+            recorded.lock().unwrap().resets,
+            1,
+            "pipeline must still be reset after retry succeeds"
+        );
     });
 }
 
