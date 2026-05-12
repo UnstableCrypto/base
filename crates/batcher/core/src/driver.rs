@@ -57,6 +57,8 @@ where
     safe_head_rx: Option<tokio::sync::watch::Receiver<u64>>,
     /// Optional provider used to fetch a fresh local safe head for reset boundaries.
     local_safe_head_provider: Option<Arc<dyn LocalSafeHeadProvider>>,
+    /// Result channel for an in-flight reset-boundary local-safe lookup.
+    reset_safe_head_rx: Option<mpsc::Receiver<Option<u64>>>,
     /// Maximum wall-clock time to wait for in-flight submissions to settle
     /// when draining on cancellation or source exhaustion.
     drain_timeout: Duration,
@@ -107,6 +109,7 @@ where
             l1_head_source: Some(l1_head_source),
             safe_head_rx: None,
             local_safe_head_provider: None,
+            reset_safe_head_rx: None,
             drain_timeout: config.drain_timeout,
             stopped: false,
             admin_rx: None,
@@ -199,30 +202,20 @@ where
                     draining = true;
                 }
                 DriverEvent::Block(b) => {
-                    self.on_block(b).await?;
+                    self.on_block(b);
                 }
                 DriverEvent::Flush => {
                     self.pipeline.force_close_channel();
                     debug!("flush signal received, force-closed channel");
                 }
                 DriverEvent::Reorg(head) => {
-                    let safe_head = Self::reset_safe_head(
-                        self.runtime.clone(),
-                        self.local_safe_head_provider.clone(),
-                        self.safe_head_rx.as_ref().map(|rx| *rx.borrow()),
-                    )
-                    .await
-                    .unwrap_or(0);
-                    let catchup_from = safe_head + 1;
                     warn!(
                         reorg_head = %head.block_info.number,
-                        local_safe_l2 = %safe_head,
-                        catchup_from = %catchup_from,
-                        "L2 reorg detected, resetting pipeline and catching up from local safe head"
+                        "L2 reorg detected, resetting pipeline before local safe head catchup"
                     );
-                    self.submissions.discard();
-                    self.pipeline.reset();
-                    self.source.reset_catchup(catchup_from);
+                    self.reset_for_local_safe_catchup(
+                        self.safe_head_rx.as_ref().map(|rx| *rx.borrow()),
+                    );
                 }
                 DriverEvent::Receipt(ids, o) => {
                     self.submissions.handle_outcome(&mut self.pipeline, ids, o);
@@ -234,6 +227,10 @@ where
                 DriverEvent::SafeHead(n) => {
                     self.pipeline.prune_safe(n);
                     debug!(local_safe_l2 = %n, "pruned safe blocks via watch");
+                }
+                DriverEvent::ResetSafeHead(n) => {
+                    self.reset_safe_head_rx = None;
+                    self.catch_up_from_safe_head(n);
                 }
                 DriverEvent::L1SourceClosed => {
                     debug!("L1 head source closed, disabling arm");
@@ -275,72 +272,101 @@ where
     /// Ingest a new L2 block into the pipeline.
     ///
     /// If the pipeline signals a reorg via `add_block` (parent-hash mismatch),
-    /// discards in-flight submissions, resets the pipeline, and restarts
-    /// sequential catchup from `local_safe_l2 + 1`. The triggering block will be
-    /// re-delivered by the sequential poller.
-    async fn on_block(&mut self, block: Box<BaseBlock>) -> Result<(), BatchDriverError> {
+    /// discards in-flight submissions, resets the pipeline, and fetches a
+    /// fresh `local_safe_l2` before restarting sequential catchup from
+    /// `local_safe_l2 + 1`. The triggering block will be re-delivered by the
+    /// sequential poller.
+    fn on_block(&mut self, block: Box<BaseBlock>) {
         let number = block.header.number;
         match self.pipeline.add_block(*block) {
             Ok(()) => {
                 debug!(block = %number, "added unsafe block to pipeline");
             }
             Err((e, _block)) => {
-                let safe_head = Self::reset_safe_head(
-                    self.runtime.clone(),
-                    self.local_safe_head_provider.clone(),
-                    self.safe_head_rx.as_ref().map(|rx| *rx.borrow()),
-                )
-                .await
-                .unwrap_or(0);
-                let catchup_from = safe_head + 1;
                 warn!(
                     block = %number,
-                    local_safe_l2 = %safe_head,
-                    catchup_from = %catchup_from,
                     error = %e,
-                    "reorg detected during block ingestion, resetting pipeline and catching up from local safe head"
+                    "reorg detected during block ingestion, resetting pipeline before local safe head catchup"
                 );
-                self.submissions.discard();
-                self.pipeline.reset();
-                self.source.reset_catchup(catchup_from);
+                self.reset_for_local_safe_catchup(
+                    self.safe_head_rx.as_ref().map(|rx| *rx.borrow()),
+                );
             }
         }
-        Ok(())
     }
 
-    /// Return the reset boundary local safe head.
+    /// Reset local state and catch up from the current local safe head.
     ///
-    /// Prefer a fresh local-safe-head provider when one is configured. The watch
-    /// channel is retained as a fallback for tests and custom embedders that do
-    /// not wire a provider. Provider errors are retried until the fetch succeeds
-    /// or the runtime is cancelled; falling back to a stale watch value while a
+    /// When a provider is configured, the fresh lookup runs in a background
+    /// task and the source arm is parked until the result arrives. This keeps
+    /// the driver responsive to admin commands, receipts, L1 heads, and
+    /// shutdown while still avoiding fallback to a stale watch value.
+    fn reset_for_local_safe_catchup(&mut self, watch_value: Option<u64>) {
+        self.submissions.discard();
+        self.pipeline.reset();
+
+        let Some(provider) = self.local_safe_head_provider.as_ref() else {
+            self.catch_up_from_safe_head(watch_value);
+            return;
+        };
+
+        if self.reset_safe_head_rx.is_some() {
+            warn!("local safe head reset boundary lookup already pending");
+            return;
+        }
+
+        let (tx, rx) = mpsc::channel(1);
+        self.reset_safe_head_rx = Some(rx);
+
+        let runtime = self.runtime.clone();
+        let provider = Arc::clone(provider);
+        self.runtime.spawn(async move {
+            let safe_head = Self::reset_safe_head_with_retry(runtime, provider, watch_value).await;
+            let _ = tx.send(safe_head).await;
+        });
+    }
+
+    /// Apply a resolved reset boundary to the source.
+    fn catch_up_from_safe_head(&mut self, safe_head: Option<u64>) {
+        if let Some(safe_head) = safe_head {
+            let catchup_from = safe_head + 1;
+            self.source.reset_catchup(catchup_from);
+            info!(
+                local_safe_l2 = %safe_head,
+                catchup_from = %catchup_from,
+                "batcher catching up from local safe head"
+            );
+        }
+    }
+
+    /// Return the reset boundary local safe head, retrying provider errors.
+    ///
+    /// The watch channel is retained as a shutdown fallback for tests and
+    /// custom embedders. During normal operation, provider errors are retried
+    /// until the fetch succeeds; falling back to a stale watch value while a
     /// provider exists would reintroduce the reorg skip hazard.
-    async fn reset_safe_head(
+    async fn reset_safe_head_with_retry(
         runtime: R,
-        provider: Option<Arc<dyn LocalSafeHeadProvider>>,
+        provider: Arc<dyn LocalSafeHeadProvider>,
         watch_value: Option<u64>,
     ) -> Option<u64> {
-        if let Some(provider) = provider {
-            loop {
-                match provider.local_safe_l2_number().await {
-                    Ok(n) => return Some(n),
-                    Err(e) => {
-                        warn!(
-                            error = %e,
-                            retry_delay = ?RESET_SAFE_HEAD_RETRY_DELAY,
-                            "failed to fetch local safe head for reset boundary, retrying"
-                        );
-                        tokio::select! {
-                            biased;
-                            _ = runtime.cancelled() => return watch_value,
-                            _ = runtime.sleep(RESET_SAFE_HEAD_RETRY_DELAY) => {}
-                        }
+        loop {
+            match provider.local_safe_l2_number().await {
+                Ok(n) => return Some(n),
+                Err(e) => {
+                    warn!(
+                        error = %e,
+                        retry_delay = ?RESET_SAFE_HEAD_RETRY_DELAY,
+                        "failed to fetch local safe head for reset boundary, retrying"
+                    );
+                    tokio::select! {
+                        biased;
+                        _ = runtime.cancelled() => return watch_value,
+                        _ = runtime.sleep(RESET_SAFE_HEAD_RETRY_DELAY) => {}
                     }
                 }
             }
         }
-
-        watch_value
     }
 
     /// Block on the next external event using a biased `tokio::select!`.
@@ -360,10 +386,15 @@ where
     /// return type with a no-op variant.
     async fn next_event(&mut self) -> Result<DriverEvent, BatchDriverError> {
         loop {
+            let reset_pending = self.reset_safe_head_rx.is_some();
             let event = tokio::select! {
                 biased;
 
                 _ = self.runtime.cancelled() => DriverEvent::Shutdown,
+
+                safe_head = Self::next_reset_safe_head(&mut self.reset_safe_head_rx) => {
+                    DriverEvent::ResetSafeHead(safe_head)
+                },
 
                 cmd = Self::next_admin_cmd(&mut self.admin_rx) => {
                     match cmd {
@@ -375,23 +406,11 @@ where
                             info!(stopped = true, "batcher paused via admin");
                         }
                         AdminCommand::Resume => {
-                            let safe_head = Self::reset_safe_head(
-                                self.runtime.clone(),
-                                self.local_safe_head_provider.clone(),
-                                self.safe_head_rx.as_ref().map(|rx| *rx.borrow()),
-                            )
-                            .await;
-                            if let Some(n) = safe_head {
-                                self.source.reset_catchup(n + 1);
-                                info!(
-                                    stopped = false,
-                                    catchup_from = %(n + 1),
-                                    "batcher resumed via admin, catching up from local safe head"
-                                );
-                            } else {
-                                info!(stopped = false, "batcher resumed via admin");
-                            }
                             self.stopped = false;
+                            self.reset_for_local_safe_catchup(
+                                self.safe_head_rx.as_ref().map(|rx| *rx.borrow()),
+                            );
+                            info!(stopped = false, "batcher resumed via admin");
                         }
                         AdminCommand::SetThrottle { strategy, config } => {
                             self.throttle.set_controller(
@@ -420,7 +439,13 @@ where
                     continue;
                 }
 
-                event = self.source.next() => match event {
+                event = async {
+                    if reset_pending {
+                        std::future::pending::<Result<L2BlockEvent, SourceError>>().await
+                    } else {
+                        self.source.next().await
+                    }
+                } => match event {
                     Ok(L2BlockEvent::Block(_) | L2BlockEvent::Flush) if self.stopped => {
                         continue;
                     }
@@ -486,6 +511,14 @@ where
                 Some(cmd) => cmd,
                 None => std::future::pending().await,
             },
+            None => std::future::pending().await,
+        }
+    }
+
+    /// Returns a completed reset-boundary lookup, or parks forever if none is pending.
+    async fn next_reset_safe_head(rx: &mut Option<mpsc::Receiver<Option<u64>>>) -> Option<u64> {
+        match rx {
+            Some(rx) => rx.recv().await.flatten(),
             None => std::future::pending().await,
         }
     }

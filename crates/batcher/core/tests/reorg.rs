@@ -9,8 +9,8 @@ use std::{
 use alloy_primitives::{Address, B256};
 use async_trait::async_trait;
 use base_batcher_core::{
-    BatchDriver, BatchDriverConfig, DaThrottle, LocalSafeHeadProvider, LocalSafeHeadResult,
-    NoopThrottleClient, ThrottleController,
+    AdminHandle, BatchDriver, BatchDriverConfig, DaThrottle, LocalSafeHeadProvider,
+    LocalSafeHeadResult, NoopThrottleClient, ThrottleController,
     test_utils::{
         ImmediateConfirmTxManager, OneBlockSource, OneReorgPipeline, PendingL1HeadSource, Recorded,
         ReorgPipeline, TrackingPipeline,
@@ -56,6 +56,15 @@ impl LocalSafeHeadProvider for QueuedLocalSafeHeadProvider {
                 Err(e) => Err(e.into()),
             }
         })
+    }
+}
+
+#[derive(Debug)]
+struct FailingLocalSafeHeadProvider;
+
+impl LocalSafeHeadProvider for FailingLocalSafeHeadProvider {
+    fn local_safe_l2_number(&self) -> BoxFuture<'_, LocalSafeHeadResult> {
+        Box::pin(async { Err("sync status unavailable".into()) })
     }
 }
 
@@ -305,6 +314,61 @@ fn test_l2_reorg_event_retries_local_safe_head_fetch_failure() {
             "pipeline must still be reset after retry succeeds"
         );
     });
+}
+
+/// Local-safe retry must not block the driver's control plane. The source arm
+/// stays parked until the reset boundary is resolved, but admin commands should
+/// still be serviced while the provider retry task waits for the next attempt.
+#[test]
+fn test_l2_reorg_event_local_safe_head_retry_does_not_block_admin() {
+    Runner::start(
+        Config { seed: 0, cycle_limit: None, timeout: Some(Duration::from_secs(1)) },
+        |ctx| async move {
+            let recorded = Arc::new(Mutex::new(Recorded::default()));
+            let pipeline = TrackingPipeline::new(Arc::clone(&recorded));
+            let reorg_head = L2BlockInfo::new(
+                BlockInfo::new(B256::ZERO, 150, B256::ZERO, 0),
+                Default::default(),
+                0,
+            );
+            let (source, catchup_args) =
+                ReorgThenPendingSource::new(L2BlockEvent::Reorg { new_safe_head: reorg_head });
+            let (admin_handle, admin_rx) = AdminHandle::channel();
+            let (safe_head_tx, safe_head_rx) = watch::channel::<u64>(150);
+
+            let driver = BatchDriver::new(
+                ctx.clone(),
+                pipeline,
+                source,
+                ImmediateConfirmTxManager { l1_block: 1 },
+                BatchDriverConfig {
+                    inbox: Address::ZERO,
+                    max_pending_transactions: 1,
+                    drain_timeout: Duration::from_millis(10),
+                    force_blobs_when_throttling: true,
+                },
+                DaThrottle::new(ThrottleController::noop(), Arc::new(NoopThrottleClient)),
+                PendingL1HeadSource,
+            )
+            .with_admin_rx(admin_rx)
+            .with_safe_head_rx(safe_head_rx)
+            .with_local_safe_head_provider(Arc::new(FailingLocalSafeHeadProvider));
+            let handle = ctx.spawn(driver.run());
+
+            ctx.sleep(Duration::from_millis(10)).await;
+
+            let status = admin_handle.get_status().await.unwrap();
+            assert!(!status.stopped, "admin status must respond while local-safe lookup retries");
+            assert!(
+                catchup_args.lock().unwrap().is_empty(),
+                "source catchup must wait for a fresh local safe head"
+            );
+
+            ctx.cancel();
+            drop(safe_head_tx);
+            assert!(handle.await.unwrap().is_ok());
+        },
+    );
 }
 
 /// Parent-hash mismatch reorgs use the same reset boundary as explicit source

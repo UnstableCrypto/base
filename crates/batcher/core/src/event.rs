@@ -23,6 +23,8 @@ pub enum DriverEvent {
     L1Head(u64),
     /// Safe L2 head advanced (from watch channel).
     SafeHead(u64),
+    /// Fresh local safe head lookup completed for a reset boundary.
+    ResetSafeHead(Option<u64>),
     /// L1 head source permanently closed (Exhausted or Closed error).
     L1SourceClosed,
 }
