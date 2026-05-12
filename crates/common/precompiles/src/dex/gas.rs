@@ -83,11 +83,11 @@ impl DexGasMeter {
 }
 
 const fn pool_read_cost() -> u64 {
-    slot_hash_cost(2) + STORAGE_READ_COST * 3
+    slot_hash_cost(2) * 3 + STORAGE_READ_COST * 3
 }
 
 const fn pool_write_cost() -> u64 {
-    slot_hash_cost(2) + STORAGE_ACCOUNT_TOUCH_COST + STORAGE_WRITE_COST * 3
+    slot_hash_cost(2) * 3 + STORAGE_ACCOUNT_TOUCH_COST + STORAGE_WRITE_COST * 3
 }
 
 const fn lp_update_cost() -> u64 {

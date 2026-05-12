@@ -9,6 +9,10 @@ pub(crate) const DEMO_TOKEN_A: Address = address!("00000000000000000000000000000
 /// Second demo native token supported by the feature-gated DEX scaffold.
 pub(crate) const DEMO_TOKEN_B: Address = address!("0000000000000000000000000000000000000dE9");
 
+/// Validation-only token boundary for the demo scaffold.
+///
+/// `pull` and `push` intentionally do not mutate balances yet. Native balance storage and ERC-20
+/// adapter calls should be wired here before this DEX supports production token movement.
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct DexToken;
 

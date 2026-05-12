@@ -12,8 +12,9 @@ use alloy_provider::{Provider, RootProvider};
 use alloy_rpc_types_eth::TransactionInput;
 use alloy_signer::SignerSync;
 use alloy_signer_local::PrivateKeySigner;
-use alloy_sol_types::{SolCall, sol};
+use alloy_sol_types::SolCall;
 use base_common_network::Base;
+use base_common_precompiles::{BASE_DEX_ADDRESS, IBaseDex};
 use base_common_rpc_types::{BaseTransactionReceipt, BaseTransactionRequest};
 use devnet::{
     DevnetBuilder,
@@ -46,37 +47,8 @@ const DEX_FEE_DENOMINATOR: U256 = U256::from_limbs([1_000, 0, 0, 0]);
 const DEX_MINIMUM_LIQUIDITY: U256 = U256::from_limbs([1_000, 0, 0, 0]);
 const TX_RECEIPT_TIMEOUT: Duration = Duration::from_secs(60);
 const BLOCK_PRODUCTION_TIMEOUT: Duration = Duration::from_secs(20);
-const BASE_DEX_ADDRESS: Address = address!("0000000000000000000000000000000000000dE7");
 const DEMO_TOKEN_A: Address = address!("0000000000000000000000000000000000000dE8");
 const DEMO_TOKEN_B: Address = address!("0000000000000000000000000000000000000dE9");
-
-sol! {
-    #[derive(Debug, PartialEq, Eq)]
-    interface IBaseDex {
-        struct Pool {
-            uint128 reserveToken;
-            uint128 reserveBase;
-            uint256 totalSupply;
-        }
-
-        function BASE_TOKEN() external view returns (address);
-        function getPool(address token) external view returns (Pool memory);
-        function quoteExactInput(address tokenIn, address tokenOut, uint256 amountIn)
-            external view returns (uint256 amountOut);
-        function addLiquidity(address token, uint256 amountToken, uint256 amountBase, address to)
-            external returns (uint256 liquidity);
-        function swapExactTokensForTokens(
-            address tokenIn,
-            address tokenOut,
-            uint256 amountIn,
-            uint256 minAmountOut,
-            address to
-        ) external returns (uint256 amountOut);
-
-        event Mint(address indexed sender, address indexed token, uint256 amountToken, uint256 amountBase, uint256 liquidity, address indexed to);
-        event Swap(address indexed sender, address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut, address to);
-    }
-}
 
 #[tokio::test]
 async fn native_dex_swap_through_user_rpc_flow() -> Result<()> {
@@ -164,8 +136,16 @@ async fn native_dex_swap_through_user_rpc_flow() -> Result<()> {
         call_get_pool(&provider, liquidity_provider.address(), DEMO_TOKEN_B).await?;
     assert_eq!(pool_a_before.reserveToken, 1_000_000);
     assert_eq!(pool_a_before.reserveBase, 1_000_000);
+    assert_eq!(
+        pool_a_before.totalSupply,
+        expected_initial_total_supply(U256::from(1_000_000u64), U256::from(1_000_000u64))
+    );
     assert_eq!(pool_b_before.reserveToken, 2_000_000);
     assert_eq!(pool_b_before.reserveBase, 1_000_000);
+    assert_eq!(
+        pool_b_before.totalSupply,
+        expected_initial_total_supply(U256::from(2_000_000u64), U256::from(1_000_000u64))
+    );
 
     let amount_in = U256::from(10_000u64);
     let expected_base_out = expected_amount_out(
@@ -439,11 +419,11 @@ const fn dex_lp_update_gas() -> u64 {
 }
 
 const fn dex_pool_read_gas() -> u64 {
-    dex_slot_hash_gas(2) + DEX_STORAGE_READ_COST * 3
+    dex_slot_hash_gas(2) * 3 + DEX_STORAGE_READ_COST * 3
 }
 
 const fn dex_pool_write_gas() -> u64 {
-    dex_slot_hash_gas(2) + DEX_STORAGE_ACCOUNT_TOUCH_COST + DEX_STORAGE_WRITE_COST * 3
+    dex_slot_hash_gas(2) * 3 + DEX_STORAGE_ACCOUNT_TOUCH_COST + DEX_STORAGE_WRITE_COST * 3
 }
 
 const fn dex_slot_hash_gas(words: u64) -> u64 {
@@ -463,6 +443,10 @@ fn expected_amount_out(amount_in: U256, reserve_in: U256, reserve_out: U256) -> 
 
 fn expected_initial_liquidity(amount_token: U256, amount_base: U256) -> U256 {
     integer_sqrt(amount_token * amount_base) - DEX_MINIMUM_LIQUIDITY
+}
+
+fn expected_initial_total_supply(amount_token: U256, amount_base: U256) -> U256 {
+    integer_sqrt(amount_token * amount_base)
 }
 
 fn integer_sqrt(value: U256) -> U256 {

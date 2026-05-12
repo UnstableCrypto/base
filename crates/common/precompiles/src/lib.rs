@@ -14,7 +14,7 @@ pub use spec::BasePrecompileSpec;
 #[cfg(feature = "native-dex")]
 mod dex;
 #[cfg(feature = "native-dex")]
-pub use dex::{BASE_DEX_ADDRESS, BaseDexPrecompile};
+pub use dex::{BASE_DEX_ADDRESS, BaseDexPrecompile, IBaseDex};
 
 mod bn254_pair;
 

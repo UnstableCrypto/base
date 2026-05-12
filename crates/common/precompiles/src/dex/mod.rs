@@ -3,8 +3,8 @@
 use alloy_primitives::{Address, U256};
 
 mod abi;
-pub use abi::BASE_DEX_ADDRESS;
-use abi::{BASE_TOKEN_ADDRESS, BaseDexError, IBaseDex, IBaseDexCalls};
+pub use abi::{BASE_DEX_ADDRESS, IBaseDex};
+use abi::{BASE_TOKEN_ADDRESS, BaseDexError, IBaseDexCalls};
 
 mod dispatch;
 pub use dispatch::BaseDexPrecompile;
@@ -13,7 +13,7 @@ mod gas;
 use gas::DexGasMeter;
 
 mod math;
-use math::ConstantProduct;
+use math::{ConstantProduct, MINIMUM_LIQUIDITY};
 
 mod storage;
 use storage::{DexStorage, PoolState};
@@ -45,7 +45,7 @@ impl<'a> BaseDex<'a> {
         token_out: Address,
         amount_in: U256,
     ) -> Result<U256, BaseDexError> {
-        self.validate_path(token_in, token_out)?;
+        Self::validate_path(token_in, token_out)?;
 
         if token_in == self.base_token() {
             let pool = self.get_pool(token_out)?;
@@ -86,16 +86,21 @@ impl<'a> BaseDex<'a> {
         DexToken::pull(self.base_token(), caller, BASE_DEX_ADDRESS, amount_base)?;
 
         let mut pool = self.get_pool(token)?;
-        let liquidity = if pool.total_lp_supply.is_zero() {
-            ConstantProduct::initial_liquidity(amount_token, amount_base)?
+        let (liquidity, supply_delta) = if pool.total_lp_supply.is_zero() {
+            let liquidity = ConstantProduct::initial_liquidity(amount_token, amount_base)?;
+            let supply_delta = liquidity
+                .checked_add(MINIMUM_LIQUIDITY)
+                .ok_or(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
+            (liquidity, supply_delta)
         } else {
-            ConstantProduct::minted_liquidity(
+            let liquidity = ConstantProduct::minted_liquidity(
                 amount_token,
                 amount_base,
                 U256::from(pool.reserve_token),
                 U256::from(pool.reserve_base),
                 pool.total_lp_supply,
-            )?
+            )?;
+            (liquidity, liquidity)
         };
 
         pool.reserve_token = Self::u128_amount(
@@ -110,7 +115,7 @@ impl<'a> BaseDex<'a> {
         )?;
         pool.total_lp_supply = pool
             .total_lp_supply
-            .checked_add(liquidity)
+            .checked_add(supply_delta)
             .ok_or(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
 
         let lp_balance = self
@@ -211,7 +216,8 @@ impl<'a> BaseDex<'a> {
         min_amount_out: U256,
         to: Address,
     ) -> Result<U256, BaseDexError> {
-        let amount_out = self.quote_exact_input(token_in, token_out, amount_in)?;
+        let (amount_out, intermediate_base_out) =
+            self.quote_exact_input_with_intermediate(token_in, token_out, amount_in)?;
         if amount_out < min_amount_out {
             return Err(BaseDexError::InsufficientOutputAmount(
                 IBaseDex::InsufficientOutputAmount {},
@@ -220,7 +226,7 @@ impl<'a> BaseDex<'a> {
 
         DexToken::pull(token_in, caller, BASE_DEX_ADDRESS, amount_in)?;
         DexToken::push(token_out, BASE_DEX_ADDRESS, to, amount_out)?;
-        self.apply_swap(token_in, token_out, amount_in, amount_out)?;
+        self.apply_swap(token_in, token_out, amount_in, amount_out, intermediate_base_out)?;
         self.storage.emit(IBaseDex::Swap {
             sender: caller,
             tokenIn: token_in,
@@ -233,12 +239,32 @@ impl<'a> BaseDex<'a> {
         Ok(amount_out)
     }
 
+    fn quote_exact_input_with_intermediate(
+        &mut self,
+        token_in: Address,
+        token_out: Address,
+        amount_in: U256,
+    ) -> Result<(U256, Option<U256>), BaseDexError> {
+        Self::validate_path(token_in, token_out)?;
+
+        if token_in == self.base_token() || token_out == self.base_token() {
+            return self
+                .quote_exact_input(token_in, token_out, amount_in)
+                .map(|amount_out| (amount_out, None));
+        }
+
+        let base_out = self.quote_exact_input(token_in, self.base_token(), amount_in)?;
+        let amount_out = self.quote_exact_input(self.base_token(), token_out, base_out)?;
+        Ok((amount_out, Some(base_out)))
+    }
+
     fn apply_swap(
         &mut self,
         token_in: Address,
         token_out: Address,
         amount_in: U256,
         amount_out: U256,
+        intermediate_base_out: Option<U256>,
     ) -> Result<(), BaseDexError> {
         if token_in == self.base_token() {
             return self.apply_base_to_token_swap(token_out, amount_in, amount_out);
@@ -248,7 +274,8 @@ impl<'a> BaseDex<'a> {
             return self.apply_token_to_base_swap(token_in, amount_in, amount_out);
         }
 
-        let base_out = self.quote_exact_input(token_in, self.base_token(), amount_in)?;
+        let base_out = intermediate_base_out
+            .ok_or(BaseDexError::InvalidSwapPath(IBaseDex::InvalidSwapPath {}))?;
         self.apply_token_to_base_swap(token_in, amount_in, base_out)?;
         self.apply_base_to_token_swap(token_out, base_out, amount_out)
     }
@@ -297,17 +324,42 @@ impl<'a> BaseDex<'a> {
             .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))
     }
 
-    fn validate_path(&self, token_in: Address, token_out: Address) -> Result<(), BaseDexError> {
+    fn validate_path(token_in: Address, token_out: Address) -> Result<(), BaseDexError> {
+        if token_in == BASE_TOKEN_ADDRESS && token_out == BASE_TOKEN_ADDRESS {
+            return Err(BaseDexError::InvalidSwapPath(IBaseDex::InvalidSwapPath {}));
+        }
         if token_in == token_out {
             return Err(BaseDexError::IdenticalTokens(IBaseDex::IdenticalTokens {}));
-        }
-        if token_in == self.base_token() && token_out == self.base_token() {
-            return Err(BaseDexError::InvalidSwapPath(IBaseDex::InvalidSwapPath {}));
         }
         Ok(())
     }
 
     fn u128_amount(amount: U256) -> Result<u128, BaseDexError> {
         amount.try_into().map_err(|_| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use alloy_primitives::address;
+
+    use super::*;
+
+    #[test]
+    fn validate_path_rejects_base_to_base_as_invalid_path() {
+        assert!(matches!(
+            BaseDex::validate_path(BASE_TOKEN_ADDRESS, BASE_TOKEN_ADDRESS),
+            Err(BaseDexError::InvalidSwapPath(_))
+        ));
+    }
+
+    #[test]
+    fn validate_path_rejects_identical_non_base_tokens() {
+        let token = address!("0000000000000000000000000000000000000dE8");
+
+        assert!(matches!(
+            BaseDex::validate_path(token, token),
+            Err(BaseDexError::IdenticalTokens(_))
+        ));
     }
 }

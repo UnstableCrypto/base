@@ -312,6 +312,7 @@ mod tests {
         assert!(get_result.gas_used > 0);
         assert_eq!(pool.reserveToken, 1_000_000);
         assert_eq!(pool.reserveBase, 1_000_000);
+        assert_eq!(pool.totalSupply, U256::from(1_000_000));
     }
 
     #[test]
@@ -358,5 +359,6 @@ mod tests {
 
         assert_eq!(pool.reserveToken, 0);
         assert_eq!(pool.reserveBase, 0);
+        assert_eq!(pool.totalSupply, U256::ZERO);
     }
 }
