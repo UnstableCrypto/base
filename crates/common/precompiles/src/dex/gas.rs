@@ -1,8 +1,9 @@
 //! Gas schedule for the native DEX precompile.
 
+use alloy_primitives::Address;
 use revm::{context_interface::cfg::gas, precompile::PrecompileError};
 
-use super::IBaseDexCalls;
+use super::{IBaseDex, IBaseDexCalls, abi::BASE_TOKEN_ADDRESS};
 
 const INPUT_PER_WORD_COST: u64 = 6;
 const SELECTOR_DISPATCH_COST: u64 = 100;
@@ -32,10 +33,7 @@ impl DexGasMeter {
         self.charge(Self::input_cost(calldata.len()))
     }
 
-    pub(crate) const fn charge_call(
-        &mut self,
-        call: &IBaseDexCalls,
-    ) -> Result<(), PrecompileError> {
+    pub(crate) fn charge_call(&mut self, call: &IBaseDexCalls) -> Result<(), PrecompileError> {
         self.charge(Self::call_cost(call))
     }
 
@@ -58,12 +56,12 @@ impl DexGasMeter {
         calldata_len.div_ceil(32) as u64 * INPUT_PER_WORD_COST
     }
 
-    const fn call_cost(call: &IBaseDexCalls) -> u64 {
+    fn call_cost(call: &IBaseDexCalls) -> u64 {
         match call {
             IBaseDexCalls::BASE_TOKEN(_) => SELECTOR_DISPATCH_COST,
             IBaseDexCalls::getPool(_) => SELECTOR_DISPATCH_COST + pool_read_cost(),
-            IBaseDexCalls::quoteExactInput(_) => {
-                SELECTOR_DISPATCH_COST + ARITHMETIC_COST + pool_read_cost() * 2
+            IBaseDexCalls::quoteExactInput(call) => {
+                SELECTOR_DISPATCH_COST + ARITHMETIC_COST + Self::quote_pool_access_cost(call)
             }
             IBaseDexCalls::addLiquidity(_) => {
                 SELECTOR_DISPATCH_COST + lp_update_cost() + log_cost(4, 96)
@@ -71,15 +69,32 @@ impl DexGasMeter {
             IBaseDexCalls::removeLiquidity(_) => {
                 SELECTOR_DISPATCH_COST + lp_update_cost() + log_cost(3, 128)
             }
-            IBaseDexCalls::swapExactTokensForTokens(_) => {
+            IBaseDexCalls::swapExactTokensForTokens(call) => {
                 SELECTOR_DISPATCH_COST
                     + ARITHMETIC_COST
-                    + pool_read_cost() * 5
-                    + pool_write_cost() * 2
+                    + Self::swap_pool_access_cost(call)
                     + log_cost(4, 96)
             }
         }
     }
+
+    fn quote_pool_access_cost(call: &IBaseDex::quoteExactInputCall) -> u64 {
+        if is_single_hop_swap(call.tokenIn, call.tokenOut) {
+            return pool_read_cost();
+        }
+        pool_read_cost() * 2
+    }
+
+    fn swap_pool_access_cost(call: &IBaseDex::swapExactTokensForTokensCall) -> u64 {
+        if is_single_hop_swap(call.tokenIn, call.tokenOut) {
+            return pool_read_cost() * 2 + pool_write_cost();
+        }
+        pool_read_cost() * 5 + pool_write_cost() * 2
+    }
+}
+
+fn is_single_hop_swap(token_in: Address, token_out: Address) -> bool {
+    token_in == BASE_TOKEN_ADDRESS || token_out == BASE_TOKEN_ADDRESS
 }
 
 const fn pool_read_cost() -> u64 {
@@ -133,6 +148,57 @@ mod tests {
         });
 
         assert!(DexGasMeter::call_cost(&add) > DexGasMeter::call_cost(&view));
+    }
+
+    #[test]
+    fn swap_cost_tracks_single_and_two_hop_paths() {
+        let token_a = address!("0000000000000000000000000000000000000dE8");
+        let token_b = address!("0000000000000000000000000000000000000dE9");
+        let two_hop =
+            IBaseDexCalls::swapExactTokensForTokens(IBaseDex::swapExactTokensForTokensCall {
+                tokenIn: token_a,
+                tokenOut: token_b,
+                amountIn: U256::from(1),
+                minAmountOut: U256::ZERO,
+                to: token_b,
+            });
+        let token_to_base =
+            IBaseDexCalls::swapExactTokensForTokens(IBaseDex::swapExactTokensForTokensCall {
+                tokenIn: token_a,
+                tokenOut: BASE_TOKEN_ADDRESS,
+                amountIn: U256::from(1),
+                minAmountOut: U256::ZERO,
+                to: token_b,
+            });
+        let base_to_token =
+            IBaseDexCalls::swapExactTokensForTokens(IBaseDex::swapExactTokensForTokensCall {
+                tokenIn: BASE_TOKEN_ADDRESS,
+                tokenOut: token_b,
+                amountIn: U256::from(1),
+                minAmountOut: U256::ZERO,
+                to: token_b,
+            });
+
+        assert_eq!(DexGasMeter::call_cost(&token_to_base), DexGasMeter::call_cost(&base_to_token));
+        assert!(DexGasMeter::call_cost(&token_to_base) < DexGasMeter::call_cost(&two_hop));
+    }
+
+    #[test]
+    fn quote_cost_tracks_single_and_two_hop_paths() {
+        let token_a = address!("0000000000000000000000000000000000000dE8");
+        let token_b = address!("0000000000000000000000000000000000000dE9");
+        let two_hop = IBaseDexCalls::quoteExactInput(IBaseDex::quoteExactInputCall {
+            tokenIn: token_a,
+            tokenOut: token_b,
+            amountIn: U256::from(1),
+        });
+        let single_hop = IBaseDexCalls::quoteExactInput(IBaseDex::quoteExactInputCall {
+            tokenIn: token_a,
+            tokenOut: BASE_TOKEN_ADDRESS,
+            amountIn: U256::from(1),
+        });
+
+        assert!(DexGasMeter::call_cost(&single_hop) < DexGasMeter::call_cost(&two_hop));
     }
 
     #[test]

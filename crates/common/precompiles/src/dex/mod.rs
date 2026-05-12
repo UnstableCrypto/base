@@ -47,6 +47,7 @@ impl<'a> BaseDex<'a> {
         amount_in: U256,
     ) -> Result<U256, BaseDexError> {
         Self::validate_path(token_in, token_out)?;
+        self.validate_swap_tokens(token_in, token_out)?;
 
         if token_in == self.base_token() {
             let pool = self.get_pool(token_out)?;
@@ -253,6 +254,7 @@ impl<'a> BaseDex<'a> {
         amount_in: U256,
     ) -> Result<(U256, Option<U256>), BaseDexError> {
         Self::validate_path(token_in, token_out)?;
+        self.validate_swap_tokens(token_in, token_out)?;
 
         if token_in == self.base_token() || token_out == self.base_token() {
             return self
@@ -337,6 +339,20 @@ impl<'a> BaseDex<'a> {
         }
         if token_in == token_out {
             return Err(BaseDexError::IdenticalTokens(IBaseDex::IdenticalTokens {}));
+        }
+        Ok(())
+    }
+
+    fn validate_swap_tokens(
+        &self,
+        token_in: Address,
+        token_out: Address,
+    ) -> Result<(), BaseDexError> {
+        if token_in != self.base_token() {
+            DexToken::validate(token_in)?;
+        }
+        if token_out != self.base_token() {
+            DexToken::validate(token_out)?;
         }
         Ok(())
     }
