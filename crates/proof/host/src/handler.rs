@@ -224,8 +224,8 @@ impl PayloadWitnessPrefetcher {
 
     pub(crate) async fn schedule_lookahead(
         &self,
-        cfg: HostConfig,
-        providers: HostProviders,
+        cfg: &HostConfig,
+        providers: &HostProviders,
         kv: SharedKeyValueStore,
         parent_block_hash: B256,
     ) {
@@ -237,6 +237,8 @@ impl PayloadWitnessPrefetcher {
             return;
         }
 
+        let cfg = Arc::new(cfg.clone());
+        let providers = Arc::new(providers.clone());
         let prefetcher = self.clone();
         tokio::spawn(async move {
             let parent_block = match providers.l2.get_block_by_hash(parent_block_hash).await {
@@ -273,8 +275,8 @@ impl PayloadWitnessPrefetcher {
                 }
 
                 prefetcher.spawn_prefetch_block(
-                    cfg.clone(),
-                    providers.clone(),
+                    Arc::clone(&cfg),
+                    Arc::clone(&providers),
                     Arc::clone(&kv),
                     block_number,
                 );
@@ -308,8 +310,8 @@ impl PayloadWitnessPrefetcher {
 
     fn spawn_prefetch_block(
         &self,
-        cfg: HostConfig,
-        providers: HostProviders,
+        cfg: Arc<HostConfig>,
+        providers: Arc<HostProviders>,
         kv: SharedKeyValueStore,
         block_number: u64,
     ) {
@@ -416,8 +418,8 @@ impl PayloadWitnessPrefetcher {
 
     async fn prefetch_block(
         &self,
-        cfg: HostConfig,
-        providers: HostProviders,
+        cfg: Arc<HostConfig>,
+        providers: Arc<HostProviders>,
         kv: SharedKeyValueStore,
         block_number: u64,
     ) {
@@ -427,11 +429,16 @@ impl PayloadWitnessPrefetcher {
 
     async fn prefetch_block_inner(
         &self,
-        cfg: HostConfig,
-        providers: HostProviders,
+        cfg: Arc<HostConfig>,
+        providers: Arc<HostProviders>,
         kv: SharedKeyValueStore,
         block_number: u64,
     ) {
+        let _permit = match self.inner.semaphore.acquire().await {
+            Ok(permit) => permit,
+            Err(_) => return,
+        };
+
         let block = match providers
             .l2
             .get_block_by_number(BlockNumberOrTag::Number(block_number))
@@ -487,10 +494,6 @@ impl PayloadWitnessPrefetcher {
             }
         };
 
-        let permit = match self.inner.semaphore.acquire().await {
-            Ok(permit) => permit,
-            Err(_) => return,
-        };
         let Some(notify) = self.try_mark_in_flight(&keys).await else {
             return;
         };
@@ -527,7 +530,6 @@ impl PayloadWitnessPrefetcher {
                     "payload witness prefetch failed: debug_executePayload failed"
                 );
                 in_flight.mark_failed().await;
-                drop(permit);
                 return;
             }
         };
@@ -548,7 +550,6 @@ impl PayloadWitnessPrefetcher {
                 "payload witness prefetch failed: preimage insertion failed"
             );
             in_flight.mark_failed().await;
-            drop(permit);
             return;
         }
         let insert_elapsed = insert_start.elapsed();
@@ -584,8 +585,6 @@ impl PayloadWitnessPrefetcher {
             total_elapsed_ms = (rpc_elapsed + insert_elapsed).as_millis(),
             "payload witness prefetch completed"
         );
-
-        drop(permit);
     }
 }
 
@@ -1258,12 +1257,7 @@ async fn handle_hint_inner(
                 );
                 if let Some(prefetcher) = payload_witness_prefetcher.as_ref() {
                     prefetcher
-                        .schedule_lookahead(
-                            cfg.clone(),
-                            providers.clone(),
-                            Arc::clone(&kv),
-                            parent_block_hash,
-                        )
+                        .schedule_lookahead(cfg, providers, Arc::clone(&kv), parent_block_hash)
                         .await;
                 }
                 return Ok(());
@@ -1280,9 +1274,16 @@ async fn handle_hint_inner(
                 .await
             {
                 Ok(response) => response,
-                Err(e) => {
-                    warn!(error = %e, "debug_executePayload failed");
-                    return Ok(());
+                Err(err) => {
+                    warn!(
+                        target: "host_server",
+                        parent_block_hash = ?parent_block_hash,
+                        payload_timestamp,
+                        tx_count,
+                        error = %err,
+                        "debug_executePayload failed"
+                    );
+                    return Err(HostError::Custom(format!("debug_executePayload failed: {err}")));
                 }
             };
             let rpc_elapsed = rpc_start.elapsed();
@@ -1314,12 +1315,7 @@ async fn handle_hint_inner(
 
             if let Some(prefetcher) = payload_witness_prefetcher {
                 prefetcher
-                    .schedule_lookahead(
-                        cfg.clone(),
-                        providers.clone(),
-                        Arc::clone(&kv),
-                        parent_block_hash,
-                    )
+                    .schedule_lookahead(cfg, providers, Arc::clone(&kv), parent_block_hash)
                     .await;
             }
         }
@@ -1626,6 +1622,27 @@ mod tests {
         let stored = store_blob_preimages_if_missing(&kv, TEST_HASH, blob).await.unwrap();
 
         assert!(!stored);
+    }
+
+    #[tokio::test]
+    async fn test_l2_payload_witness_propagates_rpc_error() {
+        let mut cfg = test_cfg();
+        cfg.prover.enable_experimental_witness_endpoint = true;
+        let payload_attributes = BasePayloadAttributes::default();
+        let payload_attributes_json = serde_json::to_vec(&payload_attributes).unwrap();
+        let mut hint_data = TEST_HASH.as_slice().to_vec();
+        hint_data.extend_from_slice(&payload_attributes_json);
+        let hint = HintType::L2PayloadWitness.with_data(&[hint_data.as_slice()]);
+        let asserter = Asserter::new();
+        asserter.push_failure_msg("injected debug_executePayload failure");
+        let l2 = provider_builder::<Base>().connect_mocked_client(asserter);
+        let providers = test_providers(l2);
+        let kv: SharedKeyValueStore = Arc::new(RwLock::new(MemoryKeyValueStore::new()));
+
+        let err = handle_hint(hint, &cfg, &providers, Arc::clone(&kv)).await.unwrap_err();
+
+        assert!(err.to_string().contains("debug_executePayload failed"));
+        assert!(err.to_string().contains("injected debug_executePayload failure"));
     }
 
     #[tokio::test]
