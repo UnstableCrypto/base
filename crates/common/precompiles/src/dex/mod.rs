@@ -98,24 +98,24 @@ impl<'a> BaseDex<'a> {
         pool.reserve_token = Self::u128_amount(
             U256::from(pool.reserve_token)
                 .checked_add(amount_token)
-                .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?,
+                .ok_or(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?,
         )?;
         pool.reserve_base = Self::u128_amount(
             U256::from(pool.reserve_base)
                 .checked_add(amount_base)
-                .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?,
+                .ok_or(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?,
         )?;
         pool.total_lp_supply = pool
             .total_lp_supply
             .checked_add(liquidity)
-            .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
+            .ok_or(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
 
         let lp_balance = self
             .storage
             .lp_balance(token, to)
             .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))?
             .checked_add(liquidity)
-            .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
+            .ok_or(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
         self.storage
             .write_lp_balance(token, to, lp_balance)
             .map_err(|_| BaseDexError::InvalidToken(IBaseDex::InvalidToken {}))?;
@@ -258,12 +258,12 @@ impl<'a> BaseDex<'a> {
         pool.reserve_token = Self::u128_amount(
             U256::from(pool.reserve_token)
                 .checked_add(amount_token_in)
-                .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?,
+                .ok_or(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?,
         )?;
         pool.reserve_base = Self::u128_amount(
-            U256::from(pool.reserve_base).checked_sub(amount_base_out).ok_or_else(|| {
-                BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {})
-            })?,
+            U256::from(pool.reserve_base)
+                .checked_sub(amount_base_out)
+                .ok_or(BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {}))?,
         )?;
         self.storage
             .write_pool(token, pool)
@@ -280,12 +280,12 @@ impl<'a> BaseDex<'a> {
         pool.reserve_base = Self::u128_amount(
             U256::from(pool.reserve_base)
                 .checked_add(amount_base_in)
-                .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?,
+                .ok_or(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?,
         )?;
         pool.reserve_token = Self::u128_amount(
-            U256::from(pool.reserve_token).checked_sub(amount_token_out).ok_or_else(|| {
-                BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {})
-            })?,
+            U256::from(pool.reserve_token)
+                .checked_sub(amount_token_out)
+                .ok_or(BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {}))?,
         )?;
         self.storage
             .write_pool(token, pool)

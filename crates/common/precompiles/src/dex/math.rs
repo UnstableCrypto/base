@@ -26,14 +26,14 @@ impl ConstantProduct {
 
         let amount_in_with_fee = amount_in
             .checked_mul(FEE_NUMERATOR)
-            .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
+            .ok_or(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
         let numerator = amount_in_with_fee
             .checked_mul(reserve_out)
-            .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
+            .ok_or(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
         let denominator = reserve_in
             .checked_mul(FEE_DENOMINATOR)
             .and_then(|value| value.checked_add(amount_in_with_fee))
-            .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
+            .ok_or(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
 
         let amount_out = numerator / denominator;
         if amount_out.is_zero() {
@@ -54,11 +54,11 @@ impl ConstantProduct {
 
         let product = amount_token
             .checked_mul(amount_base)
-            .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
+            .ok_or(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
         Self::sqrt(product)
             .checked_sub(MINIMUM_LIQUIDITY)
             .filter(|liquidity| !liquidity.is_zero())
-            .ok_or_else(|| BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {}))
+            .ok_or(BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {}))
     }
 
     pub(crate) fn minted_liquidity(
@@ -78,11 +78,11 @@ impl ConstantProduct {
         let token_liquidity = amount_token
             .checked_mul(total_supply)
             .and_then(|value| value.checked_div(reserve_token))
-            .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
+            .ok_or(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
         let base_liquidity = amount_base
             .checked_mul(total_supply)
             .and_then(|value| value.checked_div(reserve_base))
-            .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
+            .ok_or(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
         let liquidity = token_liquidity.min(base_liquidity);
 
         if liquidity.is_zero() {
@@ -107,11 +107,11 @@ impl ConstantProduct {
         let amount_token = liquidity
             .checked_mul(reserve_token)
             .and_then(|value| value.checked_div(total_supply))
-            .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
+            .ok_or(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
         let amount_base = liquidity
             .checked_mul(reserve_base)
             .and_then(|value| value.checked_div(total_supply))
-            .ok_or_else(|| BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
+            .ok_or(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}))?;
 
         if amount_token.is_zero() || amount_base.is_zero() {
             return Err(BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {}));

@@ -171,7 +171,7 @@ impl BaseDexPrecompile {
         None
     }
 
-    fn is_mutating(call: &IBaseDexCalls) -> bool {
+    const fn is_mutating(call: &IBaseDexCalls) -> bool {
         matches!(
             call,
             IBaseDexCalls::addLiquidity(_)
