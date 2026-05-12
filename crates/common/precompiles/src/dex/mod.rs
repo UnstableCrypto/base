@@ -150,7 +150,10 @@ impl<'a> BaseDex<'a> {
         liquidity: U256,
         to: Address,
     ) -> Result<(U256, U256), BaseDexError> {
-        if token == self.base_token() || liquidity.is_zero() {
+        if token == self.base_token() {
+            return Err(BaseDexError::InvalidToken(IBaseDex::InvalidToken {}));
+        }
+        if liquidity.is_zero() {
             return Err(BaseDexError::InvalidAmount(IBaseDex::InvalidAmount {}));
         }
 

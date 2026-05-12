@@ -293,6 +293,36 @@ mod tests {
     }
 
     #[test]
+    fn remove_liquidity_rejects_base_token_as_invalid_token() {
+        let calldata = IBaseDex::removeLiquidityCall {
+            token: Address::ZERO,
+            liquidity: U256::from(1),
+            to: address!("2222222222222222222222222222222222222222"),
+        }
+        .abi_encode();
+        let mut context = EthEvmContext::new(EmptyDB::default(), Default::default());
+        let result = BaseDexPrecompile::precompile()
+            .call(PrecompileInput {
+                data: &calldata,
+                gas: u64::MAX,
+                caller: Address::ZERO,
+                value: U256::ZERO,
+                target_address: BASE_DEX_ADDRESS,
+                is_static: false,
+                bytecode_address: BASE_DEX_ADDRESS,
+                internals: EvmInternals::from_context(&mut context),
+            })
+            .unwrap();
+
+        assert!(result.reverted);
+        assert!(result.gas_used > 0);
+        assert_eq!(
+            result.bytes.as_ref(),
+            BaseDexError::InvalidToken(IBaseDex::InvalidToken {}).abi_encode().as_slice()
+        );
+    }
+
+    #[test]
     fn successful_liquidity_call_updates_pool_storage() {
         let token = address!("0000000000000000000000000000000000000dE8");
         let caller = address!("1111111111111111111111111111111111111111");
