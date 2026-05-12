@@ -3575,6 +3575,7 @@ dependencies = [
  "base-consensus-upgrades",
  "base-metrics",
  "base-protocol",
+ "criterion",
  "metrics",
  "proptest",
  "serde",
