@@ -9,6 +9,9 @@ use abi::{BASE_TOKEN_ADDRESS, BaseDexError, IBaseDex, IBaseDexCalls};
 mod dispatch;
 pub use dispatch::BaseDexPrecompile;
 
+mod gas;
+use gas::DexGasMeter;
+
 mod math;
 use math::ConstantProduct;
 
@@ -167,17 +170,19 @@ impl<'a> BaseDex<'a> {
         DexToken::push(self.base_token(), BASE_DEX_ADDRESS, to, amount_base)?;
 
         pool.reserve_token = Self::u128_amount(
-            U256::from(pool.reserve_token).checked_sub(amount_token).ok_or_else(|| {
-                BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {})
-            })?,
+            U256::from(pool.reserve_token)
+                .checked_sub(amount_token)
+                .ok_or(BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {}))?,
         )?;
-        pool.reserve_base =
-            Self::u128_amount(U256::from(pool.reserve_base).checked_sub(amount_base).ok_or_else(
-                || BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {}),
-            )?)?;
-        pool.total_lp_supply = pool.total_lp_supply.checked_sub(liquidity).ok_or_else(|| {
-            BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {})
-        })?;
+        pool.reserve_base = Self::u128_amount(
+            U256::from(pool.reserve_base)
+                .checked_sub(amount_base)
+                .ok_or(BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {}))?,
+        )?;
+        pool.total_lp_supply = pool
+            .total_lp_supply
+            .checked_sub(liquidity)
+            .ok_or(BaseDexError::InsufficientLiquidity(IBaseDex::InsufficientLiquidity {}))?;
 
         self.storage
             .write_lp_balance(token, caller, lp_balance - liquidity)

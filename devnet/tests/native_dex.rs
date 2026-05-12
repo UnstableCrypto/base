@@ -24,6 +24,26 @@ use tokio::time::{sleep, timeout};
 
 const L1_CHAIN_ID: u64 = 1337;
 const L2_CHAIN_ID: u64 = 84538453;
+const TX_BASE_GAS: u64 = 21_000;
+const TX_STANDARD_TOKEN_COST: u64 = 4;
+const TX_NON_ZERO_BYTE_MULTIPLIER_ISTANBUL: u64 = 4;
+const TX_FLOOR_COST_PER_TOKEN: u64 = 10;
+const ESTIMATE_CALL_STIPEND_GAS: u64 = 2_300;
+const ESTIMATE_GAS_ERROR_RATIO: f64 = 0.015;
+const DEX_INPUT_PER_WORD_COST: u64 = 6;
+const DEX_SELECTOR_DISPATCH_COST: u64 = 100;
+const DEX_ARITHMETIC_COST: u64 = 500;
+const DEX_STORAGE_ACCOUNT_TOUCH_COST: u64 = 2_600;
+const DEX_STORAGE_READ_COST: u64 = 2_100;
+const DEX_STORAGE_WRITE_COST: u64 = 22_100;
+const DEX_KECCAK_BASE_COST: u64 = 30;
+const DEX_KECCAK_WORD_COST: u64 = 6;
+const DEX_LOG_BASE_COST: u64 = 375;
+const DEX_LOG_TOPIC_COST: u64 = 375;
+const DEX_LOG_DATA_COST: u64 = 8;
+const DEX_FEE_NUMERATOR: U256 = U256::from_limbs([997, 0, 0, 0]);
+const DEX_FEE_DENOMINATOR: U256 = U256::from_limbs([1_000, 0, 0, 0]);
+const DEX_MINIMUM_LIQUIDITY: U256 = U256::from_limbs([1_000, 0, 0, 0]);
 const TX_RECEIPT_TIMEOUT: Duration = Duration::from_secs(60);
 const BLOCK_PRODUCTION_TIMEOUT: Duration = Duration::from_secs(20);
 const BASE_DEX_ADDRESS: Address = address!("0000000000000000000000000000000000000dE7");
@@ -87,11 +107,12 @@ async fn native_dex_swap_through_user_rpc_flow() -> Result<()> {
         amountBase: U256::from(1_000_000u64),
         to: liquidity_provider.address(),
     };
+    let seed_token_a_calldata = seed_token_a.abi_encode();
     let seed_token_a_receipt = send_dex_transaction(
         &provider,
         &liquidity_provider,
         liquidity_nonce,
-        seed_token_a.abi_encode(),
+        seed_token_a_calldata.clone(),
     )
     .await
     .wrap_err("seed token A liquidity")?;
@@ -100,7 +121,13 @@ async fn native_dex_swap_through_user_rpc_flow() -> Result<()> {
         DEMO_TOKEN_A,
         U256::from(1_000_000u64),
         U256::from(1_000_000u64),
+        expected_initial_liquidity(U256::from(1_000_000u64), U256::from(1_000_000u64)),
     )?;
+    assert_exact_dex_gas(
+        &seed_token_a_receipt,
+        &seed_token_a_calldata,
+        dex_add_liquidity_call_gas(),
+    );
     liquidity_nonce += 1;
 
     let seed_token_b = IBaseDex::addLiquidityCall {
@@ -109,11 +136,12 @@ async fn native_dex_swap_through_user_rpc_flow() -> Result<()> {
         amountBase: U256::from(1_000_000u64),
         to: liquidity_provider.address(),
     };
+    let seed_token_b_calldata = seed_token_b.abi_encode();
     let seed_token_b_receipt = send_dex_transaction(
         &provider,
         &liquidity_provider,
         liquidity_nonce,
-        seed_token_b.abi_encode(),
+        seed_token_b_calldata.clone(),
     )
     .await
     .wrap_err("seed token B liquidity")?;
@@ -122,7 +150,13 @@ async fn native_dex_swap_through_user_rpc_flow() -> Result<()> {
         DEMO_TOKEN_B,
         U256::from(2_000_000u64),
         U256::from(1_000_000u64),
+        expected_initial_liquidity(U256::from(2_000_000u64), U256::from(1_000_000u64)),
     )?;
+    assert_exact_dex_gas(
+        &seed_token_b_receipt,
+        &seed_token_b_calldata,
+        dex_add_liquidity_call_gas(),
+    );
 
     let pool_a_before =
         call_get_pool(&provider, liquidity_provider.address(), DEMO_TOKEN_A).await?;
@@ -134,10 +168,20 @@ async fn native_dex_swap_through_user_rpc_flow() -> Result<()> {
     assert_eq!(pool_b_before.reserveBase, 1_000_000);
 
     let amount_in = U256::from(10_000u64);
+    let expected_base_out = expected_amount_out(
+        amount_in,
+        U256::from(pool_a_before.reserveToken),
+        U256::from(pool_a_before.reserveBase),
+    );
+    let expected_amount_out = expected_amount_out(
+        expected_base_out,
+        U256::from(pool_b_before.reserveBase),
+        U256::from(pool_b_before.reserveToken),
+    );
     let quoted_amount_out =
         call_quote_exact_input(&provider, swapper.address(), DEMO_TOKEN_A, DEMO_TOKEN_B, amount_in)
             .await?;
-    assert!(quoted_amount_out > U256::ZERO);
+    assert_eq!(quoted_amount_out, expected_amount_out);
 
     let min_amount_out = quoted_amount_out - U256::from(1u64);
     let swap = IBaseDex::swapExactTokensForTokensCall {
@@ -152,21 +196,32 @@ async fn native_dex_swap_through_user_rpc_flow() -> Result<()> {
         .estimate_gas(dex_request(swapper.address(), swap_calldata.clone()))
         .await
         .wrap_err("estimate swap gas")?;
-    assert!(gas > 0);
+    let expected_swap_gas = expected_dex_transaction_gas(&swap_calldata, dex_swap_call_gas());
+    assert_eq!(gas, expected_reth_estimate_gas(expected_swap_gas));
 
     let swap_nonce = provider.get_transaction_count(swapper.address()).await?;
-    let swap_receipt = send_dex_transaction(&provider, &swapper, swap_nonce, swap_calldata)
+    let swap_receipt = send_dex_transaction(&provider, &swapper, swap_nonce, swap_calldata.clone())
         .await
         .wrap_err("swap token A for token B")?;
     assert_swap_receipt(&swap_receipt, DEMO_TOKEN_A, DEMO_TOKEN_B, amount_in, quoted_amount_out)?;
+    assert_exact_dex_gas(&swap_receipt, &swap_calldata, dex_swap_call_gas());
 
     let pool_a_after = call_get_pool(&provider, swapper.address(), DEMO_TOKEN_A).await?;
     let pool_b_after = call_get_pool(&provider, swapper.address(), DEMO_TOKEN_B).await?;
 
-    assert_eq!(pool_a_after.reserveToken, pool_a_before.reserveToken + 10_000);
-    assert!(pool_a_after.reserveBase < pool_a_before.reserveBase);
-    assert!(pool_b_after.reserveBase > pool_b_before.reserveBase);
-    assert!(pool_b_after.reserveToken < pool_b_before.reserveToken);
+    assert_eq!(pool_a_after.reserveToken, pool_a_before.reserveToken + u128_amount(amount_in));
+    assert_eq!(
+        pool_a_after.reserveBase,
+        pool_a_before.reserveBase - u128_amount(expected_base_out)
+    );
+    assert_eq!(
+        pool_b_after.reserveBase,
+        pool_b_before.reserveBase + u128_amount(expected_base_out)
+    );
+    assert_eq!(
+        pool_b_after.reserveToken,
+        pool_b_before.reserveToken - u128_amount(expected_amount_out)
+    );
 
     Ok(())
 }
@@ -277,6 +332,7 @@ fn assert_mint_receipt(
     token: Address,
     amount_token: U256,
     amount_base: U256,
+    liquidity: U256,
 ) -> Result<()> {
     let logs = receipt.inner.inner.logs();
     assert_eq!(logs.len(), 1);
@@ -286,7 +342,7 @@ fn assert_mint_receipt(
     assert_eq!(mint.inner.data.token, token);
     assert_eq!(mint.inner.data.amountToken, amount_token);
     assert_eq!(mint.inner.data.amountBase, amount_base);
-    assert!(mint.inner.data.liquidity > U256::ZERO);
+    assert_eq!(mint.inner.data.liquidity, liquidity);
 
     Ok(())
 }
@@ -309,4 +365,120 @@ fn assert_swap_receipt(
     assert_eq!(swap.inner.data.amountOut, amount_out);
 
     Ok(())
+}
+
+fn assert_exact_dex_gas(receipt: &BaseTransactionReceipt, calldata: &[u8], call_gas: u64) {
+    assert_eq!(receipt.gas_used(), expected_dex_transaction_gas(calldata, call_gas));
+}
+
+fn expected_dex_transaction_gas(calldata: &[u8], call_gas: u64) -> u64 {
+    let precompile_gas = native_dex_input_gas(calldata.len()) + call_gas;
+    let total_gas = intrinsic_transaction_gas(calldata) + precompile_gas;
+    total_gas.max(eip7623_floor_gas(calldata))
+}
+
+fn expected_reth_estimate_gas(minimum_gas_limit: u64) -> u64 {
+    let mut highest_gas_limit = (minimum_gas_limit + ESTIMATE_CALL_STIPEND_GAS) * 64 / 63;
+    let mut lowest_gas_limit = minimum_gas_limit.saturating_sub(1);
+    let mut mid_gas_limit = (minimum_gas_limit * 3)
+        .min(((highest_gas_limit as u128 + lowest_gas_limit as u128) / 2) as u64);
+
+    while lowest_gas_limit + 1 < highest_gas_limit {
+        let ratio = (highest_gas_limit - lowest_gas_limit) as f64 / highest_gas_limit as f64;
+        if ratio < ESTIMATE_GAS_ERROR_RATIO {
+            break;
+        }
+
+        if mid_gas_limit >= minimum_gas_limit {
+            highest_gas_limit = mid_gas_limit;
+        } else {
+            lowest_gas_limit = mid_gas_limit;
+        }
+        mid_gas_limit = ((highest_gas_limit as u128 + lowest_gas_limit as u128) / 2) as u64;
+    }
+
+    highest_gas_limit
+}
+
+fn intrinsic_transaction_gas(calldata: &[u8]) -> u64 {
+    TX_BASE_GAS + calldata_token_count(calldata) * TX_STANDARD_TOKEN_COST
+}
+
+fn eip7623_floor_gas(calldata: &[u8]) -> u64 {
+    TX_BASE_GAS + calldata_token_count(calldata) * TX_FLOOR_COST_PER_TOKEN
+}
+
+fn calldata_token_count(calldata: &[u8]) -> u64 {
+    let zero_bytes = calldata.iter().filter(|byte| **byte == 0).count() as u64;
+    let non_zero_bytes = calldata.len() as u64 - zero_bytes;
+    zero_bytes + non_zero_bytes * TX_NON_ZERO_BYTE_MULTIPLIER_ISTANBUL
+}
+
+const fn native_dex_input_gas(calldata_len: usize) -> u64 {
+    calldata_len.div_ceil(32) as u64 * DEX_INPUT_PER_WORD_COST
+}
+
+const fn dex_add_liquidity_call_gas() -> u64 {
+    DEX_SELECTOR_DISPATCH_COST + dex_lp_update_gas() + dex_log_gas(4, 96)
+}
+
+const fn dex_swap_call_gas() -> u64 {
+    DEX_SELECTOR_DISPATCH_COST
+        + DEX_ARITHMETIC_COST
+        + dex_pool_read_gas() * 5
+        + dex_pool_write_gas() * 2
+        + dex_log_gas(4, 96)
+}
+
+const fn dex_lp_update_gas() -> u64 {
+    dex_pool_read_gas()
+        + dex_slot_hash_gas(3)
+        + DEX_STORAGE_READ_COST
+        + DEX_STORAGE_WRITE_COST
+        + dex_pool_write_gas()
+}
+
+const fn dex_pool_read_gas() -> u64 {
+    dex_slot_hash_gas(2) + DEX_STORAGE_READ_COST * 3
+}
+
+const fn dex_pool_write_gas() -> u64 {
+    dex_slot_hash_gas(2) + DEX_STORAGE_ACCOUNT_TOUCH_COST + DEX_STORAGE_WRITE_COST * 3
+}
+
+const fn dex_slot_hash_gas(words: u64) -> u64 {
+    DEX_KECCAK_BASE_COST + DEX_KECCAK_WORD_COST * words
+}
+
+const fn dex_log_gas(topics: u64, data_bytes: u64) -> u64 {
+    DEX_LOG_BASE_COST + DEX_LOG_TOPIC_COST * topics + DEX_LOG_DATA_COST * data_bytes
+}
+
+fn expected_amount_out(amount_in: U256, reserve_in: U256, reserve_out: U256) -> U256 {
+    let amount_in_with_fee = amount_in * DEX_FEE_NUMERATOR;
+    let numerator = amount_in_with_fee * reserve_out;
+    let denominator = reserve_in * DEX_FEE_DENOMINATOR + amount_in_with_fee;
+    numerator / denominator
+}
+
+fn expected_initial_liquidity(amount_token: U256, amount_base: U256) -> U256 {
+    integer_sqrt(amount_token * amount_base) - DEX_MINIMUM_LIQUIDITY
+}
+
+fn integer_sqrt(value: U256) -> U256 {
+    if value <= U256::from(3u64) {
+        return if value.is_zero() { U256::ZERO } else { U256::from(1u64) };
+    }
+
+    let mut root = value;
+    let mut candidate = value / U256::from(2u64) + U256::from(1u64);
+    while candidate < root {
+        root = candidate;
+        candidate = (value / candidate + candidate) / U256::from(2u64);
+    }
+    root
+}
+
+fn u128_amount(amount: U256) -> u128 {
+    amount.try_into().expect("demo amount fits u128")
 }
