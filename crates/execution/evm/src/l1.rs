@@ -1,7 +1,7 @@
 //! Base-specific implementation and utilities for the executor
 
 use alloy_consensus::Transaction;
-use alloy_primitives::{U16, U256, hex};
+use alloy_primitives::{U256, hex};
 use base_common_chains::Upgrades;
 use base_common_evm::{BaseSpecId, L1BlockInfo};
 use reth_execution_errors::BlockExecutionError;
@@ -18,6 +18,23 @@ const L1_BLOCK_ISTHMUS_SELECTOR: [u8; 4] = hex!("098999be");
 /// The function selector of the "setL1BlockValuesJovian" function in the `L1Block` contract.
 /// This is the first 4 bytes of `keccak256("setL1BlockValuesJovian()")`.
 const L1_BLOCK_JOVIAN_SELECTOR: [u8; 4] = hex!("3db6be2b");
+
+#[inline]
+fn u256_from_be_u32(data: &[u8]) -> U256 {
+    U256::from(u32::from_be_bytes([data[0], data[1], data[2], data[3]]))
+}
+
+#[inline]
+fn u256_from_be_u64(data: &[u8]) -> U256 {
+    U256::from(u64::from_be_bytes([
+        data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
+    ]))
+}
+
+#[inline]
+fn u16_from_be_slice(data: &[u8]) -> u16 {
+    u16::from_be_bytes([data[0], data[1]])
+}
 
 /// Extracts the [`L1BlockInfo`] from the L2 block. The L1 info transaction is always the first
 /// transaction in the L2 block.
@@ -91,12 +108,9 @@ pub fn parse_l1_info_tx_bedrock(data: &[u8]) -> Result<L1BlockInfo, BaseBlockExe
         ));
     }
 
-    let l1_base_fee = U256::try_from_be_slice(&data[64..96])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BaseFeeConversion))?;
-    let l1_fee_overhead = U256::try_from_be_slice(&data[192..224])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::FeeOverheadConversion))?;
-    let l1_fee_scalar = U256::try_from_be_slice(&data[224..256])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::FeeScalarConversion))?;
+    let l1_base_fee = U256::from_be_slice(&data[64..96]);
+    let l1_fee_overhead = U256::from_be_slice(&data[192..224]);
+    let l1_fee_scalar = U256::from_be_slice(&data[224..256]);
 
     Ok(L1BlockInfo {
         l1_base_fee,
@@ -142,15 +156,10 @@ pub fn parse_l1_info_tx_ecotone(data: &[u8]) -> Result<L1BlockInfo, BaseBlockExe
     // 100   bytes32 _hash,
     // 132   bytes32 _batcherHash,
 
-    let l1_base_fee_scalar = U256::try_from_be_slice(&data[..4])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BaseFeeScalarConversion))?;
-    let l1_blob_base_fee_scalar = U256::try_from_be_slice(&data[4..8]).ok_or({
-        BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeScalarConversion)
-    })?;
-    let l1_base_fee = U256::try_from_be_slice(&data[32..64])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BaseFeeConversion))?;
-    let l1_blob_base_fee = U256::try_from_be_slice(&data[64..96])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeConversion))?;
+    let l1_base_fee_scalar = u256_from_be_u32(&data[..4]);
+    let l1_blob_base_fee_scalar = u256_from_be_u32(&data[4..8]);
+    let l1_base_fee = U256::from_be_slice(&data[32..64]);
+    let l1_blob_base_fee = U256::from_be_slice(&data[64..96]);
 
     Ok(L1BlockInfo {
         l1_base_fee,
@@ -199,21 +208,12 @@ pub fn parse_l1_info_tx_isthmus(data: &[u8]) -> Result<L1BlockInfo, BaseBlockExe
     // 164   uint32 _operatorFeeScalar
     // 168   uint64 _operatorFeeConstant
 
-    let l1_base_fee_scalar = U256::try_from_be_slice(&data[..4])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BaseFeeScalarConversion))?;
-    let l1_blob_base_fee_scalar = U256::try_from_be_slice(&data[4..8]).ok_or({
-        BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeScalarConversion)
-    })?;
-    let l1_base_fee = U256::try_from_be_slice(&data[32..64])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BaseFeeConversion))?;
-    let l1_blob_base_fee = U256::try_from_be_slice(&data[64..96])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeConversion))?;
-    let operator_fee_scalar = U256::try_from_be_slice(&data[160..164]).ok_or({
-        BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::OperatorFeeScalarConversion)
-    })?;
-    let operator_fee_constant = U256::try_from_be_slice(&data[164..172]).ok_or({
-        BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::OperatorFeeConstantConversion)
-    })?;
+    let l1_base_fee_scalar = u256_from_be_u32(&data[..4]);
+    let l1_blob_base_fee_scalar = u256_from_be_u32(&data[4..8]);
+    let l1_base_fee = U256::from_be_slice(&data[32..64]);
+    let l1_blob_base_fee = U256::from_be_slice(&data[64..96]);
+    let operator_fee_scalar = u256_from_be_u32(&data[160..164]);
+    let operator_fee_constant = u256_from_be_u64(&data[164..172]);
 
     Ok(L1BlockInfo {
         l1_base_fee,
@@ -266,26 +266,13 @@ pub fn parse_l1_info_tx_jovian(data: &[u8]) -> Result<L1BlockInfo, BaseBlockExec
     // 168   uint64 _operatorFeeConstant
     // 176   uint16 _daFootprintGasScalar
 
-    let l1_base_fee_scalar = U256::try_from_be_slice(&data[..4])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BaseFeeScalarConversion))?;
-    let l1_blob_base_fee_scalar = U256::try_from_be_slice(&data[4..8]).ok_or({
-        BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeScalarConversion)
-    })?;
-    let l1_base_fee = U256::try_from_be_slice(&data[32..64])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BaseFeeConversion))?;
-    let l1_blob_base_fee = U256::try_from_be_slice(&data[64..96])
-        .ok_or(BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::BlobBaseFeeConversion))?;
-    let operator_fee_scalar = U256::try_from_be_slice(&data[160..164]).ok_or({
-        BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::OperatorFeeScalarConversion)
-    })?;
-    let operator_fee_constant = U256::try_from_be_slice(&data[164..172]).ok_or({
-        BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::OperatorFeeConstantConversion)
-    })?;
-    let da_footprint_gas_scalar: u16 = U16::try_from_be_slice(&data[172..174])
-        .ok_or({
-            BaseBlockExecutionError::L1BlockInfo(L1BlockInfoError::DaFootprintGasScalarConversion)
-        })?
-        .to();
+    let l1_base_fee_scalar = u256_from_be_u32(&data[..4]);
+    let l1_blob_base_fee_scalar = u256_from_be_u32(&data[4..8]);
+    let l1_base_fee = U256::from_be_slice(&data[32..64]);
+    let l1_blob_base_fee = U256::from_be_slice(&data[64..96]);
+    let operator_fee_scalar = u256_from_be_u32(&data[160..164]);
+    let operator_fee_constant = u256_from_be_u64(&data[164..172]);
+    let da_footprint_gas_scalar = u16_from_be_slice(&data[172..174]);
 
     Ok(L1BlockInfo {
         l1_base_fee,
@@ -368,7 +355,7 @@ impl RethL1BlockInfo for L1BlockInfo {
 mod tests {
     use alloy_consensus::{Block, BlockBody, Header};
     use alloy_eips::eip2718::Decodable2718;
-    use alloy_primitives::{Bytes, hex_literal::hex, keccak256};
+    use alloy_primitives::{Bytes, U16, hex_literal::hex, keccak256};
     use base_common_chains::Upgrades;
     use base_common_consensus::BaseTransactionSigned;
     use base_execution_chainspec::BaseChainSpec;
@@ -529,5 +516,27 @@ mod tests {
         assert_eq!(l1_block_info.operator_fee_scalar, operator_fee_scalar);
         assert_eq!(l1_block_info.operator_fee_constant, operator_fee_constant);
         assert_eq!(l1_block_info.da_footprint_gas_scalar, da_footprint_gas_scalar);
+    }
+
+    #[test]
+    fn parse_l1_info_rejects_unexpected_lengths() {
+        for (selector, data_len) in [
+            ([0u8; 4], 256),
+            (L1_BLOCK_ECOTONE_SELECTOR, 160),
+            (L1_BLOCK_ISTHMUS_SELECTOR, 172),
+            (L1_BLOCK_JOVIAN_SELECTOR, 174),
+        ] {
+            for invalid_len in [data_len - 1, data_len + 1] {
+                let mut input = vec![0u8; 4 + invalid_len];
+                input[..4].copy_from_slice(&selector);
+
+                assert!(matches!(
+                    parse_l1_info(&input),
+                    Err(BaseBlockExecutionError::L1BlockInfo(
+                        L1BlockInfoError::UnexpectedCalldataLength
+                    ))
+                ));
+            }
+        }
     }
 }

@@ -41,10 +41,15 @@ revm.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 alloy-genesis.workspace = true
 reth-evm = { workspace = true, features = ["test-utils"] }
 reth-revm = { workspace = true, features = ["test-utils"] }
 base-common-consensus = { workspace = true, features = ["arbitrary"] }
+
+[[bench]]
+name = "l1_info"
+harness = false
 
 [features]
 default = [ "std" ]
