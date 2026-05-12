@@ -99,23 +99,37 @@ impl L1BlockInfo {
             .storage(Predeploys::L1_BLOCK_INFO, Self::DA_FOOTPRINT_GAS_SCALAR_SLOT)?
             .to_be_bytes::<32>();
 
-        // Extract the first 2 bytes directly as a u16 in big-endian format
-        let bytes = [
-            da_footprint_gas_scalar_slot[Self::DA_FOOTPRINT_GAS_SCALAR_OFFSET],
-            da_footprint_gas_scalar_slot[Self::DA_FOOTPRINT_GAS_SCALAR_OFFSET + 1],
-        ];
-        Ok(u16::from_be_bytes(bytes))
+        Ok(Self::da_footprint_gas_scalar_from_slot(&da_footprint_gas_scalar_slot))
+    }
+
+    fn da_footprint_gas_scalar_from_slot(slot: &[u8; 32]) -> u16 {
+        Self::u16_from_be_slice(
+            &slot[Self::DA_FOOTPRINT_GAS_SCALAR_OFFSET..Self::DA_FOOTPRINT_GAS_SCALAR_OFFSET + 2],
+        )
+    }
+
+    fn u16_from_be_slice(data: &[u8]) -> u16 {
+        u16::from_be_bytes([data[0], data[1]])
+    }
+
+    fn u256_from_be_u32(data: &[u8]) -> U256 {
+        U256::from(u32::from_be_bytes([data[0], data[1], data[2], data[3]]))
+    }
+
+    fn u256_from_be_u64(data: &[u8]) -> U256 {
+        U256::from(u64::from_be_bytes([
+            data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
+        ]))
     }
 
     /// Try to fetch the L1 block info from the database, post-Jovian.
-    fn try_fetch_jovian<DB: Database>(&mut self, db: &mut DB) -> Result<(), DB::Error> {
-        self.da_footprint_gas_scalar = Some(Self::fetch_da_footprint_gas_scalar(db)?);
-
-        Ok(())
+    fn try_fetch_jovian(&mut self, operator_fee_scalars: &[u8; 32]) {
+        self.da_footprint_gas_scalar =
+            Some(Self::da_footprint_gas_scalar_from_slot(operator_fee_scalars));
     }
 
     /// Try to fetch the L1 block info from the database, post-Isthmus.
-    fn try_fetch_isthmus<DB: Database>(&mut self, db: &mut DB) -> Result<(), DB::Error> {
+    fn try_fetch_isthmus<DB: Database>(&mut self, db: &mut DB) -> Result<[u8; 32], DB::Error> {
         // Post-isthmus L1 block info
         let operator_fee_scalars = db
             .storage(Predeploys::L1_BLOCK_INFO, Self::OPERATOR_FEE_SCALARS_SLOT)?
@@ -123,20 +137,18 @@ impl L1BlockInfo {
 
         // The `operator_fee_scalar` is stored as a big endian u32 at
         // OPERATOR_FEE_SCALAR_OFFSET.
-        self.operator_fee_scalar = Some(U256::from_be_slice(
-            operator_fee_scalars
-                [Self::OPERATOR_FEE_SCALAR_OFFSET..Self::OPERATOR_FEE_SCALAR_OFFSET + 4]
-                .as_ref(),
+        self.operator_fee_scalar = Some(Self::u256_from_be_u32(
+            &operator_fee_scalars
+                [Self::OPERATOR_FEE_SCALAR_OFFSET..Self::OPERATOR_FEE_SCALAR_OFFSET + 4],
         ));
         // The `operator_fee_constant` is stored as a big endian u64 at
         // OPERATOR_FEE_CONSTANT_OFFSET.
-        self.operator_fee_constant = Some(U256::from_be_slice(
-            operator_fee_scalars
-                [Self::OPERATOR_FEE_CONSTANT_OFFSET..Self::OPERATOR_FEE_CONSTANT_OFFSET + 8]
-                .as_ref(),
+        self.operator_fee_constant = Some(Self::u256_from_be_u64(
+            &operator_fee_scalars
+                [Self::OPERATOR_FEE_CONSTANT_OFFSET..Self::OPERATOR_FEE_CONSTANT_OFFSET + 8],
         ));
 
-        Ok(())
+        Ok(operator_fee_scalars)
     }
 
     /// Try to fetch the L1 block info from the database, post-Ecotone.
@@ -148,14 +160,13 @@ impl L1BlockInfo {
             .storage(Predeploys::L1_BLOCK_INFO, Self::ECOTONE_L1_FEE_SCALARS_SLOT)?
             .to_be_bytes::<32>();
 
-        self.l1_base_fee_scalar = U256::from_be_slice(
-            l1_fee_scalars[Self::BASE_FEE_SCALAR_OFFSET..Self::BASE_FEE_SCALAR_OFFSET + 4].as_ref(),
+        self.l1_base_fee_scalar = Self::u256_from_be_u32(
+            &l1_fee_scalars[Self::BASE_FEE_SCALAR_OFFSET..Self::BASE_FEE_SCALAR_OFFSET + 4],
         );
 
-        let l1_blob_base_fee = U256::from_be_slice(
-            l1_fee_scalars
-                [Self::BLOB_BASE_FEE_SCALAR_OFFSET..Self::BLOB_BASE_FEE_SCALAR_OFFSET + 4]
-                .as_ref(),
+        let l1_blob_base_fee = Self::u256_from_be_u32(
+            &l1_fee_scalars
+                [Self::BLOB_BASE_FEE_SCALAR_OFFSET..Self::BLOB_BASE_FEE_SCALAR_OFFSET + 4],
         );
         self.l1_blob_base_fee_scalar = Some(l1_blob_base_fee);
 
@@ -199,13 +210,18 @@ impl L1BlockInfo {
         out.try_fetch_ecotone(db)?;
 
         // Post-Isthmus L1 block info
-        if spec_id.is_enabled_in(BaseUpgrade::Isthmus) {
-            out.try_fetch_isthmus(db)?;
-        }
+        let operator_fee_scalars = if spec_id.is_enabled_in(BaseUpgrade::Isthmus) {
+            Some(out.try_fetch_isthmus(db)?)
+        } else {
+            None
+        };
 
-        // Pre-Jovian
-        if spec_id.is_enabled_in(BaseUpgrade::Jovian) {
-            out.try_fetch_jovian(db)?;
+        // The Jovian DA footprint scalar shares the same storage slot as the Isthmus operator fee
+        // scalars, so reuse the slot we already fetched above.
+        if spec_id.is_enabled_in(BaseUpgrade::Jovian)
+            && let Some(operator_fee_scalars) = operator_fee_scalars
+        {
+            out.try_fetch_jovian(&operator_fee_scalars);
         }
 
         Ok(out)
@@ -410,7 +426,11 @@ impl L1BlockInfo {
 
 #[cfg(test)]
 mod tests {
-    use revm::primitives::{bytes, hex};
+    use revm::{
+        database::InMemoryDB,
+        primitives::{bytes, hex},
+        state::AccountInfo,
+    };
 
     use super::*;
 
@@ -476,6 +496,71 @@ mod tests {
         // gas cost = 100 * 16 = 1600
         let fjord_data_gas = l1_block_info.data_gas(&input, BaseSpecId::new(BaseUpgrade::Fjord));
         assert_eq!(fjord_data_gas, U256::from(1600));
+    }
+
+    #[test]
+    fn test_try_fetch_jovian_decodes_shared_operator_fee_slot() {
+        const L2_BLOCK: U256 = uint!(100_U256);
+        const L1_BASE_FEE: U256 = uint!(1_U256);
+        const L1_BLOB_BASE_FEE: U256 = uint!(2_U256);
+        const L1_BASE_FEE_SCALAR: u32 = 3;
+        const L1_BLOB_BASE_FEE_SCALAR: u32 = 4;
+        const DA_FOOTPRINT_GAS_SCALAR: u16 = 5;
+        const OPERATOR_FEE_SCALAR: u32 = 6;
+        const OPERATOR_FEE_CONSTANT: u64 = 7;
+
+        let mut l1_fee_scalars = [0u8; 32];
+        l1_fee_scalars
+            [L1BlockInfo::BASE_FEE_SCALAR_OFFSET..L1BlockInfo::BASE_FEE_SCALAR_OFFSET + 4]
+            .copy_from_slice(&L1_BASE_FEE_SCALAR.to_be_bytes());
+        l1_fee_scalars[L1BlockInfo::BLOB_BASE_FEE_SCALAR_OFFSET
+            ..L1BlockInfo::BLOB_BASE_FEE_SCALAR_OFFSET + 4]
+            .copy_from_slice(&L1_BLOB_BASE_FEE_SCALAR.to_be_bytes());
+
+        let mut operator_fee_scalars = [0u8; 32];
+        operator_fee_scalars[L1BlockInfo::DA_FOOTPRINT_GAS_SCALAR_OFFSET
+            ..L1BlockInfo::DA_FOOTPRINT_GAS_SCALAR_OFFSET + 2]
+            .copy_from_slice(&DA_FOOTPRINT_GAS_SCALAR.to_be_bytes());
+        operator_fee_scalars
+            [L1BlockInfo::OPERATOR_FEE_SCALAR_OFFSET..L1BlockInfo::OPERATOR_FEE_SCALAR_OFFSET + 4]
+            .copy_from_slice(&OPERATOR_FEE_SCALAR.to_be_bytes());
+        operator_fee_scalars[L1BlockInfo::OPERATOR_FEE_CONSTANT_OFFSET
+            ..L1BlockInfo::OPERATOR_FEE_CONSTANT_OFFSET + 8]
+            .copy_from_slice(&OPERATOR_FEE_CONSTANT.to_be_bytes());
+
+        let mut db = InMemoryDB::default();
+        db.insert_account_info(Predeploys::L1_BLOCK_INFO, AccountInfo::default());
+        let l1_block_contract = db.load_account(Predeploys::L1_BLOCK_INFO).unwrap();
+        l1_block_contract.storage.insert(L1BlockInfo::L1_BASE_FEE_SLOT, L1_BASE_FEE);
+        l1_block_contract
+            .storage
+            .insert(L1BlockInfo::ECOTONE_L1_BLOB_BASE_FEE_SLOT, L1_BLOB_BASE_FEE);
+        l1_block_contract
+            .storage
+            .insert(L1BlockInfo::ECOTONE_L1_FEE_SCALARS_SLOT, U256::from_be_bytes(l1_fee_scalars));
+        l1_block_contract.storage.insert(
+            L1BlockInfo::OPERATOR_FEE_SCALARS_SLOT,
+            U256::from_be_bytes(operator_fee_scalars),
+        );
+
+        let l1_block_info =
+            L1BlockInfo::try_fetch(&mut db, L2_BLOCK, BaseSpecId::new(BaseUpgrade::Jovian))
+                .unwrap();
+
+        assert_eq!(
+            l1_block_info,
+            L1BlockInfo {
+                l2_block: Some(L2_BLOCK),
+                l1_base_fee: L1_BASE_FEE,
+                l1_base_fee_scalar: U256::from(L1_BASE_FEE_SCALAR),
+                l1_blob_base_fee: Some(L1_BLOB_BASE_FEE),
+                l1_blob_base_fee_scalar: Some(U256::from(L1_BLOB_BASE_FEE_SCALAR)),
+                operator_fee_scalar: Some(U256::from(OPERATOR_FEE_SCALAR)),
+                operator_fee_constant: Some(U256::from(OPERATOR_FEE_CONSTANT)),
+                da_footprint_gas_scalar: Some(DA_FOOTPRINT_GAS_SCALAR),
+                ..Default::default()
+            }
+        );
     }
 
     #[test]
