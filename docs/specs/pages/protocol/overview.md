@@ -1,12 +1,12 @@
 # Overview
 
-Base is a rollup built on Ethereum. L2 transaction data is posted to Ethereum for data availability,
+Unstable is a rollup built on Ethereum. L2 transaction data is posted to Ethereum for data availability,
 and proofs allow anyone to challenge invalid state transitions. This page gives a high-level tour of the
 protocol components and the core user flows.
 
 ## Network Participants
 
-There are three primary actors that interact with Base: users, sequencers, and validators.
+There are three primary actors that interact with Unstable: users, sequencers, and validators.
 
 ```mermaid
 graph TD
@@ -47,7 +47,7 @@ Users are the general class of network participants who:
 
 ### Sequencers
 
-The sequencer fills the role of block producer on Base. Base currently operates with a single active sequencer.
+The sequencer fills the role of block producer on Unstable. Unstable currently operates with a single active sequencer.
 
 The Sequencer:
 
@@ -263,11 +263,11 @@ graph LR
 
 ## Core User Flows
 
-### Depositing ETH to Base
+### Depositing ETH to Unstable
 
 Users will often begin their L2 journey by depositing ETH from L1.
 Once they have ETH to pay fees, they'll start sending transactions on L2.
-The following diagram demonstrates this interaction and key Base protocol components.
+The following diagram demonstrates this interaction and key Unstable protocol components.
 
 ```mermaid
 graph TD
@@ -295,15 +295,15 @@ graph TD
     class Users systemUser;
 ```
 
-### Sending Transactions on Base
+### Sending Transactions on Unstable
 
-Sending transactions on Base works the same as on Ethereum. Users sign transactions and submit them via
+Sending transactions on Unstable works the same as on Ethereum. Users sign transactions and submit them via
 `eth_sendRawTransaction` to any node's JSON-RPC endpoint. The sequencer picks them up from its mempool,
 orders them into L2 blocks, and eventually posts the batch to L1.
 
-### Withdrawing from Base
+### Withdrawing from Unstable
 
-Users may also want to withdraw ETH or ERC20 tokens from Base back to Ethereum. Withdrawals are initiated
+Users may also want to withdraw ETH or ERC20 tokens from Unstable back to Ethereum. Withdrawals are initiated
 as standard transactions on L2 but are then completed using transactions on L1. Withdrawals must reference a valid
 `FaultDisputeGame` contract that proposes the state of the L2 at a given point in time.
 

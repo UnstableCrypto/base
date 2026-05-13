@@ -1,9 +1,9 @@
-//! Base precompile provider integration.
+//! Unstable precompile provider integration.
 
-use crate::BaseSpecId;
+use crate::UnstableSpecId;
 
-/// Base precompile provider for the Base EVM spec.
-pub type BasePrecompiles = base_common_precompiles::BasePrecompiles<BaseSpecId>;
+/// Unstable precompile provider for the Unstable EVM spec.
+pub type UnstablePrecompiles = base_common_precompiles::UnstablePrecompiles<UnstableSpecId>;
 
 #[cfg(test)]
 mod tests {
@@ -15,7 +15,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::BaseUpgrade;
+    use crate::UnstableUpgrade;
 
     fn encode_length(len: usize) -> [u8; 32] {
         let mut encoded = [0u8; 32];
@@ -33,7 +33,7 @@ mod tests {
 
     #[test]
     fn base_spec_id_selects_jovian_precompile_limits() {
-        let precompiles = BasePrecompiles::new_with_spec(BaseSpecId::new(BaseUpgrade::Jovian));
+        let precompiles = UnstablePrecompiles::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Jovian));
         let bn254_pair = precompiles.precompiles().get(&bn254::pair::ADDRESS).unwrap();
 
         let input = vec![0u8; 81_984 + bn254::PAIR_ELEMENT_LEN];
@@ -46,8 +46,8 @@ mod tests {
     #[test]
     fn base_spec_id_selects_azul_osaka_precompile_rules() {
         let jovian_precompiles =
-            BasePrecompiles::new_with_spec(BaseSpecId::new(BaseUpgrade::Jovian));
-        let azul_precompiles = BasePrecompiles::new_with_spec(BaseSpecId::new(BaseUpgrade::Azul));
+            UnstablePrecompiles::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Jovian));
+        let azul_precompiles = UnstablePrecompiles::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Azul));
 
         let jovian_p256 =
             jovian_precompiles.precompiles().get(secp256r1::P256VERIFY.address()).unwrap();

@@ -1,11 +1,11 @@
 //! Contains the [`MeteringExtension`] which wires up the metering RPC surface
-//! on the Base node builder.
+//! on the Unstable node builder.
 
 use std::{num::NonZeroUsize, sync::Arc};
 
 use alloy_primitives::U256;
 use base_flashblocks::{FlashblocksAPI, FlashblocksConfig, FlashblocksState};
-use base_node_runner::{BaseNodeExtension, FromExtensionConfig, NodeHooks};
+use base_node_runner::{UnstableNodeExtension, FromExtensionConfig, NodeHooks};
 use parking_lot::RwLock;
 use tracing::{debug, info, warn};
 
@@ -187,7 +187,7 @@ impl MeteringExtension {
     }
 }
 
-impl BaseNodeExtension for MeteringExtension {
+impl UnstableNodeExtension for MeteringExtension {
     /// Applies the extension to the supplied hooks.
     fn apply(self: Box<Self>, hooks: NodeHooks) -> NodeHooks {
         if !self.enabled {

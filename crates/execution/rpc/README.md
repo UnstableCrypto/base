@@ -1,13 +1,13 @@
 # `base-execution-rpc`
 
-RPC extensions for the Base execution node.
+RPC extensions for the Unstable execution node.
 
 ## Overview
 
-Provides JSON-RPC API implementations for Base chains, including the full Ethereum API
-(`BaseEthApi`), the Engine API (`BaseEngineApi`), debug, miner, sequencer, and witness endpoints.
+Provides JSON-RPC API implementations for Unstable chains, including the full Ethereum API
+(`UnstableEthApi`), the Engine API (`UnstableEngineApi`), debug, miner, sequencer, and witness endpoints.
 Also includes `SequencerClient` for forwarding transactions to the sequencer and error types for
-Base-specific RPC failures.
+Unstable-specific RPC failures.
 
 ## Usage
 
@@ -19,9 +19,9 @@ base-execution-rpc = { workspace = true }
 ```
 
 ```rust,ignore
-use base_execution_rpc::{BaseEthApiBuilder, SequencerClient};
+use base_execution_rpc::{UnstableEthApiBuilder, SequencerClient};
 
-let eth_api = BaseEthApiBuilder::new()
+let eth_api = UnstableEthApiBuilder::new()
     .with_sequencer(SequencerClient::new(sequencer_url))
     .build(ctx)?;
 ```

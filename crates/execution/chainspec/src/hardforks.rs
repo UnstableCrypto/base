@@ -1,14 +1,14 @@
 use alloc::{boxed::Box, vec};
 
 use alloy_primitives::U256;
-use base_common_chains::{BaseUpgrade, ChainUpgrades};
+use base_common_chains::{UnstableUpgrade, ChainUpgrades};
 use reth_ethereum_forks::{ChainHardforks, EthereumHardfork, ForkCondition, Hardfork};
 /// Extension trait to convert alloy's [`ChainUpgrades`] into reth's [`ChainHardforks`].
 pub trait ChainUpgradesExt {
-    /// Expands Base upgrades into a full [`ChainHardforks`] including implied Ethereum entries.
+    /// Expands Unstable upgrades into a full [`ChainHardforks`] including implied Ethereum entries.
     ///
     /// Pre-Bedrock Ethereum hardforks are set to block 0. Paired Ethereum hardforks
-    /// use their Base counterpart's timestamp:
+    /// use their Unstable counterpart's timestamp:
     /// Shanghai=Canyon, Cancun=Ecotone, Prague=Isthmus, Osaka=Azul.
     fn to_chain_hardforks(&self) -> ChainHardforks;
 }
@@ -39,41 +39,41 @@ impl ChainUpgradesExt for ChainUpgrades {
             ),
         ];
 
-        forks.push((BaseUpgrade::Bedrock.boxed(), self[BaseUpgrade::Bedrock]));
-        forks.push((BaseUpgrade::Regolith.boxed(), self[BaseUpgrade::Regolith]));
+        forks.push((UnstableUpgrade::Bedrock.boxed(), self[UnstableUpgrade::Bedrock]));
+        forks.push((UnstableUpgrade::Regolith.boxed(), self[UnstableUpgrade::Regolith]));
 
-        let canyon = self[BaseUpgrade::Canyon];
+        let canyon = self[UnstableUpgrade::Canyon];
         forks.push((EthereumHardfork::Shanghai.boxed(), canyon));
-        forks.push((BaseUpgrade::Canyon.boxed(), canyon));
+        forks.push((UnstableUpgrade::Canyon.boxed(), canyon));
 
-        let ecotone = self[BaseUpgrade::Ecotone];
+        let ecotone = self[UnstableUpgrade::Ecotone];
         forks.push((EthereumHardfork::Cancun.boxed(), ecotone));
-        forks.push((BaseUpgrade::Ecotone.boxed(), ecotone));
+        forks.push((UnstableUpgrade::Ecotone.boxed(), ecotone));
 
-        forks.push((BaseUpgrade::Fjord.boxed(), self[BaseUpgrade::Fjord]));
-        forks.push((BaseUpgrade::Granite.boxed(), self[BaseUpgrade::Granite]));
-        forks.push((BaseUpgrade::Holocene.boxed(), self[BaseUpgrade::Holocene]));
+        forks.push((UnstableUpgrade::Fjord.boxed(), self[UnstableUpgrade::Fjord]));
+        forks.push((UnstableUpgrade::Granite.boxed(), self[UnstableUpgrade::Granite]));
+        forks.push((UnstableUpgrade::Holocene.boxed(), self[UnstableUpgrade::Holocene]));
 
-        let isthmus = self[BaseUpgrade::Isthmus];
+        let isthmus = self[UnstableUpgrade::Isthmus];
         if !matches!(isthmus, ForkCondition::Never) {
             forks.push((EthereumHardfork::Prague.boxed(), isthmus));
-            forks.push((BaseUpgrade::Isthmus.boxed(), isthmus));
+            forks.push((UnstableUpgrade::Isthmus.boxed(), isthmus));
         }
 
-        let jovian = self[BaseUpgrade::Jovian];
+        let jovian = self[UnstableUpgrade::Jovian];
         if !matches!(jovian, ForkCondition::Never) {
-            forks.push((BaseUpgrade::Jovian.boxed(), jovian));
+            forks.push((UnstableUpgrade::Jovian.boxed(), jovian));
         }
 
-        let azul = self[BaseUpgrade::Azul];
+        let azul = self[UnstableUpgrade::Azul];
         if !matches!(azul, ForkCondition::Never) {
             forks.push((EthereumHardfork::Osaka.boxed(), azul));
-            forks.push((BaseUpgrade::Azul.boxed(), azul));
+            forks.push((UnstableUpgrade::Azul.boxed(), azul));
         }
 
-        let beryl = self[BaseUpgrade::Beryl];
+        let beryl = self[UnstableUpgrade::Beryl];
         if !matches!(beryl, ForkCondition::Never) {
-            forks.push((BaseUpgrade::Beryl.boxed(), beryl));
+            forks.push((UnstableUpgrade::Beryl.boxed(), beryl));
         }
 
         ChainHardforks::new(forks)
@@ -87,15 +87,15 @@ mod tests {
     #[test]
     fn azul_expands_to_osaka() {
         let hardforks =
-            ChainUpgrades::new(BaseUpgrade::devnet().into_iter().map(|(fork, cond)| {
-                if fork == BaseUpgrade::Azul {
+            ChainUpgrades::new(UnstableUpgrade::devnet().into_iter().map(|(fork, cond)| {
+                if fork == UnstableUpgrade::Azul {
                     (fork, ForkCondition::Timestamp(1_000_000))
                 } else {
                     (fork, cond)
                 }
             }))
             .to_chain_hardforks();
-        assert_eq!(hardforks.get(BaseUpgrade::Azul), Some(ForkCondition::Timestamp(1_000_000)));
-        assert_eq!(hardforks.get(EthereumHardfork::Osaka), hardforks.get(BaseUpgrade::Azul));
+        assert_eq!(hardforks.get(UnstableUpgrade::Azul), Some(ForkCondition::Timestamp(1_000_000)));
+        assert_eq!(hardforks.get(EthereumHardfork::Osaka), hardforks.get(UnstableUpgrade::Azul));
     }
 }

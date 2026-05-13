@@ -8,9 +8,9 @@ use std::{
 use alloy_eips::{BlockHashOrNumber, Encodable2718};
 use alloy_primitives::{Address, B256, BlockNumber, Bytes, U256, bytes, hex::FromHex};
 use alloy_rpc_types_engine::PayloadId;
-use base_common_consensus::{BaseBlock, BaseTransactionSigned};
+use base_common_consensus::{UnstableBlock, UnstableTransactionSigned};
 use base_common_flashblocks::{
-    ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
+    ExecutionPayloadUnstableV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
 };
 use base_flashblocks::{FlashblocksAPI, FlashblocksReceiver, FlashblocksState};
 use base_node_runner::test_utils::{LocalNodeProvider, TestHarness};
@@ -33,7 +33,7 @@ const BLOCK_INFO_TXN: Bytes = bytes!(
 
 struct BenchSetup {
     provider: LocalNodeProvider,
-    canonical_block: RecoveredBlock<BaseBlock>,
+    canonical_block: RecoveredBlock<UnstableBlock>,
     flashblocks: Vec<(String, Vec<Flashblock>)>,
     target_block: BlockNumber,
     _harness: Arc<TestHarness>,
@@ -74,7 +74,7 @@ impl BenchSetup {
 
 struct BenchInput {
     provider: LocalNodeProvider,
-    canonical_block: RecoveredBlock<BaseBlock>,
+    canonical_block: RecoveredBlock<UnstableBlock>,
     flashblocks: Vec<Flashblock>,
     target_block: BlockNumber,
     last_index: u64,
@@ -172,8 +172,8 @@ async fn wait_for_pending_state(
 }
 
 fn build_flashblocks(
-    canonical_block: &RecoveredBlock<BaseBlock>,
-    transactions: &[BaseTransactionSigned],
+    canonical_block: &RecoveredBlock<UnstableBlock>,
+    transactions: &[UnstableTransactionSigned],
 ) -> Vec<Flashblock> {
     let mut flashblocks = Vec::new();
     let block_number = canonical_block.number + 1;
@@ -195,13 +195,13 @@ fn build_flashblocks(
 }
 
 fn base_flashblock(
-    canonical_block: &RecoveredBlock<BaseBlock>,
+    canonical_block: &RecoveredBlock<UnstableBlock>,
     block_number: BlockNumber,
 ) -> Flashblock {
     Flashblock {
         payload_id: PayloadId::default(),
         index: 0,
-        base: Some(ExecutionPayloadBaseV1 {
+        base: Some(ExecutionPayloadUnstableV1 {
             parent_beacon_block_root: canonical_block.hash(),
             parent_hash: canonical_block.hash(),
             fee_recipient: Address::ZERO,
@@ -230,7 +230,7 @@ fn base_flashblock(
 fn transaction_flashblock(
     block_number: BlockNumber,
     index: u64,
-    transactions: &[BaseTransactionSigned],
+    transactions: &[UnstableTransactionSigned],
     gas_used: &mut u64,
 ) -> Flashblock {
     let mut tx_bytes = Vec::with_capacity(transactions.len());
@@ -259,7 +259,7 @@ fn transaction_flashblock(
     }
 }
 
-fn sample_transactions(provider: &LocalNodeProvider, count: usize) -> Vec<BaseTransactionSigned> {
+fn sample_transactions(provider: &LocalNodeProvider, count: usize) -> Vec<UnstableTransactionSigned> {
     let signer = B256::from_hex(Account::Alice.private_key()).expect("valid private key hex");
     let chain_id = provider.chain_spec().chain_id();
 
@@ -279,7 +279,7 @@ fn sample_transactions(provider: &LocalNodeProvider, count: usize) -> Vec<BaseTr
                 .expect("should convert to eip1559")
                 .clone();
 
-            BaseTransactionSigned::Eip1559(txn)
+            UnstableTransactionSigned::Eip1559(txn)
         })
         .collect()
 }

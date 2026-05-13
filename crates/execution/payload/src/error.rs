@@ -1,8 +1,8 @@
 //! Error type
 
-/// Base-specific payload building errors.
+/// Unstable-specific payload building errors.
 #[derive(Debug, thiserror::Error)]
-pub enum BasePayloadBuilderError {
+pub enum UnstablePayloadBuilderError {
     /// Thrown when a transaction fails to convert to a
     /// [`alloy_consensus::transaction::Recovered`].
     #[error("failed to convert deposit transaction to RecoveredTx")]

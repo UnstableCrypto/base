@@ -16,7 +16,7 @@ use alloy_rpc_types::{BlockNumberOrTag, TransactionRequest};
 use alloy_signer_local::PrivateKeySigner;
 use base_cli_utils::RuntimeManager;
 use base_load_tests::{
-    AccountPool, BaselineError, FundedAccount, LoadRunner, LoadTestDisplay, MetricsSummary,
+    AccountPool, UnstablelineError, FundedAccount, LoadRunner, LoadTestDisplay, MetricsSummary,
     QueryProvider, Result as LoadResult, RpcProviders, RpcResultExt, TestConfig,
     create_wallet_provider,
 };
@@ -39,12 +39,12 @@ const DEFAULT_RESCUE_SCAN_COUNT: usize = 1000;
 /// Default maximum gas price (1000 gwei).
 const DEFAULT_MAX_GAS_PRICE: u128 = 1_000_000_000_000;
 
-/// The Base load tester CLI.
+/// The Unstable load tester CLI.
 #[derive(Parser, Clone, Debug)]
 #[command(
     author,
     version = env!("CARGO_PKG_VERSION"),
-    about = "Base load tester",
+    about = "Unstable load tester",
     long_about = None,
     args_conflicts_with_subcommands = true
 )]
@@ -136,7 +136,7 @@ async fn run_load_test(args: LoadArgs) -> Result<()> {
         return Ok(());
     }
 
-    println!("=== Base Load Test Runner ===");
+    println!("=== Unstable Load Test Runner ===");
 
     println!("Set RPCs to internal endpoints to avoid rate limiting");
     println!(
@@ -465,7 +465,7 @@ async fn rescue_batch(
                     .block_id(BlockNumberOrTag::Pending.into())
                     .await
                     .rpc("get pending balance")?;
-                Ok::<_, BaselineError>((address, balance))
+                Ok::<_, UnstablelineError>((address, balance))
             }
         })
         .collect();

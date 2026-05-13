@@ -7,7 +7,7 @@
 [EIP-7825](https://eips.ethereum.org/EIPS/eip-7825) introduces a protocol-level maximum gas limit
 of 16,777,216 (2^24) per transaction. Transactions exceeding this cap are rejected during validation.
 
-Base adopts the same cap as L1 to maximize Ethereum equivalence.
+Unstable adopts the same cap as L1 to maximize Ethereum equivalence.
 
 :::note
 Deposit transactions will be exempt from the transaction gas limit cap. They are already limited to [20,000,000 gas][gas-market] as that is the most
@@ -37,7 +37,7 @@ of leading zero bits in a 256-bit word, returning 256 if the input is zero.
 [EIP-7951](https://eips.ethereum.org/EIPS/eip-7951) specifies the secp256r1 precompile at address `0x100`
 with a gas cost of 3,450.
 
-Base already has the `p256Verify` precompile at the same address (added in Fjord via
+Unstable already has the `p256Verify` precompile at the same address (added in Fjord via
 [RIP-7212](https://github.com/ethereum/RIPs/blob/master/RIPS/rip-7212.md)) with a gas cost of 3,450.
 From Azul, the gas cost increases to 6,900 to match the L1 gas cost specified in EIP-7951, maintaining
 strict equivalence with L1 precompile pricing.
@@ -96,7 +96,7 @@ At and after Azul activation, block production and import use the following Engi
 
 `engine_getPayloadV5` returns a V5 envelope, but the contained execution payload is still V4-shaped.
 As a result, payload insertion continues through `engine_newPayloadV4` (there is no `engine_newPayloadV5`
-path used by Base Azul clients).
+path used by Unstable Azul clients).
 
 Azul constraints for this flow:
 
@@ -110,22 +110,22 @@ Azul constraints for this flow:
 [EIP-7910](https://eips.ethereum.org/EIPS/eip-7910) introduces the `eth_config` JSON-RPC method,
 which returns chain configuration parameters such as fork activation timestamps.
 
-Base Azul exposes `eth_config` using the standard EIP-7910 response schema.
+Unstable Azul exposes `eth_config` using the standard EIP-7910 response schema.
 
-The Base-specific behavior is:
+The Unstable-specific behavior is:
 
 - `blobSchedule` is always returned as zeroed values for `current`, `next`, and `last`.
-  Base does not support native blob transactions, so it must not advertise synthetic Ethereum blob
+  Unstable does not support native blob transactions, so it must not advertise synthetic Ethereum blob
   schedule defaults.
 - `precompiles` reflects the active EVM precompile set for that fork. This includes the standard
-  Ethereum precompiles plus any Base-active additions documented in the
+  Ethereum precompiles plus any Unstable-active additions documented in the
   [precompiles specification](../../protocol/execution/evm/precompiles.md).
-- `systemContracts` is limited to the contracts representable by EIP-7910. On Base this means:
+- `systemContracts` is limited to the contracts representable by EIP-7910. On Unstable this means:
   - `BEACON_ROOTS_ADDRESS` is included once Ecotone is active.
   - `HISTORY_STORAGE_ADDRESS` is included once Isthmus is active.
   - `DEPOSIT_CONTRACT_ADDRESS`, `CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS`, and
     `WITHDRAWAL_REQUEST_PREDEPLOY_ADDRESS` are omitted.
 
-Base-specific predeploys and other rollup system contracts documented in the
+Unstable-specific predeploys and other rollup system contracts documented in the
 [predeploys specification](../../protocol/execution/evm/predeploys.md) are not serialized into
 `eth_config` unless they are part of the EIP-7910 schema.

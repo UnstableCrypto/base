@@ -9,7 +9,7 @@ use alloy_rpc_types_engine::{
 };
 use base_common_genesis::{HardForkConfig, HardforkConfig, RollupConfig};
 use base_common_rpc_types_engine::{
-    BaseExecutionPayload, BaseExecutionPayloadEnvelopeV5, BaseExecutionPayloadV4,
+    UnstableExecutionPayload, UnstableExecutionPayloadEnvelopeV5, UnstableExecutionPayloadV4,
 };
 use rstest::rstest;
 use tokio::sync::mpsc;
@@ -42,10 +42,10 @@ fn v2_envelope() -> ExecutionPayloadEnvelopeV2 {
     }
 }
 
-/// A non-zero [`BaseExecutionPayloadEnvelopeV5`] for Osaka / Base Azul testing.
-fn v5_envelope() -> BaseExecutionPayloadEnvelopeV5 {
-    BaseExecutionPayloadEnvelopeV5 {
-        execution_payload: BaseExecutionPayloadV4 {
+/// A non-zero [`UnstableExecutionPayloadEnvelopeV5`] for Osaka / Unstable Azul testing.
+fn v5_envelope() -> UnstableExecutionPayloadEnvelopeV5 {
+    UnstableExecutionPayloadEnvelopeV5 {
+        execution_payload: UnstableExecutionPayloadV4 {
             payload_inner: ExecutionPayloadV3 {
                 payload_inner: ExecutionPayloadV2 {
                     payload_inner: ExecutionPayloadV1 {
@@ -141,8 +141,8 @@ async fn test_get_payload_v2_success(#[values(true, false)] with_channel: bool) 
 }
 
 /// When the unsafe head matches the attributes parent and the engine returns a valid V5 payload
-/// (Osaka / Base Azul), `GetPayloadTask` must call `get_payload_v5`, wrap the inner
-/// [`BaseExecutionPayloadV4`] as an [`BaseExecutionPayload::V4`] variant, and source
+/// (Osaka / Unstable Azul), `GetPayloadTask` must call `get_payload_v5`, wrap the inner
+/// [`UnstableExecutionPayloadV4`] as an [`UnstableExecutionPayload::V4`] variant, and source
 /// `parent_beacon_block_root` from the attributes rather than the payload envelope.
 #[rstest]
 #[tokio::test]
@@ -150,7 +150,7 @@ async fn test_get_payload_v5_success(#[values(true, false)] with_channel: bool) 
     let attributes = TestAttributesBuilder::new().build();
     let parent = attributes.parent;
 
-    // Activate Base Azul (Osaka) at the default attributes timestamp (2000) so that
+    // Activate Unstable Azul (Osaka) at the default attributes timestamp (2000) so that
     // `EngineGetPayloadVersion::V5` is selected.
     let cfg = Arc::new(RollupConfig {
         hardforks: HardForkConfig {
@@ -179,9 +179,9 @@ async fn test_get_payload_v5_success(#[values(true, false)] with_channel: bool) 
         let channel_result = rx.recv().await.expect("channel should have a result");
         assert!(channel_result.is_ok(), "channel result should be Ok, got {channel_result:?}");
         let envelope = channel_result.unwrap();
-        // V5 wraps the execution payload as the V4 variant inside BaseExecutionPayload.
+        // V5 wraps the execution payload as the V4 variant inside UnstableExecutionPayload.
         assert!(
-            matches!(envelope.execution_payload, BaseExecutionPayload::V4(_)),
+            matches!(envelope.execution_payload, UnstableExecutionPayload::V4(_)),
             "V5 get_payload should produce a V4 execution payload variant, got {:?}",
             envelope.execution_payload
         );

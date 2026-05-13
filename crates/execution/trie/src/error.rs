@@ -1,4 +1,4 @@
-//! Errors interfacing with [`BaseProofsStore`](crate::BaseProofsStore) type.
+//! Errors interfacing with [`UnstableProofsStore`](crate::UnstableProofsStore) type.
 
 use std::sync::Arc;
 
@@ -11,7 +11,7 @@ use thiserror::Error;
 
 /// Error type for storage operations
 #[derive(Debug, Clone, Error)]
-pub enum BaseProofsStorageError {
+pub enum UnstableProofsStorageError {
     /// No blocks found
     #[error("No blocks found")]
     NoBlocksFound,
@@ -108,28 +108,28 @@ pub enum BaseProofsStorageError {
     InitializeStorageInconsistentState,
 }
 
-impl From<BlockExecutionError> for BaseProofsStorageError {
+impl From<BlockExecutionError> for UnstableProofsStorageError {
     fn from(error: BlockExecutionError) -> Self {
         Self::ExecutionError(Arc::new(error))
     }
 }
 
-impl From<ProviderError> for BaseProofsStorageError {
+impl From<ProviderError> for UnstableProofsStorageError {
     fn from(error: ProviderError) -> Self {
         Self::ProviderError(Arc::new(error))
     }
 }
 
-impl From<BaseProofsStorageError> for DatabaseError {
-    fn from(error: BaseProofsStorageError) -> Self {
+impl From<UnstableProofsStorageError> for DatabaseError {
+    fn from(error: UnstableProofsStorageError) -> Self {
         match error {
-            BaseProofsStorageError::DatabaseError(err) => err,
+            UnstableProofsStorageError::DatabaseError(err) => err,
             _ => Self::Custom(Arc::new(error)),
         }
     }
 }
 
-impl From<DatabaseError> for BaseProofsStorageError {
+impl From<DatabaseError> for UnstableProofsStorageError {
     fn from(error: DatabaseError) -> Self {
         if let DatabaseError::Custom(ref err) = error
             && let Some(err) = err.downcast_ref::<Self>()
@@ -141,7 +141,7 @@ impl From<DatabaseError> for BaseProofsStorageError {
 }
 
 /// Result type for storage operations
-pub type BaseProofsStorageResult<T> = Result<T, BaseProofsStorageError>;
+pub type UnstableProofsStorageResult<T> = Result<T, UnstableProofsStorageError>;
 
 #[cfg(test)]
 mod tests {
@@ -151,23 +151,23 @@ mod tests {
 
     #[test]
     fn test_base_proofs_store_error_to_db_error() {
-        let original_error = BaseProofsStorageError::NoBlocksFound;
+        let original_error = UnstableProofsStorageError::NoBlocksFound;
 
         let db_error = DatabaseError::from(original_error);
         assert!(matches!(db_error, DatabaseError::Custom(_)));
 
-        let converted_error = BaseProofsStorageError::from(db_error);
-        assert!(matches!(converted_error, BaseProofsStorageError::NoBlocksFound))
+        let converted_error = UnstableProofsStorageError::from(db_error);
+        assert!(matches!(converted_error, UnstableProofsStorageError::NoBlocksFound))
     }
 
     #[test]
     fn test_db_error_to_base_proofs_store_error() {
         let original_error = DatabaseError::Decode;
 
-        let base_proofs_store_error = BaseProofsStorageError::from(original_error);
+        let base_proofs_store_error = UnstableProofsStorageError::from(original_error);
         assert!(matches!(
             base_proofs_store_error,
-            BaseProofsStorageError::DatabaseError(DatabaseError::Decode)
+            UnstableProofsStorageError::DatabaseError(DatabaseError::Decode)
         ));
 
         let converted_error = DatabaseError::from(base_proofs_store_error);
@@ -179,18 +179,18 @@ mod tests {
         let block_execution_error =
             BlockExecutionError::Validation(BlockValidationError::IncrementBalanceFailed);
 
-        let base_proofs_store_error = BaseProofsStorageError::from(block_execution_error);
+        let base_proofs_store_error = UnstableProofsStorageError::from(block_execution_error);
         assert!(
-            matches!(base_proofs_store_error, BaseProofsStorageError::ExecutionError(err) if matches!(*err, BlockExecutionError::Validation(BlockValidationError::IncrementBalanceFailed)))
+            matches!(base_proofs_store_error, UnstableProofsStorageError::ExecutionError(err) if matches!(*err, BlockExecutionError::Validation(BlockValidationError::IncrementBalanceFailed)))
         )
     }
 
     #[test]
     fn test_conversion_from_provider_error() {
         let provider_error = ProviderError::SenderRecoveryError;
-        let base_proofs_store_error = BaseProofsStorageError::from(provider_error);
+        let base_proofs_store_error = UnstableProofsStorageError::from(provider_error);
         assert!(
-            matches!(base_proofs_store_error, BaseProofsStorageError::ProviderError(err) if matches!(*err, ProviderError::SenderRecoveryError))
+            matches!(base_proofs_store_error, UnstableProofsStorageError::ProviderError(err) if matches!(*err, ProviderError::SenderRecoveryError))
         )
     }
 }

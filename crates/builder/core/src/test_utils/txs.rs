@@ -5,9 +5,9 @@ use alloy_consensus::TxEip1559;
 use alloy_eips::{BlockNumberOrTag, eip1559::MIN_PROTOCOL_BASE_FEE, eip2718::Encodable2718};
 use alloy_primitives::{Address, Bytes, TxHash, TxKind, U256, hex};
 use alloy_provider::{PendingTransactionBuilder, Provider, RootProvider};
-use base_common_consensus::{BaseTxEnvelope, BaseTypedTransaction};
-use base_common_network::Base;
-use base_execution_txpool::BasePooledTransaction;
+use base_common_consensus::{UnstableTxEnvelope, UnstableTypedTransaction};
+use base_common_network::Unstable;
+use base_execution_txpool::UnstablePooledTransaction;
 use dashmap::DashMap;
 use futures::StreamExt;
 use reth_primitives::Recovered;
@@ -20,7 +20,7 @@ use super::{PrivateKeySigner, funded_signer, sign_base_tx};
 /// Builder for constructing and sending EIP-1559 transactions in tests.
 #[derive(Clone, Debug)]
 pub struct TransactionBuilder {
-    provider: RootProvider<Base>,
+    provider: RootProvider<Unstable>,
     signer: Option<PrivateKeySigner>,
     nonce: Option<u64>,
     base_fee: Option<u128>,
@@ -29,7 +29,7 @@ pub struct TransactionBuilder {
 
 impl TransactionBuilder {
     /// Creates a new builder with default EIP-1559 parameters for the test chain (chain ID 901).
-    pub fn new(provider: RootProvider<Base>) -> Self {
+    pub fn new(provider: RootProvider<Unstable>) -> Self {
         Self {
             provider,
             signer: None,
@@ -107,7 +107,7 @@ impl TransactionBuilder {
 
     /// Signs the transaction and returns it as a recovered envelope. Auto-fetches nonce and base
     /// fee from the provider when not explicitly set.
-    pub async fn build(mut self) -> Recovered<BaseTxEnvelope> {
+    pub async fn build(mut self) -> Recovered<UnstableTxEnvelope> {
         let signer = self.signer.unwrap_or_else(funded_signer);
 
         let nonce = match self.nonce {
@@ -143,12 +143,12 @@ impl TransactionBuilder {
             self.tx.max_fee_per_gas = base_fee + self.tx.max_priority_fee_per_gas;
         }
 
-        sign_base_tx(&signer, BaseTypedTransaction::Eip1559(self.tx))
+        sign_base_tx(&signer, UnstableTypedTransaction::Eip1559(self.tx))
             .expect("Failed to sign transaction")
     }
 
     /// Builds, signs, and broadcasts the transaction, returning a pending transaction handle.
-    pub async fn send(self) -> eyre::Result<PendingTransactionBuilder<Base>> {
+    pub async fn send(self) -> eyre::Result<PendingTransactionBuilder<Unstable>> {
         let provider = self.provider.clone();
         let transaction = self.build().await;
         let transaction_encoded = transaction.encoded_2718();
@@ -182,7 +182,7 @@ impl Drop for TransactionPoolObserver {
 
 impl TransactionPoolObserver {
     /// Spawns a background listener that records all pool events from the given stream.
-    pub fn new(stream: AllTransactionsEvents<BasePooledTransaction>) -> Self {
+    pub fn new(stream: AllTransactionsEvents<UnstablePooledTransaction>) -> Self {
         let mut stream = stream;
         let observations = Arc::new(ObservationsMap::new());
         let observations_clone = Arc::clone(&observations);

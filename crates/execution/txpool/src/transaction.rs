@@ -12,7 +12,7 @@ use alloy_eips::{
     eip7702::SignedAuthorization,
 };
 use alloy_primitives::{Address, B256, Bytes, TxHash, TxKind, U256};
-use base_common_consensus::BaseTransactionSigned;
+use base_common_consensus::UnstableTransactionSigned;
 use c_kzg::KzgSettings;
 use reth_primitives_traits::{InMemorySize, SignedTransaction};
 use reth_transaction_pool::{
@@ -45,15 +45,15 @@ pub fn unix_time_millis() -> u128 {
     }
 }
 
-/// Pool transaction for Base.
+/// Pool transaction for Unstable.
 ///
 /// This type wraps the actual transaction and caches values that are frequently used by the pool.
 /// For payload building this lazily tracks values that are required during payload building:
 ///  - Estimated compressed size of this transaction
 #[derive(Debug, Clone, derive_more::Deref)]
-pub struct BasePooledTransaction<
-    Cons = BaseTransactionSigned,
-    Pooled = base_common_consensus::BasePooledTransaction,
+pub struct UnstablePooledTransaction<
+    Cons = UnstableTransactionSigned,
+    Pooled = base_common_consensus::UnstablePooledTransaction,
 > {
     #[deref]
     inner: EthPooledTransaction<Cons>,
@@ -75,7 +75,7 @@ pub struct BasePooledTransaction<
     max_timestamp: Option<u64>,
 }
 
-impl<Cons: SignedTransaction, Pooled> BasePooledTransaction<Cons, Pooled> {
+impl<Cons: SignedTransaction, Pooled> UnstablePooledTransaction<Cons, Pooled> {
     /// Create new instance of [Self].
     pub fn new(transaction: Recovered<Cons>, encoded_length: usize) -> Self {
         Self {
@@ -145,14 +145,14 @@ impl<Cons: SignedTransaction, Pooled> BasePooledTransaction<Cons, Pooled> {
 }
 
 impl<Cons: SignedTransaction, Pooled> DataAvailabilitySized
-    for BasePooledTransaction<Cons, Pooled>
+    for UnstablePooledTransaction<Cons, Pooled>
 {
     fn estimated_da_size(&self) -> u64 {
         self.estimated_compressed_size()
     }
 }
 
-impl<Cons, Pooled> PoolTransaction for BasePooledTransaction<Cons, Pooled>
+impl<Cons, Pooled> PoolTransaction for UnstablePooledTransaction<Cons, Pooled>
 where
     Cons: SignedTransaction + From<Pooled>,
     Pooled: SignedTransaction + TryFrom<Cons, Error: core::error::Error>,
@@ -200,19 +200,19 @@ where
     }
 }
 
-impl<Cons: Typed2718, Pooled> Typed2718 for BasePooledTransaction<Cons, Pooled> {
+impl<Cons: Typed2718, Pooled> Typed2718 for UnstablePooledTransaction<Cons, Pooled> {
     fn ty(&self) -> u8 {
         self.inner.ty()
     }
 }
 
-impl<Cons: InMemorySize, Pooled> InMemorySize for BasePooledTransaction<Cons, Pooled> {
+impl<Cons: InMemorySize, Pooled> InMemorySize for UnstablePooledTransaction<Cons, Pooled> {
     fn size(&self) -> usize {
         self.inner.size() + core::mem::size_of::<u128>() + core::mem::size_of::<Option<u64>>() * 3
     }
 }
 
-impl<Cons, Pooled> alloy_consensus::Transaction for BasePooledTransaction<Cons, Pooled>
+impl<Cons, Pooled> alloy_consensus::Transaction for UnstablePooledTransaction<Cons, Pooled>
 where
     Cons: alloy_consensus::Transaction,
     Pooled: Debug + Send + Sync + 'static,
@@ -286,7 +286,7 @@ where
     }
 }
 
-impl<Cons, Pooled> EthPoolTransaction for BasePooledTransaction<Cons, Pooled>
+impl<Cons, Pooled> EthPoolTransaction for UnstablePooledTransaction<Cons, Pooled>
 where
     Cons: SignedTransaction + From<Pooled>,
     Pooled: SignedTransaction + TryFrom<Cons>,
@@ -321,12 +321,12 @@ where
 
 /// Helper trait to provide payload builder with access to encoded bytes of
 /// transaction.
-pub trait BasePooledTx: PoolTransaction + DataAvailabilitySized {
+pub trait UnstablePooledTx: PoolTransaction + DataAvailabilitySized {
     /// Returns the EIP-2718 encoded bytes of the transaction.
     fn encoded_2718(&self) -> Cow<'_, Bytes>;
 }
 
-impl<Cons, Pooled> BasePooledTx for BasePooledTransaction<Cons, Pooled>
+impl<Cons, Pooled> UnstablePooledTx for UnstablePooledTransaction<Cons, Pooled>
 where
     Cons: SignedTransaction + From<Pooled>,
     Pooled: SignedTransaction + TryFrom<Cons>,
@@ -343,7 +343,7 @@ pub trait TimestampedTransaction {
     fn received_at(&self) -> u128;
 }
 
-impl<Cons, Pooled> TimestampedTransaction for BasePooledTransaction<Cons, Pooled>
+impl<Cons, Pooled> TimestampedTransaction for UnstablePooledTransaction<Cons, Pooled>
 where
     Cons: SignedTransaction,
     Pooled: Send + Sync + 'static,
@@ -402,7 +402,7 @@ pub trait BundleTransaction {
     }
 }
 
-impl<Cons, Pooled> BundleTransaction for BasePooledTransaction<Cons, Pooled>
+impl<Cons, Pooled> BundleTransaction for UnstablePooledTransaction<Cons, Pooled>
 where
     Cons: Send + Sync,
     Pooled: Send + Sync + 'static,
@@ -427,28 +427,28 @@ mod tests {
     use alloy_consensus::transaction::Recovered;
     use alloy_eips::eip2718::Encodable2718;
     use alloy_primitives::{TxKind, U256};
-    use base_common_consensus::{BasePrimitives, BaseTransactionSigned, TxDeposit};
-    use base_execution_chainspec::BaseChainSpec;
-    use base_execution_evm::BaseEvmConfig;
+    use base_common_consensus::{UnstablePrimitives, UnstableTransactionSigned, TxDeposit};
+    use base_execution_chainspec::UnstableChainSpec;
+    use base_execution_evm::UnstableEvmConfig;
     use reth_provider::test_utils::MockEthProvider;
     use reth_transaction_pool::{
         TransactionOrigin, TransactionValidationOutcome, blobstore::InMemoryBlobStore,
         validate::EthTransactionValidatorBuilder,
     };
 
-    use crate::{BasePooledTransaction, BaseTransactionValidator};
+    use crate::{UnstablePooledTransaction, UnstableTransactionValidator};
     #[tokio::test]
     async fn validate_base_transaction() {
-        let chain_spec = Arc::new(BaseChainSpec::mainnet());
-        let client = MockEthProvider::<BasePrimitives>::new()
+        let chain_spec = Arc::new(UnstableChainSpec::mainnet());
+        let client = MockEthProvider::<UnstablePrimitives>::new()
             .with_chain_spec(Arc::clone(&chain_spec))
             .with_genesis_block();
-        let evm_config = BaseEvmConfig::base(chain_spec);
+        let evm_config = UnstableEvmConfig::base(chain_spec);
         let validator = EthTransactionValidatorBuilder::new(client, evm_config)
             .no_shanghai()
             .no_cancun()
             .build(InMemoryBlobStore::default());
-        let validator = BaseTransactionValidator::new(validator);
+        let validator = UnstableTransactionValidator::new(validator);
 
         let origin = TransactionOrigin::External;
         let signer = Default::default();
@@ -462,10 +462,10 @@ mod tests {
             is_system_transaction: false,
             input: Default::default(),
         };
-        let signed_tx: BaseTransactionSigned = deposit_tx.into();
+        let signed_tx: UnstableTransactionSigned = deposit_tx.into();
         let signed_recovered = Recovered::new_unchecked(signed_tx, signer);
         let len = signed_recovered.encode_2718_len();
-        let pooled_tx: BasePooledTransaction = BasePooledTransaction::new(signed_recovered, len);
+        let pooled_tx: UnstablePooledTransaction = UnstablePooledTransaction::new(signed_recovered, len);
         let outcome = validator.validate_one(origin, pooled_tx).await;
 
         let err = match outcome {

@@ -3,9 +3,9 @@ use core::{future::Future, marker::PhantomData};
 use alloy_eips::{BlockNumberOrTag, eip7685::Requests};
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::{ForkchoiceState, ForkchoiceUpdated, PayloadStatus};
-use base_common_rpc_types_engine::BaseExecutionPayloadV4;
-use base_execution_rpc::BaseEngineApiClient;
-use base_node_core::BaseEngineTypes;
+use base_common_rpc_types_engine::UnstableExecutionPayloadV4;
+use base_execution_rpc::UnstableEngineApiClient;
+use base_node_core::UnstableEngineTypes;
 use jsonrpsee::{
     core::{RpcResult, client::SubscriptionClientT},
     proc_macros::rpc,
@@ -161,22 +161,22 @@ impl<P: Protocol> EngineApi<P> {
     pub async fn get_payload(
         &self,
         payload_id: PayloadId,
-    ) -> eyre::Result<<BaseEngineTypes as EngineTypes>::ExecutionPayloadEnvelopeV4> {
+    ) -> eyre::Result<<UnstableEngineTypes as EngineTypes>::ExecutionPayloadEnvelopeV4> {
         debug!(payload_id = %payload_id, timestamp = %chrono::Utc::now(), "Fetching payload");
-        Ok(BaseEngineApiClient::<BaseEngineTypes>::get_payload_v4(&self.client().await, payload_id)
+        Ok(UnstableEngineApiClient::<UnstableEngineTypes>::get_payload_v4(&self.client().await, payload_id)
             .await?)
     }
 
     /// Submits a new execution payload for validation.
     pub async fn new_payload(
         &self,
-        payload: BaseExecutionPayloadV4,
+        payload: UnstableExecutionPayloadV4,
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
         execution_requests: Requests,
     ) -> eyre::Result<PayloadStatus> {
         debug!(timestamp = %chrono::Utc::now(), "Submitting new payload");
-        Ok(BaseEngineApiClient::<BaseEngineTypes>::new_payload_v4(
+        Ok(UnstableEngineApiClient::<UnstableEngineTypes>::new_payload_v4(
             &self.client().await,
             payload,
             versioned_hashes,
@@ -191,10 +191,10 @@ impl<P: Protocol> EngineApi<P> {
         &self,
         current_head: B256,
         new_head: B256,
-        payload_attributes: Option<<BaseEngineTypes as PayloadTypes>::PayloadAttributes>,
+        payload_attributes: Option<<UnstableEngineTypes as PayloadTypes>::PayloadAttributes>,
     ) -> eyre::Result<ForkchoiceUpdated> {
         debug!(timestamp = %chrono::Utc::now(), "Updating forkchoice");
-        Ok(BaseEngineApiClient::<BaseEngineTypes>::fork_choice_updated_v3(
+        Ok(UnstableEngineApiClient::<UnstableEngineTypes>::fork_choice_updated_v3(
             &self.client().await,
             ForkchoiceState {
                 head_block_hash: new_head,

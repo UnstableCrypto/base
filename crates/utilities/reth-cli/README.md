@@ -1,6 +1,6 @@
 # `base-reth-cli`
 
-Reth-specific CLI utilities for Base execution layer binaries.
+Reth-specific CLI utilities for Unstable execution layer binaries.
 
 ## Overview
 

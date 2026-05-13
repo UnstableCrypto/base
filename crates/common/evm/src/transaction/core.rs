@@ -1,10 +1,10 @@
-//! Base transaction abstraction containing the `[BaseTxTr]` trait and corresponding `[BaseTransaction]` type.
+//! Unstable transaction abstraction containing the `[UnstableTxTr]` trait and corresponding `[UnstableTransaction]` type.
 
 use alloc::vec;
 
 use alloy_eips::Encodable2718;
 use alloy_evm::{FromRecoveredTx, FromTxWithEncoded, tx::IntoTxEnv};
-use base_common_consensus::{BaseTxEnvelope, TxDeposit};
+use base_common_consensus::{UnstableTxEnvelope, TxDeposit};
 use revm::{
     context::TxEnv,
     context_interface::transaction::Transaction,
@@ -12,13 +12,13 @@ use revm::{
     primitives::{Address, B256, Bytes, TxKind, U256},
 };
 
-use crate::{BaseTransactionBuilder, BaseTxTr, DEPOSIT_TRANSACTION_TYPE, DepositTransactionParts};
+use crate::{UnstableTransactionBuilder, UnstableTxTr, DEPOSIT_TRANSACTION_TYPE, DepositTransactionParts};
 
-/// Base transaction.
+/// Unstable transaction.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct BaseTransaction<T: Transaction> {
-    /// Base transaction fields.
+pub struct UnstableTransaction<T: Transaction> {
+    /// Unstable transaction fields.
     pub base: T,
     /// An enveloped EIP-2718 typed transaction
     ///
@@ -30,27 +30,27 @@ pub struct BaseTransaction<T: Transaction> {
     pub deposit: DepositTransactionParts,
 }
 
-impl<T: Transaction> AsRef<T> for BaseTransaction<T> {
+impl<T: Transaction> AsRef<T> for UnstableTransaction<T> {
     fn as_ref(&self) -> &T {
         &self.base
     }
 }
 
-impl<T: Transaction> BaseTransaction<T> {
-    /// Create a new Base transaction.
+impl<T: Transaction> UnstableTransaction<T> {
+    /// Create a new Unstable transaction.
     pub fn new(base: T) -> Self {
         Self { base, enveloped_tx: None, deposit: DepositTransactionParts::default() }
     }
 }
 
-impl BaseTransaction<TxEnv> {
-    /// Create a new Base transaction.
-    pub fn builder() -> BaseTransactionBuilder {
-        BaseTransactionBuilder::new()
+impl UnstableTransaction<TxEnv> {
+    /// Create a new Unstable transaction.
+    pub fn builder() -> UnstableTransactionBuilder {
+        UnstableTransactionBuilder::new()
     }
 }
 
-impl Default for BaseTransaction<TxEnv> {
+impl Default for UnstableTransaction<TxEnv> {
     fn default() -> Self {
         Self {
             base: TxEnv::default(),
@@ -60,7 +60,7 @@ impl Default for BaseTransaction<TxEnv> {
     }
 }
 
-impl<TX: Transaction + SystemCallTx> SystemCallTx for BaseTransaction<TX> {
+impl<TX: Transaction + SystemCallTx> SystemCallTx for UnstableTransaction<TX> {
     fn new_system_tx_with_caller(
         caller: Address,
         system_contract_address: Address,
@@ -75,7 +75,7 @@ impl<TX: Transaction + SystemCallTx> SystemCallTx for BaseTransaction<TX> {
     }
 }
 
-impl<T: Transaction> Transaction for BaseTransaction<T> {
+impl<T: Transaction> Transaction for UnstableTransaction<T> {
     type AccessListItem<'a>
         = T::AccessListItem<'a>
     where
@@ -163,7 +163,7 @@ impl<T: Transaction> Transaction for BaseTransaction<T> {
     }
 }
 
-impl<T: Transaction> BaseTxTr for BaseTransaction<T> {
+impl<T: Transaction> UnstableTxTr for UnstableTransaction<T> {
     fn enveloped_tx(&self) -> Option<&Bytes> {
         self.enveloped_tx.as_ref()
     }
@@ -184,7 +184,7 @@ impl<T: Transaction> BaseTxTr for BaseTransaction<T> {
     }
 }
 
-impl<T> IntoTxEnv<Self> for BaseTransaction<T>
+impl<T> IntoTxEnv<Self> for UnstableTransaction<T>
 where
     T: Transaction,
 {
@@ -194,7 +194,7 @@ where
 }
 
 #[cfg(feature = "reth")]
-impl<T: reth_evm::TransactionEnv> reth_evm::TransactionEnv for BaseTransaction<T> {
+impl<T: reth_evm::TransactionEnv> reth_evm::TransactionEnv for UnstableTransaction<T> {
     fn set_gas_limit(&mut self, gas_limit: u64) {
         self.base.set_gas_limit(gas_limit);
     }
@@ -212,49 +212,49 @@ impl<T: reth_evm::TransactionEnv> reth_evm::TransactionEnv for BaseTransaction<T
     }
 }
 
-impl FromRecoveredTx<BaseTxEnvelope> for BaseTransaction<TxEnv> {
-    fn from_recovered_tx(tx: &BaseTxEnvelope, sender: Address) -> Self {
+impl FromRecoveredTx<UnstableTxEnvelope> for UnstableTransaction<TxEnv> {
+    fn from_recovered_tx(tx: &UnstableTxEnvelope, sender: Address) -> Self {
         let encoded = tx.encoded_2718();
         Self::from_encoded_tx(tx, sender, encoded.into())
     }
 }
 
-impl FromTxWithEncoded<BaseTxEnvelope> for BaseTransaction<TxEnv> {
-    fn from_encoded_tx(tx: &BaseTxEnvelope, caller: Address, encoded: Bytes) -> Self {
+impl FromTxWithEncoded<UnstableTxEnvelope> for UnstableTransaction<TxEnv> {
+    fn from_encoded_tx(tx: &UnstableTxEnvelope, caller: Address, encoded: Bytes) -> Self {
         match tx {
-            BaseTxEnvelope::Legacy(tx) => Self {
+            UnstableTxEnvelope::Legacy(tx) => Self {
                 base: TxEnv::from_recovered_tx(tx.tx(), caller),
                 enveloped_tx: Some(encoded),
                 deposit: Default::default(),
             },
-            BaseTxEnvelope::Eip1559(tx) => Self {
+            UnstableTxEnvelope::Eip1559(tx) => Self {
                 base: TxEnv::from_recovered_tx(tx.tx(), caller),
                 enveloped_tx: Some(encoded),
                 deposit: Default::default(),
             },
-            BaseTxEnvelope::Eip2930(tx) => Self {
+            UnstableTxEnvelope::Eip2930(tx) => Self {
                 base: TxEnv::from_recovered_tx(tx.tx(), caller),
                 enveloped_tx: Some(encoded),
                 deposit: Default::default(),
             },
-            BaseTxEnvelope::Eip7702(tx) => Self {
+            UnstableTxEnvelope::Eip7702(tx) => Self {
                 base: TxEnv::from_recovered_tx(tx.tx(), caller),
                 enveloped_tx: Some(encoded),
                 deposit: Default::default(),
             },
-            BaseTxEnvelope::Deposit(tx) => Self::from_encoded_tx(tx.inner(), caller, encoded),
+            UnstableTxEnvelope::Deposit(tx) => Self::from_encoded_tx(tx.inner(), caller, encoded),
         }
     }
 }
 
-impl FromRecoveredTx<TxDeposit> for BaseTransaction<TxEnv> {
+impl FromRecoveredTx<TxDeposit> for UnstableTransaction<TxEnv> {
     fn from_recovered_tx(tx: &TxDeposit, sender: Address) -> Self {
         let encoded = tx.encoded_2718();
         Self::from_encoded_tx(tx, sender, encoded.into())
     }
 }
 
-impl FromTxWithEncoded<TxDeposit> for BaseTransaction<TxEnv> {
+impl FromTxWithEncoded<TxDeposit> for UnstableTransaction<TxEnv> {
     fn from_encoded_tx(tx: &TxDeposit, caller: Address, encoded: Bytes) -> Self {
         let base = TxEnv::from_recovered_tx(tx, caller);
         let deposit = DepositTransactionParts {
@@ -279,7 +279,7 @@ mod tests {
     fn test_deposit_transaction_fields() {
         let base_tx = TxEnv::builder().gas_limit(10).gas_price(100).gas_priority_fee(Some(5));
 
-        let base_tx = BaseTransaction::builder()
+        let base_tx = UnstableTransaction::builder()
             .base(base_tx)
             .enveloped_tx(None)
             .not_system_transaction()
@@ -287,7 +287,7 @@ mod tests {
             .source_hash(B256::from([1u8; 32]))
             .build()
             .unwrap();
-        // Verify transaction type (deposit transactions should have tx_type based on BaseSpecId)
+        // Verify transaction type (deposit transactions should have tx_type based on UnstableSpecId)
         // The tx_type is derived from the transaction structure, not set manually
         // Verify common fields access
         assert_eq!(base_tx.gas_limit(), 10);

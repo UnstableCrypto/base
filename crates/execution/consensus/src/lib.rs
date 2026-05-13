@@ -19,7 +19,7 @@ use alloy_eips::eip7685::EMPTY_REQUESTS_HASH;
 use alloy_primitives::B64;
 use base_common_chains::Upgrades;
 use base_common_consensus::DepositReceiptExt;
-use base_execution_chainspec::BaseChainSpec;
+use base_execution_chainspec::UnstableChainSpec;
 use reth_consensus::{Consensus, ConsensusError, FullConsensus, HeaderValidator, ReceiptRootBloom};
 use reth_consensus_common::validation::{
     validate_against_parent_eip1559_base_fee, validate_against_parent_hash_number,
@@ -38,22 +38,22 @@ pub mod validation;
 pub use validation::{canyon, isthmus, validate_block_post_execution};
 
 pub mod error;
-pub use error::BaseConsensusError;
+pub use error::UnstableConsensusError;
 
-/// Base consensus implementation.
+/// Unstable consensus implementation.
 ///
 /// Provides basic checks as outlined in the execution specs.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BaseBeaconConsensus {
+pub struct UnstableBeaconConsensus {
     /// Configuration
-    chain_spec: Arc<BaseChainSpec>,
+    chain_spec: Arc<UnstableChainSpec>,
     /// Maximum allowed extra data size in bytes
     max_extra_data_size: usize,
 }
 
-impl BaseBeaconConsensus {
-    /// Create a new instance of [`BaseBeaconConsensus`]
-    pub const fn new(chain_spec: Arc<BaseChainSpec>) -> Self {
+impl UnstableBeaconConsensus {
+    /// Create a new instance of [`UnstableBeaconConsensus`]
+    pub const fn new(chain_spec: Arc<UnstableChainSpec>) -> Self {
         Self { chain_spec, max_extra_data_size: MAXIMUM_EXTRA_DATA_SIZE }
     }
 
@@ -69,7 +69,7 @@ impl BaseBeaconConsensus {
     }
 }
 
-impl<N> FullConsensus<N> for BaseBeaconConsensus
+impl<N> FullConsensus<N> for UnstableBeaconConsensus
 where
     N: NodePrimitives<BlockHeader = Header, Receipt: DepositReceiptExt>,
 {
@@ -83,7 +83,7 @@ where
     }
 }
 
-impl<B> Consensus<B> for BaseBeaconConsensus
+impl<B> Consensus<B> for UnstableBeaconConsensus
 where
     B: Block<Header = Header>,
 {
@@ -147,7 +147,7 @@ where
     }
 }
 
-impl HeaderValidator<Header> for BaseBeaconConsensus {
+impl HeaderValidator<Header> for UnstableBeaconConsensus {
     fn validate_header(&self, header: &SealedHeader<Header>) -> Result<(), ConsensusError> {
         let header = header.header();
 
@@ -173,10 +173,10 @@ impl HeaderValidator<Header> for BaseBeaconConsensus {
         validate_header_base_fee(header, &self.chain_spec)?;
 
         // After Isthmus, every block header must carry `requests_hash = sha256("")`
-        // (i.e. `EMPTY_REQUESTS_HASH`) because Base does not support EL-triggered execution
+        // (i.e. `EMPTY_REQUESTS_HASH`) because Unstable does not support EL-triggered execution
         // requests (EIP-7685). Before Isthmus, the field must be omitted entirely.
         //
-        // The Engine API path (`BaseExecutionPayload::into_block_with_sidecar*`) already
+        // The Engine API path (`UnstableExecutionPayload::into_block_with_sidecar*`) already
         // enforces this rule, but raw header/block import paths (e.g. `import_blocks_from_file`,
         // historical/range sync) only flow through `HeaderValidator::validate_header`. Without
         // the check here, a malformed post-Isthmus header with an arbitrary `requests_hash`
@@ -219,7 +219,7 @@ impl HeaderValidator<Header> for BaseBeaconConsensus {
         )?;
 
         // Ensure that the blob gas fields for this block are correctly set.
-        // On Base, the excess blob gas is always 0 for all blocks after ecotone.
+        // On Unstable, the excess blob gas is always 0 for all blocks after ecotone.
         // The blob gas used and the excess blob gas should both be set after ecotone.
         // After Jovian, the blob gas used contains the current DA footprint.
         if self.chain_spec.is_ecotone_active_at_timestamp(header.timestamp()) {
@@ -261,18 +261,18 @@ mod tests {
     };
     use alloy_primitives::{Address, B256, Bytes, Log, Signature, U256};
     use base_common_consensus::{
-        BasePrimitives, BaseReceipt, BaseTransactionSigned, BaseTypedTransaction,
+        UnstablePrimitives, UnstableReceipt, UnstableTransactionSigned, UnstableTypedTransaction,
         HoloceneExtraData, JovianExtraData,
     };
-    use base_execution_chainspec::{BaseChainSpec, BaseChainSpecBuilder};
-    use reth_chainspec::BaseFeeParams;
+    use base_execution_chainspec::{UnstableChainSpec, UnstableChainSpecBuilder};
+    use reth_chainspec::UnstableFeeParams;
     use reth_consensus::{Consensus, ConsensusError, FullConsensus, HeaderValidator};
     use reth_primitives_traits::{RecoveredBlock, SealedBlock, SealedHeader, proofs};
     use reth_provider::BlockExecutionResult;
 
-    use crate::BaseBeaconConsensus;
+    use crate::UnstableBeaconConsensus;
 
-    fn mock_tx(nonce: u64) -> BaseTransactionSigned {
+    fn mock_tx(nonce: u64) -> UnstableTransactionSigned {
         let tx = TxEip7702 {
             chain_id: 1u64,
             nonce,
@@ -288,12 +288,12 @@ mod tests {
 
         let signature = Signature::new(U256::default(), U256::default(), true);
 
-        BaseTransactionSigned::new_unhashed(BaseTypedTransaction::Eip7702(tx), signature)
+        UnstableTransactionSigned::new_unhashed(UnstableTypedTransaction::Eip7702(tx), signature)
     }
 
-    fn base_mainnet_builder() -> BaseChainSpecBuilder {
-        let base_mainnet = BaseChainSpec::mainnet();
-        BaseChainSpecBuilder::default()
+    fn base_mainnet_builder() -> UnstableChainSpecBuilder {
+        let base_mainnet = UnstableChainSpec::mainnet();
+        UnstableChainSpecBuilder::default()
             .genesis(base_mainnet.genesis.clone())
             .chain(base_mainnet.chain)
     }
@@ -305,7 +305,7 @@ mod tests {
         // create a tx
         let transaction = mock_tx(0);
 
-        let beacon_consensus = BaseBeaconConsensus::new(Arc::new(chain_spec));
+        let beacon_consensus = UnstableBeaconConsensus::new(Arc::new(chain_spec));
 
         let header = Header {
             base_fee_per_gas: Some(1337),
@@ -338,7 +338,7 @@ mod tests {
         // create a tx
         let transaction = mock_tx(0);
 
-        let beacon_consensus = BaseBeaconConsensus::new(Arc::new(chain_spec));
+        let beacon_consensus = UnstableBeaconConsensus::new(Arc::new(chain_spec));
 
         let header = Header {
             base_fee_per_gas: Some(1337),
@@ -377,9 +377,9 @@ mod tests {
         // create a tx
         let transaction = mock_tx(0);
 
-        let beacon_consensus = BaseBeaconConsensus::new(Arc::new(chain_spec));
+        let beacon_consensus = UnstableBeaconConsensus::new(Arc::new(chain_spec));
 
-        let receipt = BaseReceipt::Eip7702(Receipt::<Log> {
+        let receipt = UnstableReceipt::Eip7702(Receipt::<Log> {
             status: Eip658Value::success(),
             cumulative_gas_used: GAS_USED,
             logs: vec![],
@@ -408,7 +408,7 @@ mod tests {
 
         let block = SealedBlock::seal_slow(alloy_consensus::Block { header, body });
 
-        let result = BlockExecutionResult::<BaseReceipt> {
+        let result = BlockExecutionResult::<UnstableReceipt> {
             blob_gas_used: BLOB_GAS_USED,
             receipts: vec![receipt],
             requests: Requests::default(),
@@ -423,7 +423,7 @@ mod tests {
         let block = RecoveredBlock::new_sealed(block, vec![Address::default()]);
 
         let post_execution =
-            <BaseBeaconConsensus as FullConsensus<BasePrimitives>>::validate_block_post_execution(
+            <UnstableBeaconConsensus as FullConsensus<UnstablePrimitives>>::validate_block_post_execution(
                 &beacon_consensus,
                 &block,
                 &result,
@@ -444,9 +444,9 @@ mod tests {
         // create a tx
         let transaction = mock_tx(0);
 
-        let beacon_consensus = BaseBeaconConsensus::new(Arc::new(chain_spec));
+        let beacon_consensus = UnstableBeaconConsensus::new(Arc::new(chain_spec));
 
-        let receipt = BaseReceipt::Eip7702(Receipt::<Log> {
+        let receipt = UnstableReceipt::Eip7702(Receipt::<Log> {
             status: Eip658Value::success(),
             cumulative_gas_used: GAS_USED,
             logs: vec![],
@@ -475,7 +475,7 @@ mod tests {
 
         let block = SealedBlock::seal_slow(alloy_consensus::Block { header, body });
 
-        let result = BlockExecutionResult::<BaseReceipt> {
+        let result = BlockExecutionResult::<UnstableReceipt> {
             blob_gas_used: BLOB_GAS_USED + 1,
             receipts: vec![receipt],
             requests: Requests::default(),
@@ -490,7 +490,7 @@ mod tests {
         let block = RecoveredBlock::new_sealed(block, vec![Address::default()]);
 
         let post_execution =
-            <BaseBeaconConsensus as FullConsensus<BasePrimitives>>::validate_block_post_execution(
+            <UnstableBeaconConsensus as FullConsensus<UnstablePrimitives>>::validate_block_post_execution(
                 &beacon_consensus,
                 &block,
                 &result,
@@ -514,9 +514,9 @@ mod tests {
         // create a tx
         let transaction = mock_tx(0);
 
-        let beacon_consensus = BaseBeaconConsensus::new(Arc::new(chain_spec));
+        let beacon_consensus = UnstableBeaconConsensus::new(Arc::new(chain_spec));
 
-        let receipt = BaseReceipt::Eip7702(Receipt::<Log> {
+        let receipt = UnstableReceipt::Eip7702(Receipt::<Log> {
             status: Eip658Value::success(),
             cumulative_gas_used: 0,
             logs: vec![],
@@ -539,7 +539,7 @@ mod tests {
             logs_bloom: receipt.bloom(),
             extra_data: JovianExtraData::encode(
                 Default::default(),
-                BaseFeeParams::optimism(),
+                UnstableFeeParams::optimism(),
                 MIN_BASE_FEE,
             )
             .unwrap(),
@@ -581,9 +581,9 @@ mod tests {
         // create a tx
         let transaction = mock_tx(0);
 
-        let beacon_consensus = BaseBeaconConsensus::new(Arc::new(chain_spec));
+        let beacon_consensus = UnstableBeaconConsensus::new(Arc::new(chain_spec));
 
-        let receipt = BaseReceipt::Eip7702(Receipt::<Log> {
+        let receipt = UnstableReceipt::Eip7702(Receipt::<Log> {
             status: Eip658Value::success(),
             cumulative_gas_used: 0,
             logs: vec![],
@@ -606,7 +606,7 @@ mod tests {
             logs_bloom: receipt.bloom(),
             extra_data: JovianExtraData::encode(
                 Default::default(),
-                BaseFeeParams::optimism(),
+                UnstableFeeParams::optimism(),
                 MIN_BASE_FEE,
             )
             .unwrap(),
@@ -638,7 +638,7 @@ mod tests {
 
         assert!(matches!(
             result.unwrap_err(),
-            ConsensusError::BaseFeeDiff(diff)
+            ConsensusError::UnstableFeeDiff(diff)
                 if diff.got == MIN_BASE_FEE - 1 && diff.expected == MIN_BASE_FEE
         ));
     }
@@ -654,9 +654,9 @@ mod tests {
         // create a tx
         let transaction = mock_tx(0);
 
-        let beacon_consensus = BaseBeaconConsensus::new(Arc::new(chain_spec));
+        let beacon_consensus = UnstableBeaconConsensus::new(Arc::new(chain_spec));
 
-        let receipt = BaseReceipt::Eip7702(Receipt::<Log> {
+        let receipt = UnstableReceipt::Eip7702(Receipt::<Log> {
             status: Eip658Value::success(),
             cumulative_gas_used: 0,
             logs: vec![],
@@ -679,7 +679,7 @@ mod tests {
             logs_bloom: receipt.bloom(),
             extra_data: JovianExtraData::encode(
                 Default::default(),
-                BaseFeeParams::optimism(),
+                UnstableFeeParams::optimism(),
                 MIN_BASE_FEE,
             )
             .unwrap(),
@@ -724,9 +724,9 @@ mod tests {
         // create a tx
         let transaction = mock_tx(0);
 
-        let beacon_consensus = BaseBeaconConsensus::new(Arc::new(chain_spec));
+        let beacon_consensus = UnstableBeaconConsensus::new(Arc::new(chain_spec));
 
-        let receipt = BaseReceipt::Eip7702(Receipt::<Log> {
+        let receipt = UnstableReceipt::Eip7702(Receipt::<Log> {
             status: Eip658Value::success(),
             cumulative_gas_used: 0,
             logs: vec![],
@@ -747,7 +747,7 @@ mod tests {
                 &receipt.with_bloom_ref(),
             )),
             logs_bloom: receipt.bloom(),
-            extra_data: HoloceneExtraData::encode(Default::default(), BaseFeeParams::optimism())
+            extra_data: HoloceneExtraData::encode(Default::default(), UnstableFeeParams::optimism())
                 .unwrap(),
             gas_limit: GAS_LIMIT,
             ..Default::default()
@@ -800,7 +800,7 @@ mod tests {
     #[test]
     fn test_isthmus_validate_header_accepts_empty_requests_hash() {
         let chain_spec = base_mainnet_builder().isthmus_activated().build();
-        let beacon_consensus = BaseBeaconConsensus::new(Arc::new(chain_spec));
+        let beacon_consensus = UnstableBeaconConsensus::new(Arc::new(chain_spec));
 
         let header = isthmus_header_with_requests_hash(Some(EMPTY_REQUESTS_HASH));
         beacon_consensus
@@ -808,15 +808,15 @@ mod tests {
             .expect("post-Isthmus header with EMPTY_REQUESTS_HASH must pass validate_header");
     }
 
-    /// Regression: post-Isthmus headers carrying a non-empty `requests_hash` (Base does not
+    /// Regression: post-Isthmus headers carrying a non-empty `requests_hash` (Unstable does not
     /// support EL execution requests) must be rejected by the raw header import path, matching
-    /// the Engine API's `BasePayloadError::NonEmptyELRequests` enforcement. Without the check,
+    /// the Engine API's `UnstablePayloadError::NonEmptyELRequests` enforcement. Without the check,
     /// `import_blocks_from_file` and range-sync would persist a malformed header that the
     /// Engine path rejects, producing a block-validity differential inside the EL.
     #[test]
     fn test_isthmus_validate_header_rejects_non_empty_requests_hash() {
         let chain_spec = base_mainnet_builder().isthmus_activated().build();
-        let beacon_consensus = BaseBeaconConsensus::new(Arc::new(chain_spec));
+        let beacon_consensus = UnstableBeaconConsensus::new(Arc::new(chain_spec));
 
         let bogus = B256::repeat_byte(0x11);
         let header = isthmus_header_with_requests_hash(Some(bogus));
@@ -831,7 +831,7 @@ mod tests {
     #[test]
     fn test_isthmus_validate_header_rejects_missing_requests_hash() {
         let chain_spec = base_mainnet_builder().isthmus_activated().build();
-        let beacon_consensus = BaseBeaconConsensus::new(Arc::new(chain_spec));
+        let beacon_consensus = UnstableBeaconConsensus::new(Arc::new(chain_spec));
 
         let header = isthmus_header_with_requests_hash(None);
 
@@ -845,7 +845,7 @@ mod tests {
     fn test_pre_isthmus_validate_header_rejects_unexpected_requests_hash() {
         // Holocene activates strictly before Isthmus; this exercises the pre-Isthmus branch.
         let chain_spec = base_mainnet_builder().holocene_activated().build();
-        let beacon_consensus = BaseBeaconConsensus::new(Arc::new(chain_spec));
+        let beacon_consensus = UnstableBeaconConsensus::new(Arc::new(chain_spec));
 
         let header = SealedHeader::seal_slow(Header {
             base_fee_per_gas: Some(1337),

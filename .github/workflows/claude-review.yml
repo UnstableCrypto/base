@@ -17,12 +17,12 @@ permissions:
 jobs:
   review:
     name: Review PR
-    # Note: This job runs on the BaseRunnerGroup to be able to access LLM Gateway
+    # Note: This job runs on the UnstableRunnerGroup to be able to access LLM Gateway
     # It will not work on other runners
     # Skip for external contributor PRs (forks) — secrets and runner group are unavailable
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on:
-      group: BaseRunnerGroup
+      group: UnstableRunnerGroup
     steps:
       - name: Harden the runner (Block unauthorized outbound calls)
         uses: step-security/harden-runner@002fdce3c6a235733a90a27c80493a3241e56863 # v2.12.1
@@ -59,11 +59,11 @@ jobs:
 
           # review instructions
           prompt: |
-            You are reviewing a Pull Request for Base Reth Node — a Rust Ethereum L2 node built on Reth.
+            You are reviewing a Pull Request for Unstable Reth Node — a Rust Ethereum L2 node built on Reth.
 
             CODEBASE:
             - 4 core crate groups: crates/{client, builder, consensus, shared}
-            - devnet/: system and E2E test infrastructure for Base node
+            - devnet/: system and E2E test infrastructure for Unstable node
             - Error handling: thiserror enums with From impls
             - Async: tokio, async-trait, arc-swap for lock-free config
             - CI already enforces: clippy (52 rules, -D warnings), rustfmt (2024 edition), cargo-deny, cargo-udeps

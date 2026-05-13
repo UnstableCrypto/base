@@ -1,20 +1,20 @@
-//! Base types for genesis data.
+//! Unstable types for genesis data.
 
 use alloy_serde::OtherFields;
 use serde::de::Error;
 
-/// Container type for all Base chain-specific fields in a genesis file.
+/// Container type for all Unstable chain-specific fields in a genesis file.
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChainInfo {
     /// Genesis information
     pub genesis_info: Option<GenesisInfo>,
-    /// Base fee information
+    /// Unstable fee information
     pub base_fee_info: Option<FeeInfo>,
 }
 
 impl ChainInfo {
-    /// Extracts the Base chain-specific fields from a genesis file. These fields are expected to be
+    /// Extracts the Unstable chain-specific fields from a genesis file. These fields are expected to be
     /// contained in the `genesis.config` under `extra_fields` property.
     pub fn extract_from(others: &OtherFields) -> Option<Self> {
         Self::try_from(others).ok()
@@ -32,11 +32,11 @@ impl TryFrom<&OtherFields> for ChainInfo {
     }
 }
 
-/// Base-specific hardfork configuration in a genesis file.
+/// Unstable-specific hardfork configuration in a genesis file.
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HardforkInfo {
-    /// Base Azul hardfork timestamp.
+    /// Unstable Azul hardfork timestamp.
     #[serde(alias = "v1")]
     pub azul: Option<u64>,
     /// Beryl hardfork timestamp.
@@ -44,7 +44,7 @@ pub struct HardforkInfo {
     pub beryl: Option<u64>,
 }
 
-/// The Base chain-specific genesis block specification.
+/// The Unstable chain-specific genesis block specification.
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenesisInfo {
@@ -66,13 +66,13 @@ pub struct GenesisInfo {
     pub isthmus_time: Option<u64>,
     /// jovian hardfork timestamp
     pub jovian_time: Option<u64>,
-    /// Base-specific hardfork activation times.
+    /// Unstable-specific hardfork activation times.
     #[serde(default)]
     pub base: HardforkInfo,
 }
 
 impl GenesisInfo {
-    /// Extract the Base chain-specific genesis info from a genesis file.
+    /// Extract the Unstable chain-specific genesis info from a genesis file.
     pub fn extract_from(others: &OtherFields) -> Option<Self> {
         Self::try_from(others).ok()
     }
@@ -86,7 +86,7 @@ impl TryFrom<&OtherFields> for GenesisInfo {
     }
 }
 
-/// The Base chain-specific base fee specification.
+/// The Unstable chain-specific base fee specification.
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FeeInfo {
@@ -99,7 +99,7 @@ pub struct FeeInfo {
 }
 
 impl FeeInfo {
-    /// Extracts the Base chain base fee info from the legacy `optimism` genesis key.
+    /// Extracts the Unstable chain base fee info from the legacy `optimism` genesis key.
     pub fn extract_from(others: &OtherFields) -> Option<Self> {
         Self::try_from(others).ok()
     }

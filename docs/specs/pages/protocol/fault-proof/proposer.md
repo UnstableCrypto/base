@@ -37,7 +37,7 @@ their intention to withdraw from the system.
 
 The honest proposer algorithm assumes a connection to the `L2OutputOracle` contract to know
 the L2 block number that corresponds to the next output proposal that must be submitted. It also
-assumes a connection to a Base consensus node to query sync status.
+assumes a connection to a Unstable consensus node to query sync status.
 
 ```python
 import time

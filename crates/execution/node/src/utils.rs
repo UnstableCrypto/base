@@ -3,8 +3,8 @@ use std::sync::Arc;
 use alloy_genesis::Genesis;
 use alloy_primitives::{Address, B256};
 use alloy_rpc_types_engine::PayloadAttributes;
-use base_execution_chainspec::BaseChainSpecBuilder;
-use base_execution_payload_builder::{BaseBuiltPayload, BasePayloadBuilderAttributes};
+use base_execution_chainspec::UnstableChainSpecBuilder;
+use base_execution_payload_builder::{UnstableBuiltPayload, UnstablePayloadBuilderAttributes};
 use reth_e2e_test_utils::{
     NodeHelperType, TmpDB, transaction::TransactionTestContext, wallet::Wallet,
 };
@@ -13,19 +13,19 @@ use reth_payload_builder::EthPayloadBuilderAttributes;
 use reth_provider::providers::BlockchainProvider;
 use tokio::sync::Mutex;
 
-use crate::BaseNode as OtherOpNode;
+use crate::UnstableNode as OtherOpNode;
 
-/// Base Node Helper type
-pub type BaseNode =
+/// Unstable Node Helper type
+pub type UnstableNode =
     NodeHelperType<OtherOpNode, BlockchainProvider<NodeTypesWithDBAdapter<OtherOpNode, TmpDB>>>;
 
 /// Creates the initial setup with `num_nodes` of the node config, started and connected.
-pub async fn setup(num_nodes: usize) -> eyre::Result<(Vec<BaseNode>, Wallet)> {
+pub async fn setup(num_nodes: usize) -> eyre::Result<(Vec<UnstableNode>, Wallet)> {
     let genesis: Genesis =
         serde_json::from_str(include_str!("../tests/assets/genesis.json")).unwrap();
     reth_e2e_test_utils::setup_engine(
         num_nodes,
-        Arc::new(BaseChainSpecBuilder::base_mainnet().genesis(genesis).ecotone_activated().build()),
+        Arc::new(UnstableChainSpecBuilder::base_mainnet().genesis(genesis).ecotone_activated().build()),
         false,
         Default::default(),
         payload_attributes,
@@ -36,9 +36,9 @@ pub async fn setup(num_nodes: usize) -> eyre::Result<(Vec<BaseNode>, Wallet)> {
 /// Advance the chain with sequential payloads returning them in the end.
 pub async fn advance_chain(
     length: usize,
-    node: &mut BaseNode,
+    node: &mut UnstableNode,
     wallet: Arc<Mutex<Wallet>>,
-) -> eyre::Result<Vec<BaseBuiltPayload>> {
+) -> eyre::Result<Vec<UnstableBuiltPayload>> {
     node.advance(length as u64, |_| {
         let wallet = Arc::clone(&wallet);
         Box::pin(async move {
@@ -56,7 +56,7 @@ pub async fn advance_chain(
 }
 
 /// Helper function to create a new eth payload attributes
-pub fn payload_attributes<T>(timestamp: u64) -> BasePayloadBuilderAttributes<T> {
+pub fn payload_attributes<T>(timestamp: u64) -> UnstablePayloadBuilderAttributes<T> {
     let attributes = PayloadAttributes {
         timestamp,
         prev_randao: B256::ZERO,
@@ -65,7 +65,7 @@ pub fn payload_attributes<T>(timestamp: u64) -> BasePayloadBuilderAttributes<T> 
         parent_beacon_block_root: Some(B256::ZERO),
     };
 
-    BasePayloadBuilderAttributes {
+    UnstablePayloadBuilderAttributes {
         payload_attributes: EthPayloadBuilderAttributes::new(B256::ZERO, attributes),
         transactions: vec![],
         no_tx_pool: false,

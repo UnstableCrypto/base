@@ -10,7 +10,7 @@ use alloy_rlp::Decodable;
 use alloy_rpc_client::RpcClient;
 use alloy_transport_http::{Client, Http};
 use alloy_trie::{Nibbles, TrieAccount};
-use base_common_network::Base;
+use base_common_network::Unstable;
 use base_proof_mpt::TrieNode;
 use eyre::Result;
 use serde::{Deserialize, Deserializer};
@@ -174,7 +174,7 @@ pub async fn run(local: PathBuf, rpc_url: String, block: u64) -> Result<()> {
     println!("Fetching RPC witness for block #{block} from {rpc_url}");
     let url = rpc_url.parse()?;
     let http = Http::<Client>::new(url);
-    let provider = RootProvider::<Base>::new(RpcClient::new(http, false));
+    let provider = RootProvider::<Unstable>::new(RpcClient::new(http, false));
 
     let block_hex = format!("0x{block:x}");
     let rpc_witness: Witness =

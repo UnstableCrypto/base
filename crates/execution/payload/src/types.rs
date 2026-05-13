@@ -1,23 +1,23 @@
-use base_common_consensus::BasePrimitives;
-use base_common_rpc_types_engine::{BasePayloadAttributes, ExecutionData};
+use base_common_consensus::UnstablePrimitives;
+use base_common_rpc_types_engine::{UnstablePayloadAttributes, ExecutionData};
 use reth_payload_primitives::{BuiltPayload, PayloadTypes};
 use reth_primitives_traits::{Block, NodePrimitives, SealedBlock};
 
-use crate::{BaseBuiltPayload, BasePayloadBuilderAttributes};
+use crate::{UnstableBuiltPayload, UnstablePayloadBuilderAttributes};
 
-/// ZST that aggregates Base [`PayloadTypes`].
+/// ZST that aggregates Unstable [`PayloadTypes`].
 #[derive(Debug, Default, Clone, serde::Deserialize, serde::Serialize)]
 #[non_exhaustive]
-pub struct BasePayloadTypes<N: NodePrimitives = BasePrimitives>(core::marker::PhantomData<N>);
+pub struct UnstablePayloadTypes<N: NodePrimitives = UnstablePrimitives>(core::marker::PhantomData<N>);
 
-impl<N: NodePrimitives> PayloadTypes for BasePayloadTypes<N>
+impl<N: NodePrimitives> PayloadTypes for UnstablePayloadTypes<N>
 where
-    BaseBuiltPayload<N>: BuiltPayload,
+    UnstableBuiltPayload<N>: BuiltPayload,
 {
     type ExecutionData = ExecutionData;
-    type BuiltPayload = BaseBuiltPayload<N>;
-    type PayloadAttributes = BasePayloadAttributes;
-    type PayloadBuilderAttributes = BasePayloadBuilderAttributes<N::SignedTx>;
+    type BuiltPayload = UnstableBuiltPayload<N>;
+    type PayloadAttributes = UnstablePayloadAttributes;
+    type PayloadBuilderAttributes = UnstablePayloadBuilderAttributes<N::SignedTx>;
 
     fn block_to_payload(
         block: SealedBlock<

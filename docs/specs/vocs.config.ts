@@ -212,7 +212,7 @@ export default defineConfig({
   },
   iconUrl: '/assets/base/favicon.png',
   topNav: [
-    { text: 'Docs', link: 'https://docs.base.org/base-chain/' },
+    { text: 'Docs', link: 'https://docs.unstable.org/base-chain/' },
     { text: 'Blog', link: 'https://blog.base.dev/' },
   ],
   markdown: {

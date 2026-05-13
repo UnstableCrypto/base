@@ -1,7 +1,7 @@
 //! Polling source trait for fetching the current unsafe head block.
 
 use async_trait::async_trait;
-use base_common_consensus::BaseBlock;
+use base_common_consensus::UnstableBlock;
 
 use crate::SourceError;
 
@@ -9,7 +9,7 @@ use crate::SourceError;
 #[async_trait]
 pub trait PollingSource: Send + Sync {
     /// Fetch the current unsafe head block.
-    async fn unsafe_head(&self) -> Result<BaseBlock, SourceError>;
+    async fn unsafe_head(&self) -> Result<UnstableBlock, SourceError>;
 
     /// Reset the source to begin sequential catchup from `start_from`.
     ///

@@ -14,52 +14,52 @@ use reth_node_builder::{
     rpc::{RethRpcAddOns, RpcContext},
 };
 
-use crate::types::{BaseComponentsBuilder, BaseNodeTypes, ConcreteBaseAddOns};
+use crate::types::{UnstableComponentsBuilder, UnstableNodeTypes, ConcreteUnstableAddOns};
 
-/// Alias for the default Base components type.
-type BaseComponents = <BaseComponentsBuilder as NodeComponentsBuilder<BaseNodeTypes>>::Components;
+/// Alias for the default Unstable components type.
+type UnstableComponents = <UnstableComponentsBuilder as NodeComponentsBuilder<UnstableNodeTypes>>::Components;
 
-/// Convenience alias for the Base node adapter type used by the reth builder.
+/// Convenience alias for the Unstable node adapter type used by the reth builder.
 ///
 /// Because `Components` depends only on pool, network, executor, and consensus builders (not the
 /// payload service builder), this type is identical regardless of which payload service is used.
-pub type BaseNodeAdapter = NodeAdapter<BaseNodeTypes, BaseComponents>;
+pub type UnstableNodeAdapter = NodeAdapter<UnstableNodeTypes, UnstableComponents>;
 
-/// Convenience alias for the Base Eth API type exposed by the reth RPC add-ons.
-type BaseEthApi = <ConcreteBaseAddOns as RethRpcAddOns<BaseNodeAdapter>>::EthApi;
+/// Convenience alias for the Unstable Eth API type exposed by the reth RPC add-ons.
+type UnstableEthApi = <ConcreteUnstableAddOns as RethRpcAddOns<UnstableNodeAdapter>>::EthApi;
 
-/// Convenience alias for the full Base node handle produced after launch.
-type BaseFullNode = FullNode<BaseNodeAdapter, ConcreteBaseAddOns>;
+/// Convenience alias for the full Unstable node handle produced after launch.
+type UnstableFullNode = FullNode<UnstableNodeAdapter, ConcreteUnstableAddOns>;
 
-/// Alias for the RPC context used by Base extensions.
-pub type BaseRpcContext<'a> = RpcContext<'a, BaseNodeAdapter, BaseEthApi>;
+/// Alias for the RPC context used by Unstable extensions.
+pub type UnstableRpcContext<'a> = RpcContext<'a, UnstableNodeAdapter, UnstableEthApi>;
 
 /// Hook type for extending RPC modules.
-type RpcModuleHook = Box<dyn FnOnce(&mut BaseRpcContext<'_>) -> Result<()> + Send + 'static>;
+type RpcModuleHook = Box<dyn FnOnce(&mut UnstableRpcContext<'_>) -> Result<()> + Send + 'static>;
 
 /// Hook type for extending add-ons.
-type AddOnsHook = Box<dyn FnOnce(ConcreteBaseAddOns) -> ConcreteBaseAddOns>;
+type AddOnsHook = Box<dyn FnOnce(ConcreteUnstableAddOns) -> ConcreteUnstableAddOns>;
 
 /// Hook type for node-started callbacks.
-type NodeStartedHook = Box<dyn FnOnce(BaseFullNode) -> Result<()> + Send + 'static>;
+type NodeStartedHook = Box<dyn FnOnce(UnstableFullNode) -> Result<()> + Send + 'static>;
 
 /// Type-erased `ExEx` factory.
 type BoxExExFactory = Box<
     dyn FnOnce(
-            ExExContext<BaseNodeAdapter>,
+            ExExContext<UnstableNodeAdapter>,
         ) -> BoxFuture<'static, eyre::Result<BoxFuture<'static, eyre::Result<()>>>>
         + Send
         + 'static,
 >;
 
-/// A type alias for any configured builder whose components match the canonical Base types.
+/// A type alias for any configured builder whose components match the canonical Unstable types.
 ///
 /// This is generic over the `NodeComponentsBuilder` (`CB`) so that both the default payload and
 /// the flashblocks payload service can be used interchangeably.
 pub type RethNodeBuilder<CB> =
-    WithLaunchContext<NodeBuilderWithComponents<BaseNodeTypes, CB, ConcreteBaseAddOns>>;
+    WithLaunchContext<NodeBuilderWithComponents<UnstableNodeTypes, CB, ConcreteUnstableAddOns>>;
 
-/// Pure hook accumulator for the Base node builder.
+/// Pure hook accumulator for the Unstable node builder.
 ///
 /// Extensions call [`add_rpc_module`](Self::add_rpc_module),
 /// [`add_node_started_hook`](Self::add_node_started_hook), and
@@ -91,14 +91,14 @@ impl NodeHooks {
     /// builder produces the same concrete `Components` type as the default payload builder.
     pub fn apply_to<CB>(self, mut builder: RethNodeBuilder<CB>) -> RethNodeBuilder<CB>
     where
-        CB: NodeComponentsBuilder<BaseNodeTypes, Components = BaseComponents>,
+        CB: NodeComponentsBuilder<UnstableNodeTypes, Components = UnstableComponents>,
     {
         let Self { rpc_hooks, node_started_hooks, exex_hooks, add_ons_hooks } = self;
 
         // Install ExEx hooks
         for (id, factory) in exex_hooks {
             builder =
-                builder.install_exex(id, move |ctx: ExExContext<BaseNodeAdapter>| factory(ctx));
+                builder.install_exex(id, move |ctx: ExExContext<UnstableNodeAdapter>| factory(ctx));
         }
 
         for hook in add_ons_hooks {
@@ -107,7 +107,7 @@ impl NodeHooks {
 
         // Install RPC hooks
         if !rpc_hooks.is_empty() {
-            builder = builder.extend_rpc_modules(move |mut ctx: BaseRpcContext<'_>| {
+            builder = builder.extend_rpc_modules(move |mut ctx: UnstableRpcContext<'_>| {
                 for hook in rpc_hooks {
                     hook(&mut ctx)?;
                 }
@@ -117,7 +117,7 @@ impl NodeHooks {
 
         // Install node-started hooks
         if !node_started_hooks.is_empty() {
-            builder = builder.on_node_started(move |full_node: BaseFullNode| {
+            builder = builder.on_node_started(move |full_node: UnstableFullNode| {
                 for hook in node_started_hooks {
                     hook(full_node.clone())?;
                 }
@@ -131,7 +131,7 @@ impl NodeHooks {
     /// Adds an RPC hook that will run when RPC modules are configured.
     pub fn add_rpc_module<F>(mut self, hook: F) -> Self
     where
-        F: FnOnce(&mut BaseRpcContext<'_>) -> Result<()> + Send + 'static,
+        F: FnOnce(&mut UnstableRpcContext<'_>) -> Result<()> + Send + 'static,
     {
         self.rpc_hooks.push(Box::new(hook));
         self
@@ -140,7 +140,7 @@ impl NodeHooks {
     /// Adds an add-ons hook that will run when the add-ons are configured.
     pub fn add_add_ons_hook<F>(mut self, hook: F) -> Self
     where
-        F: FnOnce(ConcreteBaseAddOns) -> ConcreteBaseAddOns + Send + 'static,
+        F: FnOnce(ConcreteUnstableAddOns) -> ConcreteUnstableAddOns + Send + 'static,
     {
         self.add_ons_hooks.push(Box::new(hook));
         self
@@ -149,7 +149,7 @@ impl NodeHooks {
     /// Adds a node-started hook that will run after the node has started.
     pub fn add_node_started_hook<F>(mut self, hook: F) -> Self
     where
-        F: FnOnce(BaseFullNode) -> Result<()> + Send + 'static,
+        F: FnOnce(UnstableFullNode) -> Result<()> + Send + 'static,
     {
         self.node_started_hooks.push(Box::new(hook));
         self
@@ -158,7 +158,7 @@ impl NodeHooks {
     /// Installs an `ExEx` extension with the given name and closure.
     pub fn install_exex<F, R, E>(mut self, exex_id: impl Into<String>, exex: F) -> Self
     where
-        F: FnOnce(ExExContext<BaseNodeAdapter>) -> R + Send + 'static,
+        F: FnOnce(ExExContext<UnstableNodeAdapter>) -> R + Send + 'static,
         R: Future<Output = eyre::Result<E>> + Send,
         E: Future<Output = eyre::Result<()>> + Send + 'static,
     {

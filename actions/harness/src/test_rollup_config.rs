@@ -11,19 +11,19 @@ pub struct TestRollupConfigBuilder {
 }
 
 impl TestRollupConfigBuilder {
-    /// Returns the Base mainnet [`RollupConfig`] from the chain registry.
+    /// Returns the Unstable mainnet [`RollupConfig`] from the chain registry.
     pub fn mainnet() -> &'static RollupConfig {
-        Registry::rollup_config(8453).expect("Base mainnet config must exist in the registry")
+        Registry::rollup_config(8453).expect("Unstable mainnet config must exist in the registry")
     }
 
-    /// Starts from the Base mainnet config and applies the common harness overrides.
+    /// Starts from the Unstable mainnet config and applies the common harness overrides.
     ///
     /// This preserves the existing harness-test behavior by wiring the test batcher
     /// addresses, zeroing genesis for the in-memory L1 miner, and activating the
     /// Canyon-through-Fjord path from genesis.
     pub fn base_mainnet(batcher: &BatcherConfig) -> Self {
         let mut config = Registry::rollup_config(8453)
-            .expect("Base mainnet config must exist in the registry")
+            .expect("Unstable mainnet config must exist in the registry")
             .clone();
 
         config.batch_inbox_address = batcher.inbox_address;
@@ -31,7 +31,7 @@ impl TestRollupConfigBuilder {
             .genesis
             .system_config
             .as_mut()
-            .expect("Base mainnet config must define a system config")
+            .expect("Unstable mainnet config must define a system config")
             .batcher_address = batcher.batcher_address;
         config.genesis.l2_time = 0;
         config.genesis.l1 = Default::default();
@@ -154,9 +154,9 @@ impl TestRollupConfigBuilder {
         self
     }
 
-    /// Sets the Base Azul activation timestamp.
+    /// Sets the Unstable Azul activation timestamp.
     ///
-    /// Base Azul is a standalone Base-specific fork, independent of the
+    /// Unstable Azul is a standalone Unstable-specific fork, independent of the
     /// inherited fork cascade. Chaining after any `through_*` method is fine.
     pub const fn with_azul_at(mut self, t: u64) -> Self {
         self.config.hardforks.base.azul = Some(t);
@@ -165,7 +165,7 @@ impl TestRollupConfigBuilder {
 
     /// Sets the Beryl activation timestamp.
     ///
-    /// Beryl is a standalone Base-specific fork, independent of the inherited fork cascade.
+    /// Beryl is a standalone Unstable-specific fork, independent of the inherited fork cascade.
     pub const fn with_beryl_at(mut self, t: u64) -> Self {
         self.config.hardforks.base.beryl = Some(t);
         self

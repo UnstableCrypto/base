@@ -18,11 +18,11 @@ use alloy_serde::WithOtherFields;
 use revm::context::TxEnv;
 
 use crate::{
-    BasePooledTransaction, TxDeposit,
-    transaction::{BaseTransactionInfo, DepositInfo},
+    UnstablePooledTransaction, TxDeposit,
+    transaction::{UnstableTransactionInfo, DepositInfo},
 };
 
-/// The Ethereum [EIP-2718] Transaction Envelope, modified for Base.
+/// The Ethereum [EIP-2718] Transaction Envelope, modified for Unstable.
 ///
 /// # Note:
 ///
@@ -34,8 +34,8 @@ use crate::{
 ///
 /// [EIP-2718]: https://eips.ethereum.org/EIPS/eip-2718
 #[derive(Debug, Clone, TransactionEnvelope)]
-#[envelope(tx_type_name = OpTxType, typed = BaseTypedTransaction, serde_cfg(feature = "serde"))]
-pub enum BaseTxEnvelope {
+#[envelope(tx_type_name = OpTxType, typed = UnstableTypedTransaction, serde_cfg(feature = "serde"))]
+pub enum UnstableTxEnvelope {
     /// An untagged [`TxLegacy`].
     #[envelope(ty = 0)]
     Legacy(Signed<TxLegacy>),
@@ -54,10 +54,10 @@ pub enum BaseTxEnvelope {
     Deposit(Sealed<TxDeposit>),
 }
 
-/// Represents a transaction envelope for Base chains.
+/// Represents a transaction envelope for Unstable chains.
 ///
 /// Compared to Ethereum it can tell whether the transaction is a deposit.
-pub trait BaseTransaction {
+pub trait UnstableTransaction {
     /// Returns `true` if the transaction is a deposit.
     fn is_deposit(&self) -> bool;
 
@@ -65,7 +65,7 @@ pub trait BaseTransaction {
     fn as_deposit(&self) -> Option<&Sealed<TxDeposit>>;
 }
 
-impl BaseTransaction for BaseTxEnvelope {
+impl UnstableTransaction for UnstableTxEnvelope {
     fn is_deposit(&self) -> bool {
         self.is_deposit()
     }
@@ -75,10 +75,10 @@ impl BaseTransaction for BaseTxEnvelope {
     }
 }
 
-impl<B, T> BaseTransaction for Extended<B, T>
+impl<B, T> UnstableTransaction for Extended<B, T>
 where
-    B: BaseTransaction,
-    T: BaseTransaction,
+    B: UnstableTransaction,
+    T: UnstableTransaction,
 {
     fn is_deposit(&self) -> bool {
         match self {
@@ -95,86 +95,86 @@ where
     }
 }
 
-impl AsRef<Self> for BaseTxEnvelope {
+impl AsRef<Self> for UnstableTxEnvelope {
     fn as_ref(&self) -> &Self {
         self
     }
 }
 
-impl From<Signed<TxLegacy>> for BaseTxEnvelope {
+impl From<Signed<TxLegacy>> for UnstableTxEnvelope {
     fn from(v: Signed<TxLegacy>) -> Self {
         Self::Legacy(v)
     }
 }
 
-impl From<Signed<TxEip2930>> for BaseTxEnvelope {
+impl From<Signed<TxEip2930>> for UnstableTxEnvelope {
     fn from(v: Signed<TxEip2930>) -> Self {
         Self::Eip2930(v)
     }
 }
 
-impl From<Signed<TxEip1559>> for BaseTxEnvelope {
+impl From<Signed<TxEip1559>> for UnstableTxEnvelope {
     fn from(v: Signed<TxEip1559>) -> Self {
         Self::Eip1559(v)
     }
 }
 
-impl From<Signed<TxEip7702>> for BaseTxEnvelope {
+impl From<Signed<TxEip7702>> for UnstableTxEnvelope {
     fn from(v: Signed<TxEip7702>) -> Self {
         Self::Eip7702(v)
     }
 }
 
-impl From<TxDeposit> for BaseTxEnvelope {
+impl From<TxDeposit> for UnstableTxEnvelope {
     fn from(v: TxDeposit) -> Self {
         v.seal_slow().into()
     }
 }
 
-impl From<Signed<BaseTypedTransaction>> for BaseTxEnvelope {
-    fn from(value: Signed<BaseTypedTransaction>) -> Self {
+impl From<Signed<UnstableTypedTransaction>> for UnstableTxEnvelope {
+    fn from(value: Signed<UnstableTypedTransaction>) -> Self {
         let (tx, sig, hash) = value.into_parts();
         match tx {
-            BaseTypedTransaction::Legacy(tx_legacy) => {
+            UnstableTypedTransaction::Legacy(tx_legacy) => {
                 let tx = Signed::new_unchecked(tx_legacy, sig, hash);
                 Self::Legacy(tx)
             }
-            BaseTypedTransaction::Eip2930(tx_eip2930) => {
+            UnstableTypedTransaction::Eip2930(tx_eip2930) => {
                 let tx = Signed::new_unchecked(tx_eip2930, sig, hash);
                 Self::Eip2930(tx)
             }
-            BaseTypedTransaction::Eip1559(tx_eip1559) => {
+            UnstableTypedTransaction::Eip1559(tx_eip1559) => {
                 let tx = Signed::new_unchecked(tx_eip1559, sig, hash);
                 Self::Eip1559(tx)
             }
-            BaseTypedTransaction::Eip7702(tx_eip7702) => {
+            UnstableTypedTransaction::Eip7702(tx_eip7702) => {
                 let tx = Signed::new_unchecked(tx_eip7702, sig, hash);
                 Self::Eip7702(tx)
             }
-            BaseTypedTransaction::Deposit(tx) => Self::Deposit(Sealed::new_unchecked(tx, hash)),
+            UnstableTypedTransaction::Deposit(tx) => Self::Deposit(Sealed::new_unchecked(tx, hash)),
         }
     }
 }
 
-impl From<(BaseTypedTransaction, Signature)> for BaseTxEnvelope {
-    fn from(value: (BaseTypedTransaction, Signature)) -> Self {
+impl From<(UnstableTypedTransaction, Signature)> for UnstableTxEnvelope {
+    fn from(value: (UnstableTypedTransaction, Signature)) -> Self {
         Self::new_unhashed(value.0, value.1)
     }
 }
 
-impl From<Sealed<TxDeposit>> for BaseTxEnvelope {
+impl From<Sealed<TxDeposit>> for UnstableTxEnvelope {
     fn from(v: Sealed<TxDeposit>) -> Self {
         Self::Deposit(v)
     }
 }
 
-impl<Tx> From<BaseTxEnvelope> for Extended<BaseTxEnvelope, Tx> {
-    fn from(value: BaseTxEnvelope) -> Self {
+impl<Tx> From<UnstableTxEnvelope> for Extended<UnstableTxEnvelope, Tx> {
+    fn from(value: UnstableTxEnvelope) -> Self {
         Self::BuiltIn(value)
     }
 }
 
-impl TryFrom<TxEnvelope> for BaseTxEnvelope {
+impl TryFrom<TxEnvelope> for UnstableTxEnvelope {
     type Error = TxEnvelope;
 
     fn try_from(value: TxEnvelope) -> Result<Self, Self::Error> {
@@ -182,31 +182,31 @@ impl TryFrom<TxEnvelope> for BaseTxEnvelope {
     }
 }
 
-impl TryFrom<BaseTxEnvelope> for TxEnvelope {
-    type Error = ValueError<BaseTxEnvelope>;
+impl TryFrom<UnstableTxEnvelope> for TxEnvelope {
+    type Error = ValueError<UnstableTxEnvelope>;
 
-    fn try_from(value: BaseTxEnvelope) -> Result<Self, Self::Error> {
+    fn try_from(value: UnstableTxEnvelope) -> Result<Self, Self::Error> {
         value.try_into_eth_envelope()
     }
 }
 
 #[cfg(feature = "evm")]
-impl FromRecoveredTx<BaseTxEnvelope> for TxEnv {
-    fn from_recovered_tx(tx: &BaseTxEnvelope, caller: alloy_primitives::Address) -> Self {
+impl FromRecoveredTx<UnstableTxEnvelope> for TxEnv {
+    fn from_recovered_tx(tx: &UnstableTxEnvelope, caller: alloy_primitives::Address) -> Self {
         match tx {
-            BaseTxEnvelope::Legacy(tx) => Self::from_recovered_tx(tx.tx(), caller),
-            BaseTxEnvelope::Eip1559(tx) => Self::from_recovered_tx(tx.tx(), caller),
-            BaseTxEnvelope::Eip2930(tx) => Self::from_recovered_tx(tx.tx(), caller),
-            BaseTxEnvelope::Eip7702(tx) => Self::from_recovered_tx(tx.tx(), caller),
-            BaseTxEnvelope::Deposit(tx) => Self::from_recovered_tx(tx.inner(), caller),
+            UnstableTxEnvelope::Legacy(tx) => Self::from_recovered_tx(tx.tx(), caller),
+            UnstableTxEnvelope::Eip1559(tx) => Self::from_recovered_tx(tx.tx(), caller),
+            UnstableTxEnvelope::Eip2930(tx) => Self::from_recovered_tx(tx.tx(), caller),
+            UnstableTxEnvelope::Eip7702(tx) => Self::from_recovered_tx(tx.tx(), caller),
+            UnstableTxEnvelope::Deposit(tx) => Self::from_recovered_tx(tx.inner(), caller),
         }
     }
 }
 
 #[cfg(feature = "evm")]
-impl FromTxWithEncoded<BaseTxEnvelope> for TxEnv {
+impl FromTxWithEncoded<UnstableTxEnvelope> for TxEnv {
     fn from_encoded_tx(
-        tx: &BaseTxEnvelope,
+        tx: &UnstableTxEnvelope,
         caller: alloy_primitives::Address,
         _encoded: alloy_primitives::Bytes,
     ) -> Self {
@@ -215,20 +215,20 @@ impl FromTxWithEncoded<BaseTxEnvelope> for TxEnv {
 }
 
 #[cfg(feature = "alloy-compat")]
-impl From<BaseTxEnvelope> for alloy_rpc_types_eth::TransactionRequest {
-    fn from(value: BaseTxEnvelope) -> Self {
+impl From<UnstableTxEnvelope> for alloy_rpc_types_eth::TransactionRequest {
+    fn from(value: UnstableTxEnvelope) -> Self {
         match value {
-            BaseTxEnvelope::Eip2930(tx) => tx.into_parts().0.into(),
-            BaseTxEnvelope::Eip1559(tx) => tx.into_parts().0.into(),
-            BaseTxEnvelope::Eip7702(tx) => tx.into_parts().0.into(),
-            BaseTxEnvelope::Deposit(tx) => tx.into_inner().into(),
-            BaseTxEnvelope::Legacy(tx) => tx.into_parts().0.into(),
+            UnstableTxEnvelope::Eip2930(tx) => tx.into_parts().0.into(),
+            UnstableTxEnvelope::Eip1559(tx) => tx.into_parts().0.into(),
+            UnstableTxEnvelope::Eip7702(tx) => tx.into_parts().0.into(),
+            UnstableTxEnvelope::Deposit(tx) => tx.into_inner().into(),
+            UnstableTxEnvelope::Legacy(tx) => tx.into_parts().0.into(),
         }
     }
 }
 
 #[cfg(feature = "alloy-compat")]
-impl TryFrom<AnyTxEnvelope> for BaseTxEnvelope {
+impl TryFrom<AnyTxEnvelope> for UnstableTxEnvelope {
     type Error = AnyTxEnvelope;
 
     fn try_from(value: AnyTxEnvelope) -> Result<Self, Self::Error> {
@@ -237,7 +237,7 @@ impl TryFrom<AnyTxEnvelope> for BaseTxEnvelope {
 }
 
 #[cfg(feature = "alloy-compat")]
-impl TryFrom<AnyRpcTransaction> for BaseTxEnvelope {
+impl TryFrom<AnyRpcTransaction> for UnstableTxEnvelope {
     type Error = ConversionError;
 
     fn try_from(tx: AnyRpcTransaction) -> Result<Self, Self::Error> {
@@ -261,12 +261,12 @@ impl TryFrom<AnyRpcTransaction> for BaseTxEnvelope {
     }
 }
 
-impl BaseTxEnvelope {
+impl UnstableTxEnvelope {
     /// Creates a new enveloped transaction from the given transaction, signature and hash.
     ///
     /// Caution: This assumes the given hash is the correct transaction hash.
     pub fn new_unchecked(
-        transaction: BaseTypedTransaction,
+        transaction: UnstableTypedTransaction,
         signature: Signature,
         hash: B256,
     ) -> Self {
@@ -276,8 +276,8 @@ impl BaseTxEnvelope {
     /// Creates a new signed transaction from the given typed transaction and signature without the
     /// hash.
     ///
-    /// Note: this only calculates the hash on the first [`BaseTxEnvelope::hash`] call.
-    pub fn new_unhashed(transaction: BaseTypedTransaction, signature: Signature) -> Self {
+    /// Note: this only calculates the hash on the first [`UnstableTxEnvelope::hash`] call.
+    pub fn new_unhashed(transaction: UnstableTypedTransaction, signature: Signature) -> Self {
         transaction.into_signed(signature).into()
     }
 
@@ -312,7 +312,7 @@ impl BaseTxEnvelope {
     ///
     /// Returns an error if the envelope's variant is incompatible with the pooled format:
     /// [`TxDeposit`].
-    pub fn try_into_pooled(self) -> Result<BasePooledTransaction, ValueError<Self>> {
+    pub fn try_into_pooled(self) -> Result<UnstablePooledTransaction, ValueError<Self>> {
         match self {
             Self::Legacy(tx) => Ok(tx.into()),
             Self::Eip2930(tx) => Ok(tx.into()),
@@ -350,25 +350,25 @@ impl BaseTxEnvelope {
         }
     }
 
-    /// Helper that creates [`BaseTransactionInfo`] by adding [`DepositInfo`] obtained from the
-    /// given closure if this transaction is a deposit and return the [`BaseTransactionInfo`].
+    /// Helper that creates [`UnstableTransactionInfo`] by adding [`DepositInfo`] obtained from the
+    /// given closure if this transaction is a deposit and return the [`UnstableTransactionInfo`].
     pub fn try_to_tx_info<F, E>(
         &self,
         tx_info: TransactionInfo,
         f: F,
-    ) -> Result<BaseTransactionInfo, E>
+    ) -> Result<UnstableTransactionInfo, E>
     where
         F: FnOnce(TxHash) -> Result<Option<DepositInfo>, E>,
     {
         let deposit_meta =
             if self.is_deposit() { f(self.tx_hash())? } else { None }.unwrap_or_default();
 
-        Ok(BaseTransactionInfo::new(tx_info, deposit_meta))
+        Ok(UnstableTransactionInfo::new(tx_info, deposit_meta))
     }
 
     /// Attempts to convert an ethereum [`TxEnvelope`] into the L2 variant.
     ///
-    /// Returns the given envelope as error if [`BaseTxEnvelope`] doesn't support the variant
+    /// Returns the given envelope as error if [`UnstableTxEnvelope`] doesn't support the variant
     /// (EIP-4844)
     #[allow(clippy::result_large_err)]
     pub fn try_from_eth_envelope(tx: TxEnvelope) -> Result<Self, TxEnvelope> {
@@ -397,7 +397,7 @@ impl BaseTxEnvelope {
 
     /// Attempts to convert an ethereum [`TxEnvelope`] into the L2 variant.
     ///
-    /// Returns the given envelope as error if [`BaseTxEnvelope`] doesn't support the variant
+    /// Returns the given envelope as error if [`UnstableTxEnvelope`] doesn't support the variant
     /// (EIP-4844)
     #[cfg(feature = "alloy-compat")]
     #[allow(clippy::result_large_err)]
@@ -510,14 +510,14 @@ impl BaseTxEnvelope {
     }
 }
 
-impl TxHashRef for BaseTxEnvelope {
+impl TxHashRef for UnstableTxEnvelope {
     fn tx_hash(&self) -> &B256 {
         Self::hash(self)
     }
 }
 
 #[cfg(feature = "k256")]
-impl alloy_consensus::transaction::SignerRecoverable for BaseTxEnvelope {
+impl alloy_consensus::transaction::SignerRecoverable for UnstableTxEnvelope {
     fn recover_signer(
         &self,
     ) -> Result<alloy_primitives::Address, alloy_consensus::crypto::RecoveryError> {
@@ -584,7 +584,7 @@ impl alloy_consensus::transaction::SignerRecoverable for BaseTxEnvelope {
     }
 }
 
-/// Bincode-compatible serde implementation for [`BaseTxEnvelope`].
+/// Bincode-compatible serde implementation for [`UnstableTxEnvelope`].
 #[cfg(all(feature = "serde", feature = "serde-bincode-compat"))]
 pub(super) mod serde_bincode_compat {
     use alloy_consensus::{
@@ -597,9 +597,9 @@ pub(super) mod serde_bincode_compat {
 
     use crate::serde_bincode_compat::TxDeposit;
 
-    /// Bincode-compatible representation of an [`BaseTxEnvelope`].
+    /// Bincode-compatible representation of an [`UnstableTxEnvelope`].
     #[derive(Debug, Serialize, Deserialize)]
-    pub enum BaseTxEnvelope<'a> {
+    pub enum UnstableTxEnvelope<'a> {
         /// Legacy variant.
         Legacy {
             /// Transaction signature.
@@ -637,26 +637,26 @@ pub(super) mod serde_bincode_compat {
         },
     }
 
-    impl<'a> From<&'a super::BaseTxEnvelope> for BaseTxEnvelope<'a> {
-        fn from(value: &'a super::BaseTxEnvelope) -> Self {
+    impl<'a> From<&'a super::UnstableTxEnvelope> for UnstableTxEnvelope<'a> {
+        fn from(value: &'a super::UnstableTxEnvelope) -> Self {
             match value {
-                super::BaseTxEnvelope::Legacy(signed_legacy) => Self::Legacy {
+                super::UnstableTxEnvelope::Legacy(signed_legacy) => Self::Legacy {
                     signature: *signed_legacy.signature(),
                     transaction: signed_legacy.tx().into(),
                 },
-                super::BaseTxEnvelope::Eip2930(signed_2930) => Self::Eip2930 {
+                super::UnstableTxEnvelope::Eip2930(signed_2930) => Self::Eip2930 {
                     signature: *signed_2930.signature(),
                     transaction: signed_2930.tx().into(),
                 },
-                super::BaseTxEnvelope::Eip1559(signed_1559) => Self::Eip1559 {
+                super::UnstableTxEnvelope::Eip1559(signed_1559) => Self::Eip1559 {
                     signature: *signed_1559.signature(),
                     transaction: signed_1559.tx().into(),
                 },
-                super::BaseTxEnvelope::Eip7702(signed_7702) => Self::Eip7702 {
+                super::UnstableTxEnvelope::Eip7702(signed_7702) => Self::Eip7702 {
                     signature: *signed_7702.signature(),
                     transaction: signed_7702.tx().into(),
                 },
-                super::BaseTxEnvelope::Deposit(sealed_deposit) => Self::Deposit {
+                super::UnstableTxEnvelope::Deposit(sealed_deposit) => Self::Deposit {
                     hash: sealed_deposit.seal(),
                     transaction: sealed_deposit.inner().into(),
                 },
@@ -664,44 +664,44 @@ pub(super) mod serde_bincode_compat {
         }
     }
 
-    impl<'a> From<BaseTxEnvelope<'a>> for super::BaseTxEnvelope {
-        fn from(value: BaseTxEnvelope<'a>) -> Self {
+    impl<'a> From<UnstableTxEnvelope<'a>> for super::UnstableTxEnvelope {
+        fn from(value: UnstableTxEnvelope<'a>) -> Self {
             match value {
-                BaseTxEnvelope::Legacy { signature, transaction } => {
+                UnstableTxEnvelope::Legacy { signature, transaction } => {
                     Self::Legacy(Signed::new_unhashed(transaction.into(), signature))
                 }
-                BaseTxEnvelope::Eip2930 { signature, transaction } => {
+                UnstableTxEnvelope::Eip2930 { signature, transaction } => {
                     Self::Eip2930(Signed::new_unhashed(transaction.into(), signature))
                 }
-                BaseTxEnvelope::Eip1559 { signature, transaction } => {
+                UnstableTxEnvelope::Eip1559 { signature, transaction } => {
                     Self::Eip1559(Signed::new_unhashed(transaction.into(), signature))
                 }
-                BaseTxEnvelope::Eip7702 { signature, transaction } => {
+                UnstableTxEnvelope::Eip7702 { signature, transaction } => {
                     Self::Eip7702(Signed::new_unhashed(transaction.into(), signature))
                 }
-                BaseTxEnvelope::Deposit { hash, transaction } => {
+                UnstableTxEnvelope::Deposit { hash, transaction } => {
                     Self::Deposit(Sealed::new_unchecked(transaction.into(), hash))
                 }
             }
         }
     }
 
-    impl SerializeAs<super::BaseTxEnvelope> for BaseTxEnvelope<'_> {
-        fn serialize_as<S>(source: &super::BaseTxEnvelope, serializer: S) -> Result<S::Ok, S::Error>
+    impl SerializeAs<super::UnstableTxEnvelope> for UnstableTxEnvelope<'_> {
+        fn serialize_as<S>(source: &super::UnstableTxEnvelope, serializer: S) -> Result<S::Ok, S::Error>
         where
             S: Serializer,
         {
-            let borrowed = BaseTxEnvelope::from(source);
+            let borrowed = UnstableTxEnvelope::from(source);
             borrowed.serialize(serializer)
         }
     }
 
-    impl<'de> DeserializeAs<'de, super::BaseTxEnvelope> for BaseTxEnvelope<'de> {
-        fn deserialize_as<D>(deserializer: D) -> Result<super::BaseTxEnvelope, D::Error>
+    impl<'de> DeserializeAs<'de, super::UnstableTxEnvelope> for UnstableTxEnvelope<'de> {
+        fn deserialize_as<D>(deserializer: D) -> Result<super::UnstableTxEnvelope, D::Error>
         where
             D: Deserializer<'de>,
         {
-            let borrowed = BaseTxEnvelope::deserialize(deserializer)?;
+            let borrowed = UnstableTxEnvelope::deserialize(deserializer)?;
             Ok(borrowed.into())
         }
     }
@@ -715,21 +715,21 @@ pub(super) mod serde_bincode_compat {
 
         use super::*;
 
-        /// Tests a bincode round-trip for [`BaseTxEnvelope`] using an arbitrary instance.
+        /// Tests a bincode round-trip for [`UnstableTxEnvelope`] using an arbitrary instance.
         #[test]
         fn test_base_tx_envelope_bincode_roundtrip_arbitrary() {
             #[serde_as]
             #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
             struct Data {
                 // Use the bincode-compatible representation defined in this module.
-                #[serde_as(as = "BaseTxEnvelope<'_>")]
-                envelope: super::super::BaseTxEnvelope,
+                #[serde_as(as = "UnstableTxEnvelope<'_>")]
+                envelope: super::super::UnstableTxEnvelope,
             }
 
             let mut bytes = [0u8; 1024];
             rand::rng().fill(bytes.as_mut_slice());
             let data = Data {
-                envelope: super::super::BaseTxEnvelope::arbitrary(
+                envelope: super::super::UnstableTxEnvelope::arbitrary(
                     &mut arbitrary::Unstructured::new(&bytes),
                 )
                 .unwrap(),
@@ -744,7 +744,7 @@ pub(super) mod serde_bincode_compat {
     }
 }
 
-impl InMemorySize for BaseTxEnvelope {
+impl InMemorySize for UnstableTxEnvelope {
     fn size(&self) -> usize {
         match self {
             Self::Legacy(tx) => tx.size(),
@@ -768,30 +768,30 @@ mod tests {
     #[test]
     fn test_tx_gas_limit() {
         let tx = TxDeposit { gas_limit: 1, ..Default::default() };
-        let tx_envelope = BaseTxEnvelope::Deposit(tx.seal_slow());
+        let tx_envelope = UnstableTxEnvelope::Deposit(tx.seal_slow());
         assert_eq!(tx_envelope.gas_limit(), 1);
     }
 
     #[test]
     fn test_deposit() {
         let tx = TxDeposit { is_system_transaction: true, ..Default::default() };
-        let tx_envelope = BaseTxEnvelope::Deposit(tx.seal_slow());
+        let tx_envelope = UnstableTxEnvelope::Deposit(tx.seal_slow());
         assert!(tx_envelope.is_deposit());
 
         let tx = TxEip1559::default();
         let sig = Signature::test_signature();
-        let tx_envelope = BaseTxEnvelope::Eip1559(tx.into_signed(sig));
+        let tx_envelope = UnstableTxEnvelope::Eip1559(tx.into_signed(sig));
         assert!(!tx_envelope.is_system_transaction());
     }
 
     #[test]
     fn test_system_transaction() {
         let mut tx = TxDeposit { is_system_transaction: true, ..Default::default() };
-        let tx_envelope = BaseTxEnvelope::Deposit(tx.clone().seal_slow());
+        let tx_envelope = UnstableTxEnvelope::Deposit(tx.clone().seal_slow());
         assert!(tx_envelope.is_system_transaction());
 
         tx.is_system_transaction = false;
-        let tx_envelope = BaseTxEnvelope::Deposit(tx.seal_slow());
+        let tx_envelope = UnstableTxEnvelope::Deposit(tx.seal_slow());
         assert!(!tx_envelope.is_system_transaction());
     }
 
@@ -807,9 +807,9 @@ mod tests {
             input: Bytes::from(vec![5]),
             is_system_transaction: false,
         };
-        let tx_envelope = BaseTxEnvelope::Deposit(tx.seal_slow());
+        let tx_envelope = UnstableTxEnvelope::Deposit(tx.seal_slow());
         let encoded = tx_envelope.encoded_2718();
-        let decoded = BaseTxEnvelope::decode_2718(&mut encoded.as_ref()).unwrap();
+        let decoded = UnstableTxEnvelope::decode_2718(&mut encoded.as_ref()).unwrap();
         assert_eq!(encoded.len(), tx_envelope.encode_2718_len());
         assert_eq!(decoded, tx_envelope);
     }
@@ -827,10 +827,10 @@ mod tests {
             mint: u128::MAX,
             is_system_transaction: false,
         };
-        let tx_envelope = BaseTxEnvelope::Deposit(tx.seal_slow());
+        let tx_envelope = UnstableTxEnvelope::Deposit(tx.seal_slow());
 
         let serialized = serde_json::to_string(&tx_envelope).unwrap();
-        let deserialized: BaseTxEnvelope = serde_json::from_str(&serialized).unwrap();
+        let deserialized: UnstableTxEnvelope = serde_json::from_str(&serialized).unwrap();
 
         assert_eq!(tx_envelope, deserialized);
     }
@@ -842,7 +842,7 @@ mod tests {
             "7ef8f8a0417d134467f4737fcdf2475f0ecdd2a0ed6d87ecffc888ba9f60ee7e3b8ac26a94deaddeaddeaddeaddeaddeaddeaddeaddead00019442000000000000000000000000000000000000158080830f424080b8a4440a5e20000008dd00101c1200000000000000040000000066c352bb000000000139c4f500000000000000000000000000000000000000000000000000000000c0cff1460000000000000000000000000000000000000000000000000000000000000001d4c88f4065ac9671e8b1329b90773e89b5ddff9cf8675b2b5e9c1b28320609930000000000000000000000005050f69a9786f081509234f1a7f4684b5e5b76c9"
         );
 
-        let tx = BaseTxEnvelope::decode_2718(&mut b[..].as_ref()).unwrap();
+        let tx = UnstableTxEnvelope::decode_2718(&mut b[..].as_ref()).unwrap();
         let deposit = tx.as_deposit().unwrap();
         assert_eq!(deposit.mint, 0);
     }
@@ -878,7 +878,7 @@ mod tests {
         let _deposit: crate::TxDeposit = unknown_tx_envelope.try_into().unwrap();
 
         let any: AnyTxEnvelope = serde_json::from_str(deposit).unwrap();
-        let envelope = BaseTxEnvelope::try_from(any).unwrap();
+        let envelope = UnstableTxEnvelope::try_from(any).unwrap();
         assert!(envelope.is_deposit());
     }
 
@@ -906,7 +906,7 @@ mod tests {
   "value": "0x0"
 }"#;
         let tx: AnyRpcTransaction = serde_json::from_str(json).unwrap();
-        let tx = BaseTxEnvelope::try_from(tx).unwrap();
+        let tx = UnstableTxEnvelope::try_from(tx).unwrap();
         assert!(tx.is_deposit());
     }
 
@@ -925,10 +925,10 @@ mod tests {
         };
         let sig = Signature::test_signature();
         let tx_signed = tx.into_signed(sig);
-        let envelope: BaseTxEnvelope = tx_signed.into();
+        let envelope: UnstableTxEnvelope = tx_signed.into();
         let encoded = envelope.encoded_2718();
         let mut slice = encoded.as_slice();
-        let decoded = BaseTxEnvelope::decode_2718(&mut slice).unwrap();
-        assert!(matches!(decoded, BaseTxEnvelope::Eip1559(_)));
+        let decoded = UnstableTxEnvelope::decode_2718(&mut slice).unwrap();
+        assert!(matches!(decoded, UnstableTxEnvelope::Eip1559(_)));
     }
 }

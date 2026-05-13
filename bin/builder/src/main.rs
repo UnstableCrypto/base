@@ -10,7 +10,7 @@ use std::sync::Arc;
 use base_builder_core::{BuilderApiExtension, FlashblocksServiceBuilder};
 use base_builder_metering::MeteringStoreExtension;
 use base_execution_cli::Cli;
-use base_node_runner::BaseNodeRunner;
+use base_node_runner::UnstableNodeRunner;
 use base_txpool_rpc::{TxPoolRpcConfig, TxPoolRpcExtension};
 
 type BuilderCli = Cli<cli::Args>;
@@ -34,7 +34,7 @@ fn main() {
             .into_builder_config(Arc::clone(&metering_provider))
             .expect("Failed to convert rollup args to builder config");
 
-        let mut runner = BaseNodeRunner::new(rollup_args)
+        let mut runner = UnstableNodeRunner::new(rollup_args)
             .with_service_builder(FlashblocksServiceBuilder(builder_config));
         runner.install_ext::<MeteringStoreExtension>(metering_provider);
         runner.install_ext::<TxPoolRpcExtension>(TxPoolRpcConfig::default());

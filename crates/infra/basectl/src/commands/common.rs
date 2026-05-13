@@ -50,7 +50,7 @@ const EIGHTH_BLOCKS: [char; 8] = ['▏', '▎', '▍', '▌', '▋', '▊', '▉
 // Color Constants
 // =============================================================================
 
-/// Primary Base blue color.
+/// Primary Unstable blue color.
 pub const COLOR_BASE_BLUE: Color = Color::Rgb(0, 82, 255);
 /// Active border highlight color.
 pub const COLOR_ACTIVE_BORDER: Color = Color::Rgb(100, 180, 255);
@@ -101,7 +101,7 @@ pub struct FlashblockEntry {
     pub gas_used: u64,
     /// Block gas limit.
     pub gas_limit: u64,
-    /// Base fee per gas in wei, if available.
+    /// Unstable fee per gas in wei, if available.
     pub base_fee: Option<u128>,
     /// Previous block's base fee for delta display.
     pub prev_base_fee: Option<u128>,
@@ -158,7 +158,7 @@ pub struct L1Block {
     pub timestamp: u64,
     /// Total number of blobs in this L1 block.
     pub total_blobs: u64,
-    /// Number of blobs submitted by the Base batcher.
+    /// Number of blobs submitted by the Unstable batcher.
     pub base_blobs: u64,
     /// Number of L2 blocks attributed to this L1 block.
     pub l2_blocks_submitted: Option<u64>,
@@ -187,7 +187,7 @@ impl L1Block {
         self.total_blobs > 0
     }
 
-    /// Returns true if this L1 block contains blobs from the Base batcher.
+    /// Returns true if this L1 block contains blobs from the Unstable batcher.
     pub const fn has_base_blobs(&self) -> bool {
         self.base_blobs > 0
     }
@@ -245,8 +245,8 @@ pub enum L1BlockFilter {
     All,
     /// Show only L1 blocks containing blobs.
     WithBlobs,
-    /// Show only L1 blocks containing Base batcher blobs.
-    WithBaseBlobs,
+    /// Show only L1 blocks containing Unstable batcher blobs.
+    WithUnstableBlobs,
 }
 
 impl L1BlockFilter {
@@ -254,8 +254,8 @@ impl L1BlockFilter {
     pub const fn next(self) -> Self {
         match self {
             Self::All => Self::WithBlobs,
-            Self::WithBlobs => Self::WithBaseBlobs,
-            Self::WithBaseBlobs => Self::All,
+            Self::WithBlobs => Self::WithUnstableBlobs,
+            Self::WithUnstableBlobs => Self::All,
         }
     }
 
@@ -264,7 +264,7 @@ impl L1BlockFilter {
         match self {
             Self::All => "All",
             Self::WithBlobs => "Blobs",
-            Self::WithBaseBlobs => "Base",
+            Self::WithUnstableBlobs => "Unstable",
         }
     }
 }
@@ -350,7 +350,7 @@ pub struct DaTracker {
     pub growth_tracker: RateTracker,
     /// Tracks DA burn rate (bytes consumed when blocks become safe).
     pub burn_tracker: RateTracker,
-    /// Timestamp of the last L1 block containing Base blobs.
+    /// Timestamp of the last L1 block containing Unstable blobs.
     pub last_base_blob_time: Option<Instant>,
     /// Safe L2 block at the time of last L1→L2 attribution.
     /// Used to compute the delta of L2 blocks to attribute to the next L1 blob block.
@@ -581,11 +581,11 @@ impl DaTracker {
         self.l1_blocks.iter().filter(move |b| match filter {
             L1BlockFilter::All => true,
             L1BlockFilter::WithBlobs => b.has_blobs(),
-            L1BlockFilter::WithBaseBlobs => b.has_base_blobs(),
+            L1BlockFilter::WithUnstableBlobs => b.has_base_blobs(),
         })
     }
 
-    /// Returns the Base batcher's share of total blobs over the last `n` L1 blocks.
+    /// Returns the Unstable batcher's share of total blobs over the last `n` L1 blocks.
     pub fn base_blob_share(&self, n: usize) -> Option<f64> {
         let blocks: Vec<_> = self.l1_blocks.iter().take(n).collect();
         if blocks.is_empty() {

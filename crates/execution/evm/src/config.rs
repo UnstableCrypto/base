@@ -1,8 +1,8 @@
 use revm::primitives::{Address, B256, Bytes};
 
-/// Context relevant for execution of a next Base block.
+/// Context relevant for execution of a next Unstable block.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BaseNextBlockEnvAttributes {
+pub struct UnstableNextBlockEnvAttributes {
     /// The timestamp of the next block.
     pub timestamp: u64,
     /// The suggested fee recipient for the next block.
@@ -19,7 +19,7 @@ pub struct BaseNextBlockEnvAttributes {
 
 #[cfg(feature = "rpc")]
 impl<H: alloy_consensus::BlockHeader> reth_rpc_eth_api::helpers::pending_block::BuildPendingEnv<H>
-    for BaseNextBlockEnvAttributes
+    for UnstableNextBlockEnvAttributes
 {
     fn build_pending_env(parent: &crate::SealedHeader<H>) -> Self {
         Self {

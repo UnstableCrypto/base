@@ -1,4 +1,4 @@
-//! In-process Base client node.
+//! In-process Unstable client node.
 //!
 //! Replaces Docker-based `ClientContainer` with an in-process node for faster tests.
 
@@ -7,11 +7,11 @@ use std::{any::Any, net::SocketAddr, path::PathBuf, sync::Arc};
 use alloy_primitives::hex::ToHexExt;
 use alloy_rpc_types_engine::JwtSecret;
 use base_bundle_extension::BundleExtension;
-use base_execution_chainspec::BaseChainSpec;
+use base_execution_chainspec::UnstableChainSpec;
 use base_flashblocks::FlashblocksConfig;
 use base_flashblocks_node::FlashblocksExtension;
 use base_node_core::args::RollupArgs;
-use base_node_runner::{BaseNode, BaseNodeExtension, FromExtensionConfig, NodeHooks};
+use base_node_runner::{UnstableNode, UnstableNodeExtension, FromExtensionConfig, NodeHooks};
 use base_tx_forwarding::{TxForwardingConfig, TxForwardingExtension};
 use base_txpool_rpc::{TxPoolRpcConfig, TxPoolRpcExtension};
 use base_txpool_tracing::{TxPoolExtension, TxpoolConfig};
@@ -55,7 +55,7 @@ pub struct InProcessClientConfig {
     pub tx_forwarding_config: Option<TxForwardingConfig>,
 }
 
-/// In-process Base client node that syncs from a builder.
+/// In-process Unstable client node that syncs from a builder.
 ///
 /// This replaces the Docker-based `ClientContainer` for faster test execution.
 pub struct InProcessClient {
@@ -93,7 +93,7 @@ impl InProcessClient {
         // Parse genesis JSON to chain spec
         let genesis: alloy_genesis::Genesis = serde_json::from_slice(&config.genesis_json)
             .map_err(|e| eyre!("Failed to parse genesis JSON: {}", e))?;
-        let chain_spec = Arc::new(BaseChainSpec::from_genesis(genesis));
+        let chain_spec = Arc::new(UnstableChainSpec::from_genesis(genesis));
 
         let mut network_config = NetworkArgs {
             discovery: DiscoveryArgs { disable_discovery: true, ..DiscoveryArgs::default() },
@@ -139,7 +139,7 @@ impl InProcessClient {
         let rollup_args =
             RollupArgs { sequencer: Some(config.builder_rpc_url.clone()), ..Default::default() };
 
-        let base_node = BaseNode::new(rollup_args.clone());
+        let base_node = UnstableNode::new(rollup_args.clone());
 
         let mut node_config = NodeConfig::new(Arc::clone(&chain_spec))
             .with_network(network_config)
@@ -160,12 +160,12 @@ impl InProcessClient {
         let builder = NodeBuilder::new(node_config.clone())
             .with_database(db)
             .with_launch_context(runtime.clone())
-            .with_types_and_provider::<BaseNode, BlockchainProvider<_>>()
+            .with_types_and_provider::<UnstableNode, BlockchainProvider<_>>()
             .with_components(base_node.components())
             .with_add_ons(base_node.add_ons())
             .on_component_initialized(move |_ctx| Ok(()));
 
-        let extensions: Vec<Box<dyn BaseNodeExtension>> = Self::build_extensions(&config)?;
+        let extensions: Vec<Box<dyn UnstableNodeExtension>> = Self::build_extensions(&config)?;
         let NodeHandle { node: node_handle, node_exit_future } = extensions
             .into_iter()
             .fold(NodeHooks::new(), |b, ext| ext.apply(b))
@@ -236,8 +236,8 @@ impl InProcessClient {
     }
 
     /// Builds the extensions for the client node.
-    fn build_extensions(config: &InProcessClientConfig) -> Result<Vec<Box<dyn BaseNodeExtension>>> {
-        let mut extensions: Vec<Box<dyn BaseNodeExtension>> = Vec::new();
+    fn build_extensions(config: &InProcessClientConfig) -> Result<Vec<Box<dyn UnstableNodeExtension>>> {
+        let mut extensions: Vec<Box<dyn UnstableNodeExtension>> = Vec::new();
 
         // TxPool extension (tracing disabled for client)
         let flashblocks_url: Url = config

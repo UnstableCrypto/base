@@ -1,28 +1,28 @@
-//! Contains trait [`DefaultBase`] used to create a default context.
-use base_common_chains::BaseUpgrade;
+//! Contains trait [`DefaultUnstable`] used to create a default context.
+use base_common_chains::UnstableUpgrade;
 use revm::{
     Context, Journal, MainContext,
     context::{BlockEnv, CfgEnv, TxEnv},
     database_interface::EmptyDB,
 };
 
-use crate::{BaseSpecId, BaseTransaction, L1BlockInfo};
+use crate::{UnstableSpecId, UnstableTransaction, L1BlockInfo};
 
-/// Type alias for the default context type of the `BaseEvm`.
-pub type BaseContext<DB> =
-    Context<BlockEnv, BaseTransaction<TxEnv>, CfgEnv<BaseSpecId>, DB, Journal<DB>, L1BlockInfo>;
+/// Type alias for the default context type of the `UnstableEvm`.
+pub type UnstableContext<DB> =
+    Context<BlockEnv, UnstableTransaction<TxEnv>, CfgEnv<UnstableSpecId>, DB, Journal<DB>, L1BlockInfo>;
 
 /// Trait that allows for a default context to be created.
-pub trait DefaultBase {
+pub trait DefaultUnstable {
     /// Create a default context.
-    fn base() -> BaseContext<EmptyDB>;
+    fn base() -> UnstableContext<EmptyDB>;
 }
 
-impl DefaultBase for BaseContext<EmptyDB> {
+impl DefaultUnstable for UnstableContext<EmptyDB> {
     fn base() -> Self {
         Context::mainnet()
-            .with_tx(BaseTransaction::builder().build_fill())
-            .with_cfg(CfgEnv::new_with_spec(BaseSpecId::new(BaseUpgrade::Bedrock)))
+            .with_tx(UnstableTransaction::builder().build_fill())
+            .with_cfg(CfgEnv::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Bedrock)))
             .with_chain(L1BlockInfo::default())
     }
 }
@@ -39,8 +39,8 @@ mod tests {
         let ctx = Context::base();
         let mut evm = ctx.build_with_inspector(NoOpInspector {});
         // execute without inspector
-        let _ = evm.transact(BaseTransaction::builder().build_fill());
+        let _ = evm.transact(UnstableTransaction::builder().build_fill());
         // execute with inspector callbacks
-        let _ = evm.inspect_one_tx(BaseTransaction::builder().build_fill());
+        let _ = evm.inspect_one_tx(UnstableTransaction::builder().build_fill());
     }
 }

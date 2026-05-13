@@ -80,7 +80,7 @@ At and after Holocene activation, any `ExecutionPayload` corresponding to some `
 values within this `extraData` must correspond to those in `eip1559Parameters`, unless both are 0.  When both are 0, the
 [prior EIP-1559 constants](../../protocol/execution/index.md#1559-parameters) must be used to populate `extraData` instead.
 
-#### Base Fee Computation
+#### Unstable Fee Computation
 
 Prior to the Holocene upgrade, the EIP-1559 denominator and elasticity parameters used to compute the block base fee
 were [constants](../../protocol/execution/index.md#1559-parameters).

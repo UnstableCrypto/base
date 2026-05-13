@@ -1,4 +1,4 @@
-//! Contains the ratio compressor for Base.
+//! Contains the ratio compressor for Unstable.
 //!
 //! This is a port of the reference batcher's ratio compressor.
 

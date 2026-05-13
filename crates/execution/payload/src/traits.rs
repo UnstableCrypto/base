@@ -1,9 +1,9 @@
 use alloy_consensus::BlockBody;
-use base_common_consensus::{BaseTransaction, DepositReceiptExt};
+use base_common_consensus::{UnstableTransaction, DepositReceiptExt};
 use reth_payload_primitives::PayloadBuilderAttributes;
 use reth_primitives_traits::{FullBlockHeader, NodePrimitives, SignedTransaction, WithEncoded};
 
-use crate::BasePayloadBuilderAttributes;
+use crate::UnstablePayloadBuilderAttributes;
 
 /// Helper trait to encapsulate common bounds on [`NodePrimitives`] for the payload builder.
 pub trait PayloadPrimitives:
@@ -15,14 +15,14 @@ pub trait PayloadPrimitives:
     >
 {
     /// Helper AT to bound [`NodePrimitives::Block`] type without causing bound cycle.
-    type _TX: SignedTransaction + BaseTransaction;
+    type _TX: SignedTransaction + UnstableTransaction;
     /// Helper AT to bound [`NodePrimitives::Block`] type without causing bound cycle.
     type _Header: FullBlockHeader;
 }
 
 impl<Tx, T, Header> PayloadPrimitives for T
 where
-    Tx: SignedTransaction + BaseTransaction,
+    Tx: SignedTransaction + UnstableTransaction,
     T: NodePrimitives<
             SignedTx = Tx,
             Receipt: DepositReceiptExt,
@@ -47,7 +47,7 @@ pub trait Attributes: PayloadBuilderAttributes {
     fn sequencer_transactions(&self) -> &[WithEncoded<Self::Transaction>];
 }
 
-impl<T: SignedTransaction> Attributes for BasePayloadBuilderAttributes<T> {
+impl<T: SignedTransaction> Attributes for UnstablePayloadBuilderAttributes<T> {
     type Transaction = T;
 
     fn no_tx_pool(&self) -> bool {

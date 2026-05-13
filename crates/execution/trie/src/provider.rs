@@ -25,7 +25,7 @@ use reth_trie_common::{
 };
 
 use crate::{
-    BaseProofsStorage, BaseProofsStorageError, BaseProofsStore,
+    UnstableProofsStorage, UnstableProofsStorageError, UnstableProofsStore,
     proof::{
         DatabaseProof, DatabaseStateRoot, DatabaseStorageProof, DatabaseStorageRoot,
         DatabaseTrieWitness,
@@ -34,36 +34,36 @@ use crate::{
 
 /// State provider for external proofs storage.
 #[derive(Constructor)]
-pub struct BaseProofsStateProviderRef<'a, Storage: BaseProofsStore> {
+pub struct UnstableProofsStateProviderRef<'a, Storage: UnstableProofsStore> {
     /// Historical state provider for non-state related tasks.
     latest: Box<dyn StateProvider + Send + 'a>,
 
     /// Storage provider for state lookups.
-    storage: &'a BaseProofsStorage<Storage>,
+    storage: &'a UnstableProofsStorage<Storage>,
 
     /// Max block number that can be used for state lookups.
     block_number: BlockNumber,
 }
 
-impl<'a, Storage> Debug for BaseProofsStateProviderRef<'a, Storage>
+impl<'a, Storage> Debug for UnstableProofsStateProviderRef<'a, Storage>
 where
-    Storage: BaseProofsStore + 'a + Debug,
+    Storage: UnstableProofsStore + 'a + Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("BaseProofsStateProviderRef")
+        f.debug_struct("UnstableProofsStateProviderRef")
             .field("storage", &self.storage)
             .field("block_number", &self.block_number)
             .finish()
     }
 }
 
-impl From<BaseProofsStorageError> for ProviderError {
-    fn from(error: BaseProofsStorageError) -> Self {
+impl From<UnstableProofsStorageError> for ProviderError {
+    fn from(error: UnstableProofsStorageError) -> Self {
         Self::other(error)
     }
 }
 
-impl<'a, Storage: BaseProofsStore> BlockHashReader for BaseProofsStateProviderRef<'a, Storage> {
+impl<'a, Storage: UnstableProofsStore> BlockHashReader for UnstableProofsStateProviderRef<'a, Storage> {
     fn block_hash(&self, number: BlockNumber) -> ProviderResult<Option<B256>> {
         self.latest.block_hash(number)
     }
@@ -77,8 +77,8 @@ impl<'a, Storage: BaseProofsStore> BlockHashReader for BaseProofsStateProviderRe
     }
 }
 
-impl<'a, Storage: BaseProofsStore + Clone> StateRootProvider
-    for BaseProofsStateProviderRef<'a, Storage>
+impl<'a, Storage: UnstableProofsStore + Clone> StateRootProvider
+    for UnstableProofsStateProviderRef<'a, Storage>
 {
     fn state_root(&self, state: HashedPostState) -> ProviderResult<B256> {
         Ok(StateRoot::overlay_root(self.storage, self.block_number, state)?)
@@ -103,8 +103,8 @@ impl<'a, Storage: BaseProofsStore + Clone> StateRootProvider
     }
 }
 
-impl<'a, Storage: BaseProofsStore + Clone> StorageRootProvider
-    for BaseProofsStateProviderRef<'a, Storage>
+impl<'a, Storage: UnstableProofsStore + Clone> StorageRootProvider
+    for UnstableProofsStateProviderRef<'a, Storage>
 {
     fn storage_root(&self, address: Address, storage: HashedStorage) -> ProviderResult<B256> {
         StorageRoot::overlay_root(self.storage, self.block_number, address, storage)
@@ -144,8 +144,8 @@ impl<'a, Storage: BaseProofsStore + Clone> StorageRootProvider
     }
 }
 
-impl<'a, Storage: BaseProofsStore + Clone> StateProofProvider
-    for BaseProofsStateProviderRef<'a, Storage>
+impl<'a, Storage: UnstableProofsStore + Clone> StateProofProvider
+    for UnstableProofsStateProviderRef<'a, Storage>
 {
     fn proof(
         &self,
@@ -173,15 +173,15 @@ impl<'a, Storage: BaseProofsStore + Clone> StateProofProvider
     }
 }
 
-impl<'a, Storage: BaseProofsStore> HashedPostStateProvider
-    for BaseProofsStateProviderRef<'a, Storage>
+impl<'a, Storage: UnstableProofsStore> HashedPostStateProvider
+    for UnstableProofsStateProviderRef<'a, Storage>
 {
     fn hashed_post_state(&self, bundle_state: &BundleState) -> HashedPostState {
         HashedPostState::from_bundle_state::<KeccakKeyHasher>(bundle_state.state())
     }
 }
 
-impl<'a, Storage: BaseProofsStore> AccountReader for BaseProofsStateProviderRef<'a, Storage> {
+impl<'a, Storage: UnstableProofsStore> AccountReader for UnstableProofsStateProviderRef<'a, Storage> {
     fn basic_account(&self, address: &Address) -> ProviderResult<Option<Account>> {
         let hashed_key = keccak256(address.0);
         Ok(self
@@ -194,9 +194,9 @@ impl<'a, Storage: BaseProofsStore> AccountReader for BaseProofsStateProviderRef<
     }
 }
 
-impl<'a, Storage> StateProvider for BaseProofsStateProviderRef<'a, Storage>
+impl<'a, Storage> StateProvider for UnstableProofsStateProviderRef<'a, Storage>
 where
-    Storage: BaseProofsStore + Clone,
+    Storage: UnstableProofsStore + Clone,
 {
     fn storage(&self, address: Address, storage_key: B256) -> ProviderResult<Option<StorageValue>> {
         let hashed_key = keccak256(storage_key);
@@ -218,7 +218,7 @@ where
     }
 }
 
-impl<'a, Storage: BaseProofsStore> BytecodeReader for BaseProofsStateProviderRef<'a, Storage> {
+impl<'a, Storage: UnstableProofsStore> BytecodeReader for UnstableProofsStateProviderRef<'a, Storage> {
     fn bytecode_by_hash(&self, code_hash: &B256) -> ProviderResult<Option<Bytecode>> {
         self.latest.bytecode_by_hash(code_hash)
     }
@@ -234,15 +234,15 @@ mod tests {
     #[test]
     fn test_base_proofs_state_provider_ref_debug() {
         let latest: Box<dyn StateProvider + Send> = Box::<NoopProvider>::default();
-        let storage: crate::BaseProofsStorage<InMemoryProofsStorage> =
+        let storage: crate::UnstableProofsStorage<InMemoryProofsStorage> =
             InMemoryProofsStorage::new().into();
         let block_number = 42u64;
 
-        let provider = BaseProofsStateProviderRef::new(latest, &storage, block_number);
+        let provider = UnstableProofsStateProviderRef::new(latest, &storage, block_number);
 
         assert_eq!(
             format!("{:?}", provider),
-            "BaseProofsStateProviderRef { storage: InMemoryProofsStorage { inner: RwLock { data: InMemoryStorageInner { account_branches: {}, storage_branches: {}, hashed_accounts: {}, hashed_storages: {}, trie_updates: {}, post_states: {}, earliest_block: None, anchor_block: None } } }, block_number: 42 }"
+            "UnstableProofsStateProviderRef { storage: InMemoryProofsStorage { inner: RwLock { data: InMemoryStorageInner { account_branches: {}, storage_branches: {}, hashed_accounts: {}, hashed_storages: {}, trie_updates: {}, post_states: {}, earliest_block: None, anchor_block: None } } }, block_number: 42 }"
         );
     }
 }

@@ -18,7 +18,7 @@ use base_batcher_encoder::{
     BatchPipeline, BatchSubmission, ReorgError, StepError, StepResult, SubmissionId,
 };
 use base_batcher_source::{ChannelBlockSource, L2BlockEvent, SourceError, UnsafeBlockSource};
-use base_common_consensus::BaseBlock;
+use base_common_consensus::UnstableBlock;
 use base_runtime::{
     Cancellation, Clock, Spawner,
     deterministic::{Config, Runner},
@@ -139,7 +139,7 @@ fn test_paused_drops_block_and_flush_events() {
             inner: TrackingPipeline,
         }
         impl BatchPipeline for CountingPipeline {
-            fn add_block(&mut self, block: BaseBlock) -> Result<(), (ReorgError, Box<BaseBlock>)> {
+            fn add_block(&mut self, block: UnstableBlock) -> Result<(), (ReorgError, Box<UnstableBlock>)> {
                 *self.calls.lock().unwrap() += 1;
                 self.inner.add_block(block)
             }

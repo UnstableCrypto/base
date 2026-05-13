@@ -3,15 +3,15 @@
 <a href="https://github.com/base/base/actions/workflows/ci.yml"><img src="https://github.com/base/base/actions/workflows/ci.yml/badge.svg?label=ci" alt="CI"></a>
 <a href="https://github.com/base/base/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-d1d1f6.svg?label=license&labelColor=2a2f35" alt="MIT License"></a>
 
-Base's implementation of the engine tree validator, responsible for block execution and state root computation within the Reth engine tree.
+Unstable's implementation of the engine tree validator, responsible for block execution and state root computation within the Reth engine tree.
 
 ## Overview
 
-This crate provides the core block validation pipeline for the Base node. It implements Reth's `EngineValidator` trait and orchestrates the full lifecycle of validating a new block or payload: consensus checks, EVM execution, receipt root computation, and state root verification.
+This crate provides the core block validation pipeline for the Unstable node. It implements Reth's `EngineValidator` trait and orchestrates the full lifecycle of validating a new block or payload: consensus checks, EVM execution, receipt root computation, and state root verification.
 
 ### Key Components
 
-- **`BaseEngineValidator`**: The primary validator that coordinates end-to-end block validation. It handles:
+- **`UnstableEngineValidator`**: The primary validator that coordinates end-to-end block validation. It handles:
   - Payload-to-block conversion
   - EVM environment setup
   - Block execution with precompile caching
@@ -53,12 +53,12 @@ base-engine-tree = { git = "https://github.com/base/base" }
 
 ### Constructing the Validator
 
-`BaseEngineValidator` requires a provider, consensus engine, EVM config, payload validator, and a cached execution provider:
+`UnstableEngineValidator` requires a provider, consensus engine, EVM config, payload validator, and a cached execution provider:
 
 ```rust,ignore
-use base_engine_tree::BaseEngineValidator;
+use base_engine_tree::UnstableEngineValidator;
 
-let validator = BaseEngineValidator::new(
+let validator = UnstableEngineValidator::new(
     provider,
     consensus,
     evm_config,
@@ -77,19 +77,19 @@ Implement `CachedExecutionProvider` to supply pre-computed execution results:
 
 ```rust,ignore
 use base_common_consensus::OpTxType;
-use base_common_evm::{BaseHaltReason, BaseTxResult};
+use base_common_evm::{UnstableHaltReason, UnstableTxResult};
 use base_engine_tree::CachedExecutionProvider;
 
 #[derive(Debug, Clone)]
 struct MyFlashblockCache { /* ... */ }
 
-impl CachedExecutionProvider<BaseTxResult<BaseHaltReason, OpTxType>> for MyFlashblockCache {
+impl CachedExecutionProvider<UnstableTxResult<UnstableHaltReason, OpTxType>> for MyFlashblockCache {
     fn get_cached_execution_for_tx(
         &self,
         parent_block_hash: &B256,
         prev_cached_hash: Option<&B256>,
         tx_hash: &B256,
-    ) -> Option<BaseTxResult<BaseHaltReason, OpTxType>> {
+    ) -> Option<UnstableTxResult<UnstableHaltReason, OpTxType>> {
         // Look up cached result from flashblock execution
         self.cache.get(start_state_root, tx_hash)
     }
@@ -113,17 +113,17 @@ This design maximizes parallelism — execution, receipt root computation, state
 
 ## Dependencies
 
-This crate builds on top of several Reth and Base components:
+This crate builds on top of several Reth and Unstable components:
 - `reth-engine-tree`: Engine tree traits, state management, and payload processing
 - `reth-consensus`: Consensus validation rules
 - `reth-evm`: EVM configuration and block execution
 - `reth-provider`: State and storage access
 - `reth-trie` / `reth-trie-parallel`: Trie computation (serial and parallel)
-- `base-execution-evm`: Base EVM specializations
+- `base-execution-evm`: Unstable EVM specializations
 
 ## Related Crates
 
-- **`base-engine`**: Engine validator builder that constructs `BaseEngineValidator` instances
+- **`base-engine`**: Engine validator builder that constructs `UnstableEngineValidator` instances
 - **`base-flashblocks`**: Provides cached execution results that integrate with `CachedExecutor`
 - **`base-client-node`**: Node builder extensions that wire up the full validation pipeline
 

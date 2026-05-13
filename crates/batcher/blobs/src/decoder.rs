@@ -36,7 +36,7 @@ pub enum BlobDecodeError {
     },
 }
 
-/// Decodes Base EIP-4844 blobs back to raw byte payloads.
+/// Decodes Unstable EIP-4844 blobs back to raw byte payloads.
 ///
 /// This is the inverse of
 /// [`BlobEncoder::encode`](super::BlobEncoder::encode) and mirrors the

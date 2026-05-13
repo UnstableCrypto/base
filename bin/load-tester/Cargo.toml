@@ -1,6 +1,6 @@
 [package]
 name = "base-load-tester-bin"
-description = "Base Load Tester Binary"
+description = "Unstable Load Tester Binary"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

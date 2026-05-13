@@ -1,6 +1,6 @@
 [package]
 name = "base-proof"
-description = "Base Proof SDK"
+description = "Unstable Proof SDK"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -29,7 +29,7 @@ alloy-genesis.workspace = true
 alloy-consensus.workspace = true
 alloy-primitives.workspace = true
 
-# Base Alloy
+# Unstable Alloy
 base-common-consensus.workspace = true
 base-common-rpc-types-engine.workspace = true
 

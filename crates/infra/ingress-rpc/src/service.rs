@@ -8,8 +8,8 @@ use alloy_primitives::{B256, Bytes};
 use alloy_provider::{Provider, RootProvider, network::eip2718::Decodable2718};
 use audit_archiver_lib::BundleEvent;
 use base_bundles::{AcceptedBundle, Bundle, BundleExtensions, MeterBundleResponse, ParsedBundle};
-use base_common_consensus::BaseTxEnvelope;
-use base_common_network::Base;
+use base_common_consensus::UnstableTxEnvelope;
+use base_common_network::Unstable;
 use jsonrpsee::{
     core::{RpcResult, async_trait},
     proc_macros::rpc,
@@ -32,11 +32,11 @@ use crate::{
 #[derive(Debug)]
 pub struct Providers {
     /// Provider for sending transactions to the mempool.
-    pub mempool: RootProvider<Base>,
+    pub mempool: RootProvider<Unstable>,
     /// Provider for simulating bundles.
-    pub simulation: RootProvider<Base>,
+    pub simulation: RootProvider<Unstable>,
     /// Optional provider for forwarding raw transactions.
-    pub raw_tx_forward: Option<RootProvider<Base>>,
+    pub raw_tx_forward: Option<RootProvider<Unstable>>,
 }
 
 #[rpc(server, namespace = "eth")]
@@ -48,9 +48,9 @@ pub trait IngressApi {
 
 /// Core ingress RPC service that handles transaction submission.
 pub struct IngressService<Q: MessageQueue> {
-    mempool_provider: Arc<RootProvider<Base>>,
-    simulation_provider: Arc<RootProvider<Base>>,
-    raw_tx_forward_provider: Option<Arc<RootProvider<Base>>>,
+    mempool_provider: Arc<RootProvider<Unstable>>,
+    simulation_provider: Arc<RootProvider<Unstable>>,
+    raw_tx_forward_provider: Option<Arc<RootProvider<Unstable>>>,
     tx_submission_method: TxSubmissionMethod,
     bundle_queue_publisher: BundleQueuePublisher<Q>,
     audit_channel: mpsc::Sender<BundleEvent>,
@@ -251,12 +251,12 @@ impl<Q: MessageQueue + 'static> IngressApiServer for IngressService<Q> {
 }
 
 impl<Q: MessageQueue> IngressService<Q> {
-    async fn get_tx(&self, data: &Bytes) -> RpcResult<Recovered<BaseTxEnvelope>> {
+    async fn get_tx(&self, data: &Bytes) -> RpcResult<Recovered<UnstableTxEnvelope>> {
         if data.is_empty() {
             return Err(EthApiError::EmptyRawTransactionData.into_rpc_err());
         }
 
-        let envelope = BaseTxEnvelope::decode_2718_exact(data.iter().as_slice())
+        let envelope = UnstableTxEnvelope::decode_2718_exact(data.iter().as_slice())
             .map_err(|_| EthApiError::FailedToDecodeSignedTransaction.into_rpc_err())?;
 
         let transaction = envelope
@@ -454,7 +454,7 @@ mod tests {
 
         let config = create_test_config(&mock_server);
 
-        let provider: RootProvider<Base> =
+        let provider: RootProvider<Unstable> =
             RootProvider::new_http(mock_server.uri().parse().unwrap());
 
         let providers = Providers {

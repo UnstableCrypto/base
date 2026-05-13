@@ -131,7 +131,7 @@ polling, and artifact retrieval differ. The `mock` backend skips witness generat
 
 ## SP1 Range Program
 
-The range program proves a Base L2 state transition over a contiguous block range. Its stdin
+The range program proves a Unstable L2 state transition over a contiguous block range. Its stdin
 contains:
 
 ```text

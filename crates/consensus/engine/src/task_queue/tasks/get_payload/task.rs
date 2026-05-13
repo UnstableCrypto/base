@@ -4,7 +4,7 @@ use std::sync::Arc;
 use alloy_rpc_types_engine::{ExecutionPayload, PayloadId};
 use async_trait::async_trait;
 use base_common_genesis::RollupConfig;
-use base_common_rpc_types_engine::{BaseExecutionPayload, BaseExecutionPayloadEnvelope};
+use base_common_rpc_types_engine::{UnstableExecutionPayload, UnstableExecutionPayloadEnvelope};
 use base_protocol::AttributesWithParent;
 use derive_more::Constructor;
 use tokio::sync::mpsc;
@@ -15,7 +15,7 @@ use crate::{EngineClient, EngineGetPayloadVersion, EngineState, EngineTaskExt, M
 /// Task for fetching a sealed payload from the engine without inserting it.
 ///
 /// Unlike [`SealTask`], this task only performs the `engine_getPayload` step and
-/// sends the resulting [`BaseExecutionPayloadEnvelope`] back to the caller. It does
+/// sends the resulting [`UnstableExecutionPayloadEnvelope`] back to the caller. It does
 /// NOT import the payload into the engine (no `new_payload` or FCU calls).
 ///
 /// This enables the sequencer to commit to the conductor before engine insertion.
@@ -31,9 +31,9 @@ pub struct GetPayloadTask<EngineClient_: EngineClient> {
     pub payload_id: PayloadId,
     /// The [`AttributesWithParent`] used for version selection and parent validation.
     pub attributes: AttributesWithParent,
-    /// An optional sender to convey the sealed [`BaseExecutionPayloadEnvelope`]
+    /// An optional sender to convey the sealed [`UnstableExecutionPayloadEnvelope`]
     /// or the [`SealTaskError`] that occurred during fetching.
-    pub result_tx: Option<mpsc::Sender<Result<BaseExecutionPayloadEnvelope, SealTaskError>>>,
+    pub result_tx: Option<mpsc::Sender<Result<UnstableExecutionPayloadEnvelope, SealTaskError>>>,
 }
 
 impl<EngineClient_: EngineClient> GetPayloadTask<EngineClient_> {
@@ -47,7 +47,7 @@ impl<EngineClient_: EngineClient> GetPayloadTask<EngineClient_> {
         engine: &EngineClient_,
         payload_id: PayloadId,
         payload_attrs: &AttributesWithParent,
-    ) -> Result<BaseExecutionPayloadEnvelope, SealTaskError> {
+    ) -> Result<UnstableExecutionPayloadEnvelope, SealTaskError> {
         let payload_timestamp = payload_attrs.attributes().payload_attributes.timestamp;
 
         debug!(
@@ -65,12 +65,12 @@ impl<EngineClient_: EngineClient> GetPayloadTask<EngineClient_> {
                     SealTaskError::GetPayloadFailed(e)
                 })?;
 
-                BaseExecutionPayloadEnvelope {
+                UnstableExecutionPayloadEnvelope {
                     parent_beacon_block_root: payload_attrs
                         .attributes()
                         .payload_attributes
                         .parent_beacon_block_root,
-                    execution_payload: BaseExecutionPayload::V4(payload.execution_payload),
+                    execution_payload: UnstableExecutionPayload::V4(payload.execution_payload),
                 }
             }
             EngineGetPayloadVersion::V4 => {
@@ -79,9 +79,9 @@ impl<EngineClient_: EngineClient> GetPayloadTask<EngineClient_> {
                     SealTaskError::GetPayloadFailed(e)
                 })?;
 
-                BaseExecutionPayloadEnvelope {
+                UnstableExecutionPayloadEnvelope {
                     parent_beacon_block_root: Some(payload.parent_beacon_block_root),
-                    execution_payload: BaseExecutionPayload::V4(payload.execution_payload),
+                    execution_payload: UnstableExecutionPayload::V4(payload.execution_payload),
                 }
             }
             EngineGetPayloadVersion::V3 => {
@@ -90,9 +90,9 @@ impl<EngineClient_: EngineClient> GetPayloadTask<EngineClient_> {
                     SealTaskError::GetPayloadFailed(e)
                 })?;
 
-                BaseExecutionPayloadEnvelope {
+                UnstableExecutionPayloadEnvelope {
                     parent_beacon_block_root: Some(payload.parent_beacon_block_root),
-                    execution_payload: BaseExecutionPayload::V3(payload.execution_payload),
+                    execution_payload: UnstableExecutionPayload::V3(payload.execution_payload),
                 }
             }
             EngineGetPayloadVersion::V2 => {
@@ -101,11 +101,11 @@ impl<EngineClient_: EngineClient> GetPayloadTask<EngineClient_> {
                     SealTaskError::GetPayloadFailed(e)
                 })?;
 
-                BaseExecutionPayloadEnvelope {
+                UnstableExecutionPayloadEnvelope {
                     parent_beacon_block_root: None,
                     execution_payload: match payload.execution_payload.into_payload() {
-                        ExecutionPayload::V1(payload) => BaseExecutionPayload::V1(payload),
-                        ExecutionPayload::V2(payload) => BaseExecutionPayload::V2(payload),
+                        ExecutionPayload::V1(payload) => UnstableExecutionPayload::V1(payload),
+                        ExecutionPayload::V2(payload) => UnstableExecutionPayload::V2(payload),
                         _ => unreachable!("the response should be a V1 or V2 payload"),
                     },
                 }
@@ -119,7 +119,7 @@ impl<EngineClient_: EngineClient> GetPayloadTask<EngineClient_> {
     /// appropriate error if it does not.
     async fn send_channel_result_or_get_error(
         &self,
-        res: Result<BaseExecutionPayloadEnvelope, SealTaskError>,
+        res: Result<UnstableExecutionPayloadEnvelope, SealTaskError>,
     ) -> Result<(), SealTaskError> {
         if let Some(tx) = &self.result_tx {
             tx.send(res).await.map_err(|e| SealTaskError::MpscSend(Box::new(e)))?;

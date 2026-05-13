@@ -6,15 +6,15 @@ use base_proof::OracleBlobProvider;
 use base_proof_succinct_client_utils::witness::DefaultWitnessData;
 use base_proof_succinct_ethereum_client_utils::executor::ETHDAWitnessExecutor;
 use base_proof_succinct_host_utils::witness_generation::{
-    DefaultOracleBase, WitnessGenerator, online_blob_store::OnlineBlobStore,
+    DefaultOracleUnstable, WitnessGenerator, online_blob_store::OnlineBlobStore,
     preimage_witness_collector::PreimageWitnessCollector,
 };
 use rkyv::to_bytes;
 use sp1_sdk::SP1Stdin;
 
 type WitnessExecutor = ETHDAWitnessExecutor<
-    PreimageWitnessCollector<DefaultOracleBase>,
-    OnlineBlobStore<OracleBlobProvider<DefaultOracleBase>>,
+    PreimageWitnessCollector<DefaultOracleUnstable>,
+    OnlineBlobStore<OracleBlobProvider<DefaultOracleUnstable>>,
 >;
 
 /// Witness generator for Ethereum data availability.

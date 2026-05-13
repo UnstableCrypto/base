@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use alloy_provider::{Network, RootProvider};
-use base_common_evm::BaseEvmFactory;
-use base_common_network::Base;
+use base_common_evm::UnstableEvmFactory;
+use base_common_network::Unstable;
 use base_consensus_providers::{OnlineBeaconClient, OnlineBlobProvider};
 use base_proof::HintType;
 use base_proof_client::{FaultProofProgramError, Prologue};
@@ -155,7 +155,7 @@ impl Host {
     {
         let _timer = base_metrics::timed!(Metrics::replay_duration_seconds());
         let driver =
-            Prologue::new(recording.clone(), recording, BaseEvmFactory::default()).load().await?;
+            Prologue::new(recording.clone(), recording, UnstableEvmFactory::default()).load().await?;
         let epilogue = driver.execute().await?;
         epilogue.validate().map_err(|e| *e)?;
         Ok(())
@@ -195,7 +195,7 @@ impl Host {
             self.config.prover.l1_beacon_url.clone(),
         ))
         .await;
-        let l2_provider = rpc_provider::<Base>(&self.config.prover.l2_eth_url).await?;
+        let l2_provider = rpc_provider::<Unstable>(&self.config.prover.l2_eth_url).await?;
 
         Ok(HostProviders { l1: l1_provider, blobs: blob_provider, l2: l2_provider })
     }

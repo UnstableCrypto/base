@@ -1,4 +1,4 @@
-//! Contains the shadow compressor for Base.
+//! Contains the shadow compressor for Unstable.
 //!
 //! This is a port of the reference batcher's shadow compressor.
 

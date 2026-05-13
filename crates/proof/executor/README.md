@@ -1,10 +1,10 @@
 # `base-proof-executor`
 
-A `no_std` implementation of a stateless block executor for the Base rollup, backed by [`base-proof-mpt`](../mpt)'s `TrieDB`.
+A `no_std` implementation of a stateless block executor for the Unstable rollup, backed by [`base-proof-mpt`](../mpt)'s `TrieDB`.
 
 ## Overview
 
-Executes Base L2 blocks without maintaining persistent state, using Merkle proof witnesses
+Executes Unstable L2 blocks without maintaining persistent state, using Merkle proof witnesses
 to reconstruct the necessary trie nodes on demand. `StatelessL2Builder` takes payload attributes
 and a `TrieDB` instance, executes transactions via revm, and returns a `BlockBuildingOutcome`
 containing the sealed header, receipts, and verified state root.

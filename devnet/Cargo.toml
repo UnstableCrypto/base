@@ -1,6 +1,6 @@
 [package]
 name = "devnet"
-description = "System/E2E tests for Base node infrastructure"
+description = "System/E2E tests for Unstable node infrastructure"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

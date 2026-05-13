@@ -3,7 +3,7 @@
 use alloy_network::Network;
 use alloy_primitives::{Address, U256};
 use alloy_provider::{Provider, RootProvider};
-use base_common_network::Base;
+use base_common_network::Unstable;
 use base_consensus_rpc::SyncStatusApiClient;
 use base_protocol::SyncStatus;
 use eyre::{Result, WrapErr};
@@ -13,8 +13,8 @@ use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 #[derive(Debug)]
 pub struct DevnetRpcClient {
     l1_provider: RootProvider,
-    l2_builder_provider: RootProvider<Base>,
-    l2_client_provider: RootProvider<Base>,
+    l2_builder_provider: RootProvider<Unstable>,
+    l2_client_provider: RootProvider<Unstable>,
     l2_builder_consensus_client: HttpClient,
     l2_client_consensus_client: HttpClient,
 }

@@ -9,10 +9,10 @@ use alloy_primitives::{Address, B256, Bytes, Signature, TxKind, U256};
 use alloy_rpc_types_engine::{CancunPayloadFields, PraguePayloadFields};
 use alloy_signer::SignerSync;
 use alloy_signer_local::PrivateKeySigner;
-use base_common_consensus::{BaseBlock, BaseTxEnvelope};
+use base_common_consensus::{UnstableBlock, UnstableTxEnvelope};
 use base_common_genesis::RollupConfig;
 use base_common_rpc_types_engine::{
-    BaseExecutionPayload, BaseExecutionPayloadEnvelope, BaseExecutionPayloadSidecar,
+    UnstableExecutionPayload, UnstableExecutionPayloadEnvelope, UnstableExecutionPayloadSidecar,
     NetworkPayloadEnvelope, PayloadHash,
 };
 use base_consensus_derive::{AttributesBuilder, StatefulAttributesBuilder};
@@ -71,13 +71,13 @@ impl TestAccount {
     pub fn sign_tx(
         &mut self,
         tx: alloy_consensus::TxEip1559,
-    ) -> Result<BaseTxEnvelope, alloy_signer::Error> {
+    ) -> Result<UnstableTxEnvelope, alloy_signer::Error> {
         let sig = self.signer.sign_hash_sync(&tx.signature_hash())?;
-        Ok(BaseTxEnvelope::Eip1559(tx.into_signed(sig)))
+        Ok(UnstableTxEnvelope::Eip1559(tx.into_signed(sig)))
     }
 
     /// Creates and signs a minimal EIP-1559 transfer, auto-incrementing the nonce.
-    pub fn create_eip1559_tx(&mut self, chain_id: u64) -> BaseTxEnvelope {
+    pub fn create_eip1559_tx(&mut self, chain_id: u64) -> UnstableTxEnvelope {
         self.create_tx(chain_id, TxKind::Call(Address::ZERO), Bytes::new(), U256::from(1), 21_000)
     }
 
@@ -92,7 +92,7 @@ impl TestAccount {
         input: Bytes,
         value: U256,
         gas_limit: u64,
-    ) -> BaseTxEnvelope {
+    ) -> UnstableTxEnvelope {
         let tx = alloy_consensus::TxEip1559 {
             chain_id,
             nonce: self.nonce,
@@ -109,7 +109,7 @@ impl TestAccount {
             .sign_hash_sync(&tx.signature_hash())
             .expect("test account signing must not fail");
         self.nonce += 1;
-        BaseTxEnvelope::Eip1559(tx.into_signed(sig))
+        UnstableTxEnvelope::Eip1559(tx.into_signed(sig))
     }
 
     /// Return the current nonce.
@@ -153,13 +153,13 @@ pub enum L2SequencerError {
     NotLeader,
 }
 
-/// A pre-built queue of [`BaseBlock`]s for the batcher to drain.
+/// A pre-built queue of [`UnstableBlock`]s for the batcher to drain.
 ///
 /// Tests push fully-formed blocks into the source, which the batcher
 /// consumes one at a time via [`L2BlockProvider::next_block`].
 #[derive(Debug, Default)]
 pub struct ActionL2Source {
-    blocks: VecDeque<BaseBlock>,
+    blocks: VecDeque<UnstableBlock>,
 }
 
 impl ActionL2Source {
@@ -169,14 +169,14 @@ impl ActionL2Source {
     }
 
     /// Create a source containing the supplied blocks in iteration order.
-    pub fn from_blocks(blocks: impl IntoIterator<Item = BaseBlock>) -> Self {
+    pub fn from_blocks(blocks: impl IntoIterator<Item = UnstableBlock>) -> Self {
         let mut source = Self::new();
         source.extend(blocks);
         source
     }
 
     /// Push a block to the back of the queue.
-    pub fn push(&mut self, block: BaseBlock) {
+    pub fn push(&mut self, block: UnstableBlock) {
         self.blocks.push_back(block);
     }
 
@@ -191,20 +191,20 @@ impl ActionL2Source {
     }
 }
 
-impl Extend<BaseBlock> for ActionL2Source {
-    fn extend<T: IntoIterator<Item = BaseBlock>>(&mut self, iter: T) {
+impl Extend<UnstableBlock> for ActionL2Source {
+    fn extend<T: IntoIterator<Item = UnstableBlock>>(&mut self, iter: T) {
         self.blocks.extend(iter);
     }
 }
 
-impl FromIterator<BaseBlock> for ActionL2Source {
-    fn from_iter<T: IntoIterator<Item = BaseBlock>>(iter: T) -> Self {
+impl FromIterator<UnstableBlock> for ActionL2Source {
+    fn from_iter<T: IntoIterator<Item = UnstableBlock>>(iter: T) -> Self {
         Self::from_blocks(iter)
     }
 }
 
 impl L2BlockProvider for ActionL2Source {
-    fn next_block(&mut self) -> Option<BaseBlock> {
+    fn next_block(&mut self) -> Option<UnstableBlock> {
         self.blocks.pop_front()
     }
 }
@@ -270,7 +270,7 @@ impl SharedBlockHashRegistry {
     }
 }
 
-/// Builds real [`BaseBlock`]s for use in action tests using production components.
+/// Builds real [`UnstableBlock`]s for use in action tests using production components.
 ///
 /// Uses:
 /// - [`L1OriginSelector`] for epoch selection (same as the production sequencer)
@@ -476,16 +476,16 @@ impl L2Sequencer {
     ///
     /// [`set_supervised_p2p`]: L2Sequencer::set_supervised_p2p
     /// [`set_unsafe_block_signer`]: L2Sequencer::set_unsafe_block_signer
-    pub fn broadcast_unsafe_block(&self, block: &BaseBlock) {
+    pub fn broadcast_unsafe_block(&self, block: &UnstableBlock) {
         let Some(p2p) = &self.supervised_p2p else { return };
         let block_hash = block.header.hash_slow();
-        let (execution_payload, _) = BaseExecutionPayload::from_block_unchecked(block_hash, block);
+        let (execution_payload, _) = UnstableExecutionPayload::from_block_unchecked(block_hash, block);
         let parent_beacon_block_root = block.header.parent_beacon_block_root;
 
         let (signature, payload_hash) = self.unsafe_block_signer.as_ref().map_or_else(
             || (Signature::new(U256::ZERO, U256::ZERO, false), PayloadHash(B256::ZERO)),
             |signer| {
-                let envelope = BaseExecutionPayloadEnvelope {
+                let envelope = UnstableExecutionPayloadEnvelope {
                     execution_payload: execution_payload.clone(),
                     parent_beacon_block_root,
                 };
@@ -511,12 +511,12 @@ impl L2Sequencer {
     /// # Panics
     ///
     /// Panics if the block cannot be built (e.g. missing L1 block data).
-    pub async fn build_empty_block(&mut self) -> BaseBlock {
+    pub async fn build_empty_block(&mut self) -> UnstableBlock {
         self.build_next_block_with_transactions(vec![]).await
     }
 
     /// Build the next L2 block with a single transaction.
-    pub async fn build_next_block_with_single_transaction(&mut self) -> BaseBlock {
+    pub async fn build_next_block_with_single_transaction(&mut self) -> UnstableBlock {
         let tx = {
             let mut account = self.test_account.lock().expect("test account lock poisoned");
             account.create_eip1559_tx(self.rollup_config.l2_chain_id.id())
@@ -528,7 +528,7 @@ impl L2Sequencer {
     pub async fn build_next_blocks_with_single_transactions(
         &mut self,
         count: u64,
-    ) -> Vec<BaseBlock> {
+    ) -> Vec<UnstableBlock> {
         let mut blocks = Vec::with_capacity(count as usize);
         for _ in 0..count {
             blocks.push(self.build_next_block_with_single_transaction().await);
@@ -538,7 +538,7 @@ impl L2Sequencer {
 
     /// Build the next L2 block and advance the internal head.
     ///
-    /// Returns a fully-formed [`BaseBlock`] containing the L1-info deposit and
+    /// Returns a fully-formed [`UnstableBlock`] containing the L1-info deposit and
     /// any provided user transactions, built by the production engine.
     ///
     /// # Panics
@@ -550,8 +550,8 @@ impl L2Sequencer {
     /// [`try_build_next_block_with_transactions`]: L2Sequencer::try_build_next_block_with_transactions
     pub async fn build_next_block_with_transactions(
         &mut self,
-        transactions: Vec<BaseTxEnvelope>,
-    ) -> BaseBlock {
+        transactions: Vec<UnstableTxEnvelope>,
+    ) -> UnstableBlock {
         self.try_build_next_block_with_transactions(transactions)
             .await
             .unwrap_or_else(|e| panic!("L2Sequencer::build_next_block failed: {e}"))
@@ -565,8 +565,8 @@ impl L2Sequencer {
     /// [`build_next_block_with_transactions`]: L2Sequencer::build_next_block_with_transactions
     pub async fn try_build_next_block_with_transactions(
         &mut self,
-        user_txs: Vec<BaseTxEnvelope>,
-    ) -> Result<BaseBlock, L2SequencerError> {
+        user_txs: Vec<UnstableTxEnvelope>,
+    ) -> Result<UnstableBlock, L2SequencerError> {
         // 0. Conductor leadership check: refuse to build if this node is not the leader.
         if let Some(conductor) = &self.conductor {
             let is_leader = conductor.leader().await?;
@@ -639,7 +639,7 @@ impl L2Sequencer {
             .await
             .map_err(|e| L2SequencerError::Engine(format!("insert: {e}")))?;
 
-        // 7. Convert BaseExecutionPayload to BaseBlock.
+        // 7. Convert UnstableExecutionPayload to UnstableBlock.
         // Use try_into_block_with_sidecar so PBBR and requests_hash are restored on the
         // returned header. try_into_block() omits these fields, making hash_slow() return a
         // different value than the sealed block hash. BatchEncoder::add_block tracks self.tip
@@ -653,21 +653,21 @@ impl L2Sequencer {
         let block_hash = envelope.execution_payload.as_v1().block_hash;
         let pbbr = envelope.parent_beacon_block_root;
         let sidecar = match &envelope.execution_payload {
-            BaseExecutionPayload::V4(_) => BaseExecutionPayloadSidecar::v4(
+            UnstableExecutionPayload::V4(_) => UnstableExecutionPayloadSidecar::v4(
                 CancunPayloadFields {
                     parent_beacon_block_root: pbbr.unwrap_or_default(),
                     versioned_hashes: vec![],
                 },
                 PraguePayloadFields::new(EMPTY_REQUESTS_HASH),
             ),
-            _ => pbbr.map_or_else(BaseExecutionPayloadSidecar::default, |pbbr| {
-                BaseExecutionPayloadSidecar::v3(CancunPayloadFields {
+            _ => pbbr.map_or_else(UnstableExecutionPayloadSidecar::default, |pbbr| {
+                UnstableExecutionPayloadSidecar::v3(CancunPayloadFields {
                     parent_beacon_block_root: pbbr,
                     versioned_hashes: vec![],
                 })
             }),
         };
-        let block: BaseBlock = envelope
+        let block: UnstableBlock = envelope
             .execution_payload
             .try_into_block_with_sidecar(&sidecar)
             .map_err(|e| L2SequencerError::PayloadConversion(format!("{e}")))?;

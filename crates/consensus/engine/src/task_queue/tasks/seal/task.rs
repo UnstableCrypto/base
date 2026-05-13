@@ -4,7 +4,7 @@ use std::{sync::Arc, time::Instant};
 use alloy_rpc_types_engine::{ExecutionPayload, PayloadId};
 use async_trait::async_trait;
 use base_common_genesis::RollupConfig;
-use base_common_rpc_types_engine::{BaseExecutionPayload, BaseExecutionPayloadEnvelope};
+use base_common_rpc_types_engine::{UnstableExecutionPayload, UnstableExecutionPayloadEnvelope};
 use base_protocol::{AttributesWithParent, L2BlockInfo};
 use derive_more::Constructor;
 use tokio::sync::mpsc;
@@ -43,9 +43,9 @@ pub struct SealTask<EngineClient_: EngineClient> {
     /// Whether the sealed payload should advance the safe head.
     pub payload_safety: InsertPayloadSafety,
     /// An optional sender to convey success/failure result of the built
-    /// [`BaseExecutionPayloadEnvelope`] after the block has been built, imported, and canonicalized
+    /// [`UnstableExecutionPayloadEnvelope`] after the block has been built, imported, and canonicalized
     /// or the [`SealTaskError`] that occurred during processing.
-    pub result_tx: Option<mpsc::Sender<Result<BaseExecutionPayloadEnvelope, SealTaskError>>>,
+    pub result_tx: Option<mpsc::Sender<Result<UnstableExecutionPayloadEnvelope, SealTaskError>>>,
 }
 
 impl<EngineClient_: EngineClient> SealTask<EngineClient_> {
@@ -57,15 +57,15 @@ impl<EngineClient_: EngineClient> SealTask<EngineClient_> {
     ///
     /// - `engine_getPayloadV2` is used for payloads with a timestamp before the Ecotone fork.
     /// - `engine_getPayloadV3` is used for payloads with a timestamp after the Ecotone fork.
-    /// - `engine_getPayloadV4` is used for Isthmus/Jovian payloads before Base Azul.
-    /// - `engine_getPayloadV5` is used for Base Azul / Osaka payloads.
+    /// - `engine_getPayloadV4` is used for Isthmus/Jovian payloads before Unstable Azul.
+    /// - `engine_getPayloadV5` is used for Unstable Azul / Osaka payloads.
     async fn seal_payload(
         &self,
         cfg: &RollupConfig,
         engine: &EngineClient_,
         payload_id: PayloadId,
         payload_attrs: AttributesWithParent,
-    ) -> Result<BaseExecutionPayloadEnvelope, SealTaskError> {
+    ) -> Result<UnstableExecutionPayloadEnvelope, SealTaskError> {
         let payload_timestamp = payload_attrs.attributes().payload_attributes.timestamp;
 
         debug!(
@@ -85,12 +85,12 @@ impl<EngineClient_: EngineClient> SealTask<EngineClient_> {
 
                 // V5 drops parent_beacon_block_root from the get_payload response; source it
                 // from the attributes instead so InsertTask can still pass it to new_payload.
-                BaseExecutionPayloadEnvelope {
+                UnstableExecutionPayloadEnvelope {
                     parent_beacon_block_root: payload_attrs
                         .attributes()
                         .payload_attributes
                         .parent_beacon_block_root,
-                    execution_payload: BaseExecutionPayload::V4(payload.execution_payload),
+                    execution_payload: UnstableExecutionPayload::V4(payload.execution_payload),
                 }
             }
             EngineGetPayloadVersion::V4 => {
@@ -99,9 +99,9 @@ impl<EngineClient_: EngineClient> SealTask<EngineClient_> {
                     SealTaskError::GetPayloadFailed(e)
                 })?;
 
-                BaseExecutionPayloadEnvelope {
+                UnstableExecutionPayloadEnvelope {
                     parent_beacon_block_root: Some(payload.parent_beacon_block_root),
-                    execution_payload: BaseExecutionPayload::V4(payload.execution_payload),
+                    execution_payload: UnstableExecutionPayload::V4(payload.execution_payload),
                 }
             }
             EngineGetPayloadVersion::V3 => {
@@ -110,9 +110,9 @@ impl<EngineClient_: EngineClient> SealTask<EngineClient_> {
                     SealTaskError::GetPayloadFailed(e)
                 })?;
 
-                BaseExecutionPayloadEnvelope {
+                UnstableExecutionPayloadEnvelope {
                     parent_beacon_block_root: Some(payload.parent_beacon_block_root),
-                    execution_payload: BaseExecutionPayload::V3(payload.execution_payload),
+                    execution_payload: UnstableExecutionPayload::V3(payload.execution_payload),
                 }
             }
             EngineGetPayloadVersion::V2 => {
@@ -121,11 +121,11 @@ impl<EngineClient_: EngineClient> SealTask<EngineClient_> {
                     SealTaskError::GetPayloadFailed(e)
                 })?;
 
-                BaseExecutionPayloadEnvelope {
+                UnstableExecutionPayloadEnvelope {
                     parent_beacon_block_root: None,
                     execution_payload: match payload.execution_payload.into_payload() {
-                        ExecutionPayload::V1(payload) => BaseExecutionPayload::V1(payload),
-                        ExecutionPayload::V2(payload) => BaseExecutionPayload::V2(payload),
+                        ExecutionPayload::V1(payload) => UnstableExecutionPayload::V1(payload),
+                        ExecutionPayload::V2(payload) => UnstableExecutionPayload::V2(payload),
                         _ => unreachable!("the response should be a V1 or V2 payload"),
                     },
                 }
@@ -146,7 +146,7 @@ impl<EngineClient_: EngineClient> SealTask<EngineClient_> {
     async fn insert_payload(
         &self,
         state: &mut EngineState,
-        new_payload: BaseExecutionPayloadEnvelope,
+        new_payload: UnstableExecutionPayloadEnvelope,
     ) -> Result<(), SealTaskError> {
         // Insert the new block into the engine.
         match InsertTask::new(
@@ -221,7 +221,7 @@ impl<EngineClient_: EngineClient> SealTask<EngineClient_> {
     async fn seal_and_canonicalize_block(
         &self,
         state: &mut EngineState,
-    ) -> Result<BaseExecutionPayloadEnvelope, SealTaskError> {
+    ) -> Result<UnstableExecutionPayloadEnvelope, SealTaskError> {
         // Fetch the payload just inserted from the EL and import it into the engine.
         let block_import_start_time = Instant::now();
         let new_payload = self
@@ -261,7 +261,7 @@ impl<EngineClient_: EngineClient> SealTask<EngineClient_> {
     /// the task queue logic.
     async fn send_channel_result_or_get_error(
         &self,
-        res: Result<BaseExecutionPayloadEnvelope, SealTaskError>,
+        res: Result<UnstableExecutionPayloadEnvelope, SealTaskError>,
     ) -> Result<(), SealTaskError> {
         // NB: If a response channel was provided, that channel will receive success/failure info,
         // and this task will always succeed. If not, task failure will be relayed to the caller.

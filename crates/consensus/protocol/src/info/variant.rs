@@ -13,9 +13,9 @@ use base_common_genesis::{RollupConfig, SystemConfig};
 use crate::{
     BlockInfoError, DecodeError, L1BlockInfoBedrock, L1BlockInfoEcotone, L1BlockInfoIsthmus,
     info::{
-        L1BlockInfoBedrockBaseFields, L1BlockInfoEcotoneBaseFields as _, L1BlockInfoJovian,
+        L1BlockInfoBedrockUnstableFields, L1BlockInfoEcotoneUnstableFields as _, L1BlockInfoJovian,
         bedrock::L1BlockInfoBedrockOnlyFields as _, ecotone::L1BlockInfoEcotoneOnlyFields as _,
-        isthmus::L1BlockInfoIsthmusBaseFields as _,
+        isthmus::L1BlockInfoIsthmusUnstableFields as _,
     },
 };
 
@@ -23,7 +23,7 @@ use crate::{
 const REGOLITH_SYSTEM_TX_GAS: u64 = 1_000_000;
 
 /// The [`L1BlockInfoTx`] enum contains variants for the different versions of the L1 block info
-/// transaction on Base.
+/// transaction on Unstable.
 ///
 /// This transaction always sits at the top of the block, and alters the `L1 Block` contract's
 /// knowledge of the L1 chain.
@@ -74,13 +74,13 @@ impl L1BlockInfoTx {
         let blob_base_fee_scalar = (scalar[0] == L1BlockInfoEcotone::L1_SCALAR)
             .then(|| {
                 Ok::<u32, BlockInfoError>(u32::from_be_bytes(
-                    scalar[24..28].try_into().map_err(|_| BlockInfoError::L1BlobBaseFeeScalar)?,
+                    scalar[24..28].try_into().map_err(|_| BlockInfoError::L1BlobUnstableFeeScalar)?,
                 ))
             })
             .transpose()?
             .unwrap_or_default();
         let base_fee_scalar = u32::from_be_bytes(
-            scalar[28..32].try_into().map_err(|_| BlockInfoError::BaseFeeScalar)?,
+            scalar[28..32].try_into().map_err(|_| BlockInfoError::UnstableFeeScalar)?,
         );
 
         // Determine the blob fee configuration based on the timestamp.
@@ -96,7 +96,7 @@ impl L1BlockInfoTx {
                 }
                 None if l1_config
                     .prague_time.is_some_and(|time| time <= l1_header.timestamp) &&
-                    // There was an incident on the Base Sepolia chain (03-05-2025) when L1 activated pectra,
+                    // There was an incident on the Unstable Sepolia chain (03-05-2025) when L1 activated pectra,
                     // where the sequencer followed the incorrect chain, using the legacy Cancun blob fee
                     // schedule instead of the new Prague blob fee schedule. This portion of the chain was
                     // chosen to be canonicalized in favor of the prospect of a deep reorg imposed by the

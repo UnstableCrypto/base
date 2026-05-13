@@ -142,7 +142,7 @@ mod tests {
     use alloy_chains::Chain;
     use alloy_primitives::{B256, Signature};
     use alloy_rpc_types_engine::{ExecutionPayloadV2, ExecutionPayloadV3};
-    use base_common_rpc_types_engine::{BaseExecutionPayload, BaseExecutionPayloadV4, PayloadHash};
+    use base_common_rpc_types_engine::{UnstableExecutionPayload, UnstableExecutionPayloadV4, PayloadHash};
 
     use super::*;
     use crate::{v2_valid_block, v3_valid_block, v4_valid_block};
@@ -153,7 +153,7 @@ mod tests {
 
         let v2 = ExecutionPayloadV2::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V2(v2);
+        let payload = UnstableExecutionPayload::V2(v2);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -198,7 +198,7 @@ mod tests {
 
         let v2 = ExecutionPayloadV2::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V2(v2);
+        let payload = UnstableExecutionPayload::V2(v2);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -232,7 +232,7 @@ mod tests {
 
         let v2 = ExecutionPayloadV2::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V2(v2);
+        let payload = UnstableExecutionPayload::V2(v2);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -269,7 +269,7 @@ mod tests {
 
         let v3 = ExecutionPayloadV3::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V3(v3);
+        let payload = UnstableExecutionPayload::V3(v3);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -308,7 +308,7 @@ mod tests {
 
         let v2 = ExecutionPayloadV2::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V2(v2);
+        let payload = UnstableExecutionPayload::V2(v2);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -346,12 +346,12 @@ mod tests {
         let block = v4_valid_block();
 
         let v3 = ExecutionPayloadV3::from_block_slow(&block);
-        let v4 = BaseExecutionPayloadV4::from_v3_with_withdrawals_root(
+        let v4 = UnstableExecutionPayloadV4::from_v3_with_withdrawals_root(
             v3,
             block.withdrawals_root.unwrap(),
         );
 
-        let payload = BaseExecutionPayload::V4(v4);
+        let payload = UnstableExecutionPayload::V4(v4);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -388,12 +388,12 @@ mod tests {
         let block = v4_valid_block();
 
         let v3 = ExecutionPayloadV3::from_block_slow(&block);
-        let v4 = BaseExecutionPayloadV4::from_v3_with_withdrawals_root(
+        let v4 = UnstableExecutionPayloadV4::from_v3_with_withdrawals_root(
             v3,
             block.withdrawals_root.unwrap(),
         );
 
-        let payload = BaseExecutionPayload::V4(v4);
+        let payload = UnstableExecutionPayload::V4(v4);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -439,7 +439,7 @@ mod tests {
 
         let v3 = ExecutionPayloadV3::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V3(v3);
+        let payload = UnstableExecutionPayload::V3(v3);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),

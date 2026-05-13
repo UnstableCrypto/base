@@ -3,7 +3,7 @@
 ## Summary
 
 :::warning
-Only `base-consensus` and `base-reth-node` will support the Base Azul hardfork. If you are running
+Only `base-consensus` and `base-reth-node` will support the Unstable Azul hardfork. If you are running
 `op-node`, `op-geth`, or any other clients, you will need to update them prior to the activation
 date.
 :::
@@ -11,7 +11,7 @@ date.
 - Add Osaka Support
 - Simplify Flashblocks Websocket Format
 - Enable a new multi-proof system for faster withdrawals and a path to stronger decentralization
-- Only Base Node Reth / Base Consensus will be supported
+- Only Unstable Node Reth / Unstable Consensus will be supported
 
 ## Activation Timestamps
 

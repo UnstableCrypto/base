@@ -2,7 +2,7 @@
 
 ## Overview
 
-GossipSub-based P2P networking for Base consensus. `GossipDriver` manages a libp2p swarm
+GossipSub-based P2P networking for Unstable consensus. `GossipDriver` manages a libp2p swarm
 that subscribes to unsafe block topics and propagates validated payloads. `BlockHandler`
 validates incoming blocks against the rollup config, `ConnectionGater` enforces IP-based rate
 limits and peer bans, and Prometheus metrics are recorded via `Metrics`.

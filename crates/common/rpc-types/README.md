@@ -1,14 +1,14 @@
 # `base-common-rpc-types`
 
-Base chain RPC types.
+Unstable chain RPC types.
 
 ## Overview
 
-Defines the JSON-RPC request and response types specific to Base chains, including genesis and
+Defines the JSON-RPC request and response types specific to Unstable chains, including genesis and
 chain info types (`GenesisInfo`, `ChainInfo`, `FeeInfo`), transaction types
-(`BaseTransactionFields`, `BaseTransactionRequest`, `Transaction`), receipt types
-(`BaseTransactionReceipt`, `TransactionReceiptFields`), and `L1BlockInfo` for fee data. These
-types are used to serialize and deserialize Base-specific RPC payloads.
+(`UnstableTransactionFields`, `UnstableTransactionRequest`, `Transaction`), receipt types
+(`UnstableTransactionReceipt`, `TransactionReceiptFields`), and `L1BlockInfo` for fee data. These
+types are used to serialize and deserialize Unstable-specific RPC payloads.
 
 ## Usage
 
@@ -20,9 +20,9 @@ base-common-rpc-types = { workspace = true }
 ```
 
 ```rust,ignore
-use base_common_rpc_types::{BaseTransactionReceipt, L1BlockInfo};
+use base_common_rpc_types::{UnstableTransactionReceipt, L1BlockInfo};
 
-let receipt: BaseTransactionReceipt = provider.get_transaction_receipt(hash).await?;
+let receipt: UnstableTransactionReceipt = provider.get_transaction_receipt(hash).await?;
 let l1_fee = receipt.l1_block_info.l1_fee;
 ```
 

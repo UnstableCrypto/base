@@ -1,7 +1,7 @@
 use alloy_consensus::{Transaction, transaction::Recovered};
 use alloy_eips::Encodable2718;
 use alloy_primitives::U256;
-use base_common_evm::{BaseSpecId, L1BlockInfo};
+use base_common_evm::{UnstableSpecId, L1BlockInfo};
 use derive_more::Display;
 use reth_primitives_traits::Account;
 
@@ -22,13 +22,13 @@ pub enum TxValidationError {
 /// - The transaction's execution cost is less than the account's balance
 /// - The transaction's L1 gas cost is less than the account's balance
 ///
-/// Note: We don't need to check for EIP-4844 because bundle transactions are Recovered<BaseTxEnvelope>
+/// Note: We don't need to check for EIP-4844 because bundle transactions are Recovered<UnstableTxEnvelope>
 /// which only includes Legacy, Eip2930, Eip1559, Eip7702, and Deposit.
 pub fn validate_tx<T: Transaction + Encodable2718>(
     account: Account,
     txn: &Recovered<T>,
     l1_block_info: &mut L1BlockInfo,
-    spec: BaseSpecId,
+    spec: UnstableSpecId,
 ) -> Result<(), TxValidationError> {
     let data = txn.encoded_2718();
 
@@ -41,7 +41,7 @@ pub fn validate_tx<T: Transaction + Encodable2718>(
         return Err(TxValidationError::InsufficientFundsForTransfer(txn_cost, account.balance));
     }
 
-    // Base-specific checks to see whether the sender can cover the L1 gas cost.
+    // Unstable-specific checks to see whether the sender can cover the L1 gas cost.
     // Reference: https://github.com/paradigmxyz/reth/blob/6aa73f14808491aae77fc7c6eb4f0aa63bef7e6e/crates/optimism/txpool/src/validator.rs#L219
     let l1_cost_addition = l1_block_info.calculate_tx_l1_cost(&data, spec);
     let l1_cost = txn_cost.saturating_add(l1_cost_addition);
@@ -59,9 +59,9 @@ mod tests {
     };
     use alloy_network::TxSignerSync;
     use alloy_primitives::{Address, U256, bytes};
-    use base_common_consensus::BaseTxEnvelope;
-    use base_common_evm::BaseUpgrade;
-    use base_test_utils::Account as BaseAccount;
+    use base_common_consensus::UnstableTxEnvelope;
+    use base_common_evm::UnstableUpgrade;
+    use base_test_utils::Account as UnstableAccount;
 
     use super::*;
 
@@ -73,13 +73,13 @@ mod tests {
         L1BlockInfo::default()
     }
 
-    fn test_spec() -> BaseSpecId {
-        BaseSpecId::new(BaseUpgrade::LATEST)
+    fn test_spec() -> UnstableSpecId {
+        UnstableSpecId::new(UnstableUpgrade::LATEST)
     }
 
     #[test]
     fn test_err_tx_insufficient_funds() {
-        let signer = BaseAccount::Alice.signer();
+        let signer = UnstableAccount::Alice.signer();
         let mut tx = TxEip1559 {
             chain_id: 1,
             nonce: 0,
@@ -100,7 +100,7 @@ mod tests {
         let txn_cost = tx.value().saturating_add(U256::from(max_fee));
 
         let signature = signer.sign_transaction_sync(&mut tx).unwrap();
-        let envelope = BaseTxEnvelope::Eip1559(tx.into_signed(signature));
+        let envelope = UnstableTxEnvelope::Eip1559(tx.into_signed(signature));
         let recovered_tx = envelope.try_into_recovered().unwrap();
         assert_eq!(
             validate_tx(account, &recovered_tx, &mut l1_block_info, test_spec()),
@@ -110,7 +110,7 @@ mod tests {
 
     #[test]
     fn test_err_tx_insufficient_funds_for_l1_gas() {
-        let signer = BaseAccount::Alice.signer();
+        let signer = UnstableAccount::Alice.signer();
         let mut tx = TxEip1559 {
             chain_id: 1,
             nonce: 0,
@@ -135,7 +135,7 @@ mod tests {
         let l1_cost = txn_cost.saturating_add(l1_cost_addition);
 
         let signature = signer.sign_transaction_sync(&mut tx).unwrap();
-        let envelope = BaseTxEnvelope::Eip1559(tx.into_signed(signature));
+        let envelope = UnstableTxEnvelope::Eip1559(tx.into_signed(signature));
         let recovered_tx = envelope.try_into_recovered().unwrap();
 
         assert_eq!(
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn test_valid_tx() {
-        let signer = BaseAccount::Alice.signer();
+        let signer = UnstableAccount::Alice.signer();
         let mut tx = TxEip1559 {
             chain_id: 1,
             nonce: 0,
@@ -164,7 +164,7 @@ mod tests {
         let mut l1_block_info = create_l1_block_info();
 
         let signature = signer.sign_transaction_sync(&mut tx).unwrap();
-        let envelope = BaseTxEnvelope::Eip1559(tx.into_signed(signature));
+        let envelope = UnstableTxEnvelope::Eip1559(tx.into_signed(signature));
         let recovered_tx = envelope.try_into_recovered().unwrap();
 
         assert_eq!(validate_tx(account, &recovered_tx, &mut l1_block_info, test_spec()), Ok(()));

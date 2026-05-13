@@ -1,8 +1,8 @@
 //! Trait for customizing the payload service used by the node.
 
 use base_node_core::{
-    BaseConsensusBuilder, BaseExecutorBuilder, BaseNetworkBuilder,
-    node::{BasePayloadBuilder, BasePoolBuilder},
+    UnstableConsensusBuilder, UnstableExecutorBuilder, UnstableNetworkBuilder,
+    node::{UnstablePayloadBuilder, UnstablePoolBuilder},
 };
 use reth_node_builder::{
     NodeComponentsBuilder,
@@ -10,43 +10,43 @@ use reth_node_builder::{
 };
 
 use crate::{
-    node::BaseNode,
-    types::{BaseComponentsBuilder, BaseNodeTypes},
+    node::UnstableNode,
+    types::{UnstableComponentsBuilder, UnstableNodeTypes},
 };
 
 /// Trait for customizing the payload service used by the node.
 ///
 /// Implementors provide a custom [`NodeComponentsBuilder`] that wires in their
-/// payload service. The default implementation uses reth's standard Base payload builder.
+/// payload service. The default implementation uses reth's standard Unstable payload builder.
 ///
 /// The produced components must have the same concrete `Components` type as the default
 /// so that hooks (RPC, `ExEx`, node-started) remain type-compatible.
 pub trait PayloadServiceBuilder: Send + 'static {
     /// The component builder type this produces.
     type ComponentsBuilder: NodeComponentsBuilder<
-            BaseNodeTypes,
-            Components = <BaseComponentsBuilder as NodeComponentsBuilder<BaseNodeTypes>>::Components,
+            UnstableNodeTypes,
+            Components = <UnstableComponentsBuilder as NodeComponentsBuilder<UnstableNodeTypes>>::Components,
         >;
 
-    /// Build components using the given [`BaseNode`] configuration.
-    fn build_components(self, base_node: &BaseNode) -> Self::ComponentsBuilder;
+    /// Build components using the given [`UnstableNode`] configuration.
+    fn build_components(self, base_node: &UnstableNode) -> Self::ComponentsBuilder;
 }
 
-/// Default payload service using the standard Base payload builder.
+/// Default payload service using the standard Unstable payload builder.
 #[derive(Debug, Default)]
 pub struct DefaultPayloadServiceBuilder;
 
 impl PayloadServiceBuilder for DefaultPayloadServiceBuilder {
     type ComponentsBuilder = ComponentsBuilder<
-        BaseNodeTypes,
-        BasePoolBuilder,
-        BasicPayloadServiceBuilder<BasePayloadBuilder>,
-        BaseNetworkBuilder,
-        BaseExecutorBuilder,
-        BaseConsensusBuilder,
+        UnstableNodeTypes,
+        UnstablePoolBuilder,
+        BasicPayloadServiceBuilder<UnstablePayloadBuilder>,
+        UnstableNetworkBuilder,
+        UnstableExecutorBuilder,
+        UnstableConsensusBuilder,
     >;
 
-    fn build_components(self, base_node: &BaseNode) -> Self::ComponentsBuilder {
+    fn build_components(self, base_node: &UnstableNode) -> Self::ComponentsBuilder {
         base_node.components()
     }
 }

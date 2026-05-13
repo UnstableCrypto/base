@@ -1,6 +1,6 @@
 use alloy_eips::Decodable2718;
 use alloy_primitives::{Bytes, TxHash};
-use base_common_consensus::BaseTransactionSigned;
+use base_common_consensus::UnstableTransactionSigned;
 use jsonrpsee::{
     core::RpcResult,
     proc_macros::rpc,
@@ -12,7 +12,7 @@ use tracing::debug;
 
 use super::metrics::Metrics as BundleApiMetrics;
 use crate::{
-    BasePooledTransaction, PoolRejectionLabel,
+    UnstablePooledTransaction, PoolRejectionLabel,
     transaction::{MAX_BUNDLE_ADVANCE_BLOCKS, MAX_BUNDLE_ADVANCE_MILLIS},
 };
 
@@ -173,7 +173,7 @@ fn validate_bundle_request(
 #[async_trait::async_trait]
 impl<P> SendBundleApiServer for SendBundleApiImpl<P>
 where
-    P: TransactionPool<Transaction = BasePooledTransaction> + Send + Sync + 'static,
+    P: TransactionPool<Transaction = UnstablePooledTransaction> + Send + Sync + 'static,
 {
     async fn send_bundle(&self, bundle: SendBundleRequest) -> RpcResult<TxHash> {
         if !self.enabled {
@@ -185,7 +185,7 @@ where
         validate_bundle_request(&bundle, current_block)?;
 
         let raw = &bundle.txs[0];
-        let consensus_tx = BaseTransactionSigned::decode_2718(&mut raw.as_ref()).map_err(|e| {
+        let consensus_tx = UnstableTransactionSigned::decode_2718(&mut raw.as_ref()).map_err(|e| {
             BundleApiMetrics::decode_errors().increment(1);
             rpc_err(ErrorCode::InvalidParams, format!("failed to decode transaction: {e:?}"))
         })?;
@@ -198,7 +198,7 @@ where
         let tx_hash = TxHash::from(*recovered.tx_hash());
         let encoded_len = raw.len();
 
-        let pool_tx = BasePooledTransaction::new(recovered, encoded_len).with_bundle_metadata(
+        let pool_tx = UnstablePooledTransaction::new(recovered, encoded_len).with_bundle_metadata(
             bundle.block_number,
             bundle.min_timestamp,
             bundle.max_timestamp,
@@ -230,9 +230,9 @@ mod tests {
 
     fn handler(
         current_block: u64,
-    ) -> SendBundleApiImpl<NoopTransactionPool<BasePooledTransaction>> {
+    ) -> SendBundleApiImpl<NoopTransactionPool<UnstablePooledTransaction>> {
         SendBundleApiImpl::new(
-            NoopTransactionPool::<BasePooledTransaction>::new(),
+            NoopTransactionPool::<UnstablePooledTransaction>::new(),
             true,
             std::sync::Arc::new(std::sync::atomic::AtomicU64::new(current_block)),
         )

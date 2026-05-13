@@ -7,7 +7,7 @@ use brotli::enc::{BrotliCompress, BrotliEncoderParams};
 
 use crate::{ChannelCompressor, CompressorError, CompressorResult, CompressorWriter};
 
-/// The brotli encoding level used in Base.
+/// The brotli encoding level used in Unstable.
 ///
 /// See: <https://github.com/ethereum-optimism/optimism/blob/develop/op-node/rollup/derive/types.go#L50>
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,7 +99,7 @@ impl BrotliCompressor {
     /// Compresses the given bytes data using the Brotli compressor implemented
     /// in the [`brotli`](https://crates.io/crates/brotli) crate.
     ///
-    /// Note: The level must be between 0 and 11. In Base, the levels 9, 10, and 11 are used.
+    /// Note: The level must be between 0 and 11. In Unstable, the levels 9, 10, and 11 are used.
     ///       By default, [`BrotliLevel::Brotli10`] is used.
     pub fn compress(
         mut input: &[u8],

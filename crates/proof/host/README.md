@@ -1,6 +1,6 @@
 # `base-proof-host`
 
-Generic host-side infrastructure for the Base fault proof host.
+Generic host-side infrastructure for the Unstable fault proof host.
 
 ## Overview
 

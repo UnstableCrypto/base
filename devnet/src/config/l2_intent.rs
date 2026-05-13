@@ -39,7 +39,7 @@ l2ContractsLocator = "embedded"
   operatorFeeScalar = 0
   operatorFeeConstant = 0
   chainFeesRecipient = "{deployer}"
-  minBaseFee = 1000000000
+  minUnstableFee = 1000000000
   daFootprintGasScalar = 0
   [chains.roles]
     l1ProxyAdminOwner = "{deployer}"

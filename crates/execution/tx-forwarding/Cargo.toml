@@ -1,6 +1,6 @@
 [package]
 name = "base-tx-forwarding"
-description = "Transaction forwarding extension for Base node"
+description = "Transaction forwarding extension for Unstable node"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

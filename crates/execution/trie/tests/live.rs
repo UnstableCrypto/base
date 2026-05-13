@@ -6,7 +6,7 @@ use alloy_consensus::{BlockHeader, Header, TxEip2930, constants::ETH_TO_WEI};
 use alloy_genesis::{Genesis, GenesisAccount};
 use alloy_primitives::{Address, B256, TxKind, U256, keccak256};
 use base_execution_trie::{
-    BaseProofsStorage, BaseProofsStorageError, MdbxProofsStorage, initialize::InitializationJob,
+    UnstableProofsStorage, UnstableProofsStorageError, MdbxProofsStorage, initialize::InitializationJob,
     live::LiveTrieCollector,
 };
 use derive_more::Constructor;
@@ -220,7 +220,7 @@ fn run_test_scenario<N>(
     provider_factory: ProviderFactory<N>,
     chain_spec: Arc<ChainSpec>,
     key_pair: Keypair,
-    storage: BaseProofsStorage<Arc<MdbxProofsStorage>>,
+    storage: UnstableProofsStorage<Arc<MdbxProofsStorage>>,
 ) -> eyre::Result<()>
 where
     N: ProviderNodeTypes<
@@ -331,7 +331,7 @@ fn test_execute_and_store_block_updates() {
 #[test]
 fn test_execute_and_store_block_updates_missing_parent_block() {
     let dir = TempDir::new().unwrap();
-    let storage: BaseProofsStorage<Arc<MdbxProofsStorage>> =
+    let storage: UnstableProofsStorage<Arc<MdbxProofsStorage>> =
         Arc::new(MdbxProofsStorage::new(dir.path()).expect("env")).into();
 
     let secp = Secp256k1::new();
@@ -379,13 +379,13 @@ fn test_execute_and_store_block_updates_missing_parent_block() {
     // EXPECT: MissingParentBlock
     let err = collector.execute_and_store_block_updates(&incorrect_block).unwrap_err();
 
-    assert!(matches!(err, BaseProofsStorageError::MissingParentBlock { .. }));
+    assert!(matches!(err, UnstableProofsStorageError::MissingParentBlock { .. }));
 }
 
 #[test]
 fn test_execute_and_store_block_updates_state_root_mismatch() {
     let dir = TempDir::new().unwrap();
-    let storage: BaseProofsStorage<Arc<MdbxProofsStorage>> =
+    let storage: UnstableProofsStorage<Arc<MdbxProofsStorage>> =
         Arc::new(MdbxProofsStorage::new(dir.path()).expect("env")).into();
 
     let secp = Secp256k1::new();
@@ -443,7 +443,7 @@ fn test_execute_and_store_block_updates_state_root_mismatch() {
     // EXPECT: StateRootMismatch
     let err = collector.execute_and_store_block_updates(&block).unwrap_err();
 
-    assert!(matches!(err, BaseProofsStorageError::StateRootMismatch { .. }));
+    assert!(matches!(err, UnstableProofsStorageError::StateRootMismatch { .. }));
 }
 
 /// Test with multiple blocks before and after initialization

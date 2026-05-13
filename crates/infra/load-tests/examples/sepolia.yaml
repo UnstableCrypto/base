@@ -1,13 +1,13 @@
-# Load Test Configuration - Base Sepolia
+# Load Test Configuration - Unstable Sepolia
 #
 # Requires FUNDER_KEY environment variable with a funded private key
 
 transaction_submission_rpcs:
-  - "https://sepolia.base.org/"
+  - "https://sepolia.unstable.org/"
 # Must point at an RPC that supports eth_getBlockReceipts for confirmation tracking.
 query_rpc: "https://base-sepolia-rpc.publicnode.com"
 txpool_nodes: []
-flashblocks_ws: "wss://sepolia.flashblocks.base.org/ws"
+flashblocks_ws: "wss://sepolia.flashblocks.unstable.org/ws"
 
 sender_count: 200
 target_gps: 60000000

@@ -1,6 +1,6 @@
 # `base-health`
 
-Shared health check utilities for Base services.
+Shared health check utilities for Unstable services.
 
 ## JSON-RPC health endpoint
 

@@ -5,7 +5,7 @@ use derive_more::Deref;
 
 use crate::{BootNode, BootNodeParseError};
 
-/// Bootnodes for Base.
+/// Bootnodes for Unstable.
 #[derive(Debug, Clone, Deref, PartialEq, Eq, Default, derive_more::From)]
 pub struct BootNodes(pub Vec<BootNode>);
 

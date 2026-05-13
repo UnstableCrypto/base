@@ -2,12 +2,12 @@ use alloy_consensus::TxType;
 use alloy_network::{BuildResult, TransactionBuilder, TransactionBuilderError};
 use alloy_primitives::{Address, Bytes, ChainId, TxKind, U256};
 use alloy_rpc_types_eth::AccessList;
-use base_common_consensus::{BaseTypedTransaction, OpTxType};
-use base_common_rpc_types::BaseTransactionRequest;
+use base_common_consensus::{UnstableTypedTransaction, OpTxType};
+use base_common_rpc_types::UnstableTransactionRequest;
 
-use crate::Base;
+use crate::Unstable;
 
-impl TransactionBuilder<Base> for BaseTransactionRequest {
+impl TransactionBuilder<Unstable> for UnstableTransactionRequest {
     fn chain_id(&self) -> Option<ChainId> {
         self.as_ref().chain_id()
     }
@@ -146,10 +146,10 @@ impl TransactionBuilder<Base> for BaseTransactionRequest {
         self.as_mut().prep_for_submission();
     }
 
-    fn build_unsigned(self) -> BuildResult<BaseTypedTransaction, Base> {
+    fn build_unsigned(self) -> BuildResult<UnstableTypedTransaction, Unstable> {
         if let Err((tx_type, missing)) = self.as_ref().missing_keys() {
             let tx_type = OpTxType::try_from(tx_type as u8).map_err(|e| {
-                TransactionBuilderError::<Base>::custom(e).into_unbuilt(self.clone())
+                TransactionBuilderError::<Unstable>::custom(e).into_unbuilt(self.clone())
             })?;
             return Err(TransactionBuilderError::InvalidTransactionRequest(tx_type, missing)
                 .into_unbuilt(self));
@@ -157,10 +157,10 @@ impl TransactionBuilder<Base> for BaseTransactionRequest {
         Ok(self.build_typed_tx().expect("checked by missing_keys"))
     }
 
-    async fn build<W: alloy_network::NetworkWallet<Base>>(
+    async fn build<W: alloy_network::NetworkWallet<Unstable>>(
         self,
         wallet: &W,
-    ) -> Result<<Base as alloy_network::Network>::TxEnvelope, TransactionBuilderError<Base>> {
+    ) -> Result<<Unstable as alloy_network::Network>::TxEnvelope, TransactionBuilderError<Unstable>> {
         Ok(wallet.sign_request(self).await?)
     }
 }
@@ -172,9 +172,9 @@ mod tests {
 
     use super::*;
 
-    /// Returns a minimal valid EIP-1559 [`BaseTransactionRequest`].
-    fn complete_eip1559_request() -> BaseTransactionRequest {
-        let mut req = BaseTransactionRequest::default();
+    /// Returns a minimal valid EIP-1559 [`UnstableTransactionRequest`].
+    fn complete_eip1559_request() -> UnstableTransactionRequest {
+        let mut req = UnstableTransactionRequest::default();
         req.set_nonce(0);
         req.set_gas_limit(21_000);
         req.set_max_fee_per_gas(1);
@@ -190,14 +190,14 @@ mod tests {
     #[case::eip1559(OpTxType::Eip1559)]
     #[case::eip7702(OpTxType::Eip7702)]
     fn complete_type_delegates_for_eth_types(#[case] ty: OpTxType) {
-        let req = BaseTransactionRequest::default();
+        let req = UnstableTransactionRequest::default();
         // Should not panic — returns Ok or missing-fields Err from the inner request.
         let _ = req.complete_type(ty);
     }
 
     #[test]
     fn complete_type_rejects_deposit() {
-        let req = BaseTransactionRequest::default();
+        let req = UnstableTransactionRequest::default();
         let err = req.complete_type(OpTxType::Deposit).unwrap_err();
         assert_eq!(err, vec!["not implemented for deposit tx"]);
     }
@@ -206,12 +206,12 @@ mod tests {
     fn build_unsigned_succeeds_with_complete_request() {
         let req = complete_eip1559_request();
         let tx = req.build_unsigned().unwrap();
-        assert!(matches!(tx, BaseTypedTransaction::Eip1559(_)));
+        assert!(matches!(tx, UnstableTypedTransaction::Eip1559(_)));
     }
 
     #[test]
     fn build_unsigned_returns_missing_keys_error() {
-        let req = BaseTransactionRequest::default();
+        let req = UnstableTransactionRequest::default();
         let err = req.build_unsigned().unwrap_err();
         assert!(matches!(
             err.error,
@@ -223,7 +223,7 @@ mod tests {
     fn build_unsigned_returns_custom_error_for_unmappable_tx_type() {
         // Force preferred_type() to return TxType::Eip4844 (u8 = 3), which has
         // no corresponding OpTxType variant.
-        let mut req = BaseTransactionRequest::default();
+        let mut req = UnstableTransactionRequest::default();
         req.as_mut().blob_versioned_hashes = Some(vec![B256::ZERO]);
         let err = req.build_unsigned().unwrap_err();
         assert!(matches!(err.error, TransactionBuilderError::Custom(_)));

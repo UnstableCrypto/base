@@ -47,7 +47,7 @@ impl TrieHinter for NoopTrieHinter {
     fn hint_execution_witness(
         &self,
         _parent_hash: B256,
-        _base_payload_attributes: &base_common_rpc_types_engine::BasePayloadAttributes,
+        _base_payload_attributes: &base_common_rpc_types_engine::UnstablePayloadAttributes,
     ) -> Result<(), Self::Error> {
         Ok(())
     }

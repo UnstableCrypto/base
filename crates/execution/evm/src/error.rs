@@ -1,4 +1,4 @@
-//! Error types for the Base EVM module.
+//! Error types for the Unstable EVM module.
 
 use reth_evm::execute::BlockExecutionError;
 
@@ -14,24 +14,24 @@ pub enum L1BlockInfoError {
     /// Unexpected L1 block info transaction calldata length
     #[error("unexpected l1 block info tx calldata length found")]
     UnexpectedCalldataLength,
-    /// Base fee conversion error
+    /// Unstable fee conversion error
     #[error("could not convert l1 base fee")]
-    BaseFeeConversion,
+    UnstableFeeConversion,
     /// Fee overhead conversion error
     #[error("could not convert l1 fee overhead")]
     FeeOverheadConversion,
     /// Fee scalar conversion error
     #[error("could not convert l1 fee scalar")]
     FeeScalarConversion,
-    /// Base Fee Scalar conversion error
+    /// Unstable Fee Scalar conversion error
     #[error("could not convert base fee scalar")]
-    BaseFeeScalarConversion,
+    UnstableFeeScalarConversion,
     /// Blob base fee conversion error
     #[error("could not convert l1 blob base fee")]
-    BlobBaseFeeConversion,
+    BlobUnstableFeeConversion,
     /// Blob base fee scalar conversion error
     #[error("could not convert l1 blob base fee scalar")]
-    BlobBaseFeeScalarConversion,
+    BlobUnstableFeeScalarConversion,
     /// Operator fee scalar conversion error
     #[error("could not convert operator fee scalar")]
     OperatorFeeScalarConversion,
@@ -41,14 +41,14 @@ pub enum L1BlockInfoError {
     /// DA foootprint gas scalar constant conversion error
     #[error("could not convert DA footprint gas scalar constant")]
     DaFootprintGasScalarConversion,
-    /// Base hardforks not active
-    #[error("Base hardforks are not active")]
+    /// Unstable hardforks not active
+    #[error("Unstable hardforks are not active")]
     HardforksNotActive,
 }
 
-/// Base Block Executor Errors
+/// Unstable Block Executor Errors
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum BaseBlockExecutionError {
+pub enum UnstableBlockExecutionError {
     /// Error when trying to parse L1 block info
     #[error(transparent)]
     L1BlockInfo(#[from] L1BlockInfoError),
@@ -60,8 +60,8 @@ pub enum BaseBlockExecutionError {
     AccountLoadFailed(alloy_primitives::Address),
 }
 
-impl From<BaseBlockExecutionError> for BlockExecutionError {
-    fn from(err: BaseBlockExecutionError) -> Self {
+impl From<UnstableBlockExecutionError> for BlockExecutionError {
+    fn from(err: UnstableBlockExecutionError) -> Self {
         Self::other(err)
     }
 }

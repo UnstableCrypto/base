@@ -1,6 +1,6 @@
 //! `TxPool` RPC extension for registering transaction pool management APIs.
 
-use base_node_runner::{BaseNodeExtension, BaseRpcContext, FromExtensionConfig, NodeHooks};
+use base_node_runner::{UnstableNodeExtension, UnstableRpcContext, FromExtensionConfig, NodeHooks};
 use reth_rpc_server_types::RethRpcModule;
 
 use crate::{
@@ -21,11 +21,11 @@ pub struct TxPoolRpcExtension {
     config: TxPoolRpcConfig,
 }
 
-impl BaseNodeExtension for TxPoolRpcExtension {
+impl UnstableNodeExtension for TxPoolRpcExtension {
     fn apply(self: Box<Self>, builder: NodeHooks) -> NodeHooks {
         let sequencer_rpc = self.config.sequencer_rpc;
 
-        builder.add_rpc_module(move |ctx: &mut BaseRpcContext<'_>| {
+        builder.add_rpc_module(move |ctx: &mut UnstableRpcContext<'_>| {
             // Register TransactionStatusApi
             let status_api = TransactionStatusApiImpl::new(sequencer_rpc, ctx.pool().clone())
                 .expect("Failed to create transaction status API");

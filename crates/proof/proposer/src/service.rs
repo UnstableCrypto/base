@@ -18,7 +18,7 @@ use base_proof_primitives::ProverClient;
 use base_proof_rpc::{
     L1Client, L1ClientConfig, L2Client, L2ClientConfig, RollupClient, RollupClientConfig,
 };
-use base_tx_manager::{BaseTxMetrics, SimpleTxManager};
+use base_tx_manager::{UnstableTxMetrics, SimpleTxManager};
 use eyre::{Result, WrapErr};
 use jsonrpsee::http_client::HttpClientBuilder;
 use tokio::task::JoinHandle;
@@ -186,7 +186,7 @@ impl ProposerService {
                     signing,
                     tx_config,
                     l1_chain_id,
-                    Arc::new(BaseTxMetrics::new("proposer")),
+                    Arc::new(UnstableTxMetrics::new("proposer")),
                 )
                 .await
                 .wrap_err("failed to construct tx manager")?;

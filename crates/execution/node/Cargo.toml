@@ -47,7 +47,7 @@ base-execution-trie = { workspace = true, features = ["metrics"] }
 base-execution-consensus = { workspace = true, features = ["std"] }
 base-execution-evm = { workspace = true, features = ["std", "rpc"] }
 
-# revm with required Base features
+# revm with required Unstable features
 # Note: this must be kept to ensure all features are properly enabled/forwarded
 base-common-evm.workspace = true
 revm = { workspace = true, features = [

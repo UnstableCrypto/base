@@ -19,7 +19,7 @@ use super::{
     error::{RpcError, RpcResult},
     provider_ext::DebugProviderExt,
     traits::L2Provider,
-    types::BaseBlock,
+    types::UnstableBlock,
 };
 
 /// Cache key for account proofs (address + block hash).
@@ -101,10 +101,10 @@ impl L2ClientConfig {
 
 /// L2 RPC client implementation using Alloy.
 pub struct L2Client {
-    /// The underlying HTTP provider (Base network for deposit tx support).
+    /// The underlying HTTP provider (Unstable network for deposit tx support).
     provider: L2HttpProvider,
     /// Cache for blocks by hash.
-    blocks_cache: MeteredCache<B256, BaseBlock>,
+    blocks_cache: MeteredCache<B256, UnstableBlock>,
     /// Cache for headers by hash.
     headers_cache: MeteredCache<B256, Header>,
     /// Cache for account proofs.
@@ -164,7 +164,7 @@ impl L2Client {
     }
 
     /// Returns the blocks cache.
-    pub const fn blocks_cache(&self) -> &MeteredCache<B256, BaseBlock> {
+    pub const fn blocks_cache(&self) -> &MeteredCache<B256, UnstableBlock> {
         &self.blocks_cache
     }
 
@@ -262,7 +262,7 @@ impl L2Provider for L2Client {
         Ok(header)
     }
 
-    async fn block_by_number(&self, number: Option<u64>) -> RpcResult<BaseBlock> {
+    async fn block_by_number(&self, number: Option<u64>) -> RpcResult<UnstableBlock> {
         let block_id: BlockId =
             number.map_or(BlockNumberOrTag::Latest, BlockNumberOrTag::Number).into();
 
@@ -286,7 +286,7 @@ impl L2Provider for L2Client {
         Ok(block)
     }
 
-    async fn block_by_hash(&self, hash: B256) -> RpcResult<BaseBlock> {
+    async fn block_by_hash(&self, hash: B256) -> RpcResult<UnstableBlock> {
         // Check cache first
         if let Some(block) = self.blocks_cache.get(&hash).await {
             return Ok(block);

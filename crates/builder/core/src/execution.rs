@@ -10,8 +10,8 @@ use ExecutionMeteringLimitExceeded::{
 use alloy_primitives::{Address, U256};
 use base_access_lists::FlashblockAccessListBuilder;
 use base_bundles::RejectedTransaction;
-use base_common_consensus::{BaseReceipt, BaseTransactionSigned};
-use base_common_evm::BaseTransactionError;
+use base_common_consensus::{UnstableReceipt, UnstableTransactionSigned};
+use base_common_evm::UnstableTransactionError;
 use derive_more::Display;
 use thiserror::Error;
 
@@ -161,7 +161,7 @@ pub enum TxnExecutionError {
 
     /// Internal EVM error during transaction execution.
     #[error("internal error: {0}")]
-    InternalError(BaseTransactionError),
+    InternalError(UnstableTransactionError),
 
     /// EVM execution error.
     #[error("EVM error")]
@@ -229,11 +229,11 @@ pub struct FlashblocksExecutionInfo {
 #[derive(Default, Debug)]
 pub struct ExecutionInfo {
     /// All executed transactions (unrecovered).
-    pub executed_transactions: Vec<BaseTransactionSigned>,
+    pub executed_transactions: Vec<UnstableTransactionSigned>,
     /// The recovered senders for the executed transactions.
     pub executed_senders: Vec<Address>,
     /// The transaction receipts
-    pub receipts: Vec<BaseReceipt>,
+    pub receipts: Vec<UnstableReceipt>,
     /// All gas used so far
     pub cumulative_gas_used: u64,
     /// Estimated DA size

@@ -4,7 +4,7 @@ Utility macros and types for recording metrics in base crates.
 
 ## Overview
 
-Provides declarative macros and RAII types used across the Base codebase for consistent
+Provides declarative macros and RAII types used across the Unstable codebase for consistent
 instrumentation. Includes `define_metrics!` for registering Prometheus metrics in a
 standardized way, with optional `struct = ...` naming for custom accessor types,
 `timed!` for automatic duration recording, and `inflight!` for tracking in-flight

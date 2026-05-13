@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use alloy_consensus::transaction::Recovered;
 use alloy_eips::Decodable2718;
-use base_common_consensus::BaseTransactionSigned;
+use base_common_consensus::UnstableTransactionSigned;
 use jsonrpsee::{
     core::RpcResult,
     proc_macros::rpc,
@@ -12,7 +12,7 @@ use reth_transaction_pool::TransactionPool;
 use tracing::debug;
 
 use super::metrics::Metrics as BuilderApiMetrics;
-use crate::{BasePooledTransaction, PoolRejectionLabel, ValidatedTransaction};
+use crate::{UnstablePooledTransaction, PoolRejectionLabel, ValidatedTransaction};
 
 /// RPC interface for submitting pre-validated transactions to a block builder.
 #[rpc(server, namespace = "base")]
@@ -48,7 +48,7 @@ impl<P> BuilderApiImpl<P> {
 #[async_trait::async_trait]
 impl<P> BuilderApiServer for BuilderApiImpl<P>
 where
-    P: TransactionPool<Transaction = BasePooledTransaction> + Send + Sync + 'static,
+    P: TransactionPool<Transaction = UnstablePooledTransaction> + Send + Sync + 'static,
 {
     async fn insert_validated_transaction(&self, tx: ValidatedTransaction) -> RpcResult<()> {
         debug!(
@@ -59,7 +59,7 @@ where
 
         // Decode the EIP-2718 transaction bytes
         let consensus_tx =
-            BaseTransactionSigned::decode_2718(&mut tx.raw.as_ref()).map_err(|e| {
+            UnstableTransactionSigned::decode_2718(&mut tx.raw.as_ref()).map_err(|e| {
                 BuilderApiMetrics::decode_errors().increment(1);
                 ErrorObjectOwned::owned(
                     ErrorCode::InvalidParams.code(),
@@ -70,7 +70,7 @@ where
         let encoded_len = tx.raw.len();
 
         let recovered = Recovered::new_unchecked(consensus_tx, sender);
-        let pool_tx = BasePooledTransaction::new(recovered, encoded_len).with_bundle_metadata(
+        let pool_tx = UnstablePooledTransaction::new(recovered, encoded_len).with_bundle_metadata(
             tx.target_block_number,
             tx.min_timestamp,
             tx.max_timestamp,
@@ -105,11 +105,11 @@ mod tests {
     use alloy_consensus::TxEip1559;
     use alloy_eips::eip2718::Encodable2718;
     use alloy_primitives::{Address, Bytes, Signature, TxKind, U256};
-    use base_common_consensus::{BaseTransactionSigned, BaseTypedTransaction, TxDeposit};
+    use base_common_consensus::{UnstableTransactionSigned, UnstableTypedTransaction, TxDeposit};
     use reth_transaction_pool::noop::NoopTransactionPool;
 
     use super::*;
-    use crate::{BasePooledTransaction, ValidatedTransaction};
+    use crate::{UnstablePooledTransaction, ValidatedTransaction};
 
     // ==========================================================================
     // Helper functions for creating test transactions
@@ -128,7 +128,7 @@ mod tests {
             is_system_transaction: false,
             input: Default::default(),
         };
-        let signed_tx: BaseTransactionSigned = deposit_tx.into();
+        let signed_tx: UnstableTransactionSigned = deposit_tx.into();
         let encoded = signed_tx.encoded_2718();
         (sender, Bytes::from(encoded))
     }
@@ -148,13 +148,13 @@ mod tests {
             input: Default::default(),
         };
         let sig = Signature::new(U256::from(1), U256::from(2), false);
-        let signed = BaseTransactionSigned::new_unhashed(BaseTypedTransaction::Eip1559(tx), sig);
+        let signed = UnstableTransactionSigned::new_unhashed(UnstableTypedTransaction::Eip1559(tx), sig);
         let encoded = signed.encoded_2718();
         (sender, Bytes::from(encoded))
     }
 
-    fn handler() -> BuilderApiImpl<NoopTransactionPool<BasePooledTransaction>> {
-        BuilderApiImpl::new(NoopTransactionPool::<BasePooledTransaction>::new())
+    fn handler() -> BuilderApiImpl<NoopTransactionPool<UnstablePooledTransaction>> {
+        BuilderApiImpl::new(NoopTransactionPool::<UnstablePooledTransaction>::new())
     }
 
     // ==========================================================================

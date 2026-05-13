@@ -1,4 +1,4 @@
-//! Succinct zkVM client utilities for Base proof generation.
+//! Succinct zkVM client utilities for Unstable proof generation.
 
 pub mod boot;
 

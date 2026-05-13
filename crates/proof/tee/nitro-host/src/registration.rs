@@ -219,7 +219,7 @@ mod tests {
     use base_proof_contracts::TEEProverRegistryClient;
 
     use super::*;
-    use crate::test_utils::{AddressBasedMockRegistry, MockRegistry};
+    use crate::test_utils::{AddressUnstabledMockRegistry, MockRegistry};
 
     fn test_checker_with_mock(
         registry: impl TEEProverRegistryClient + 'static,
@@ -344,7 +344,7 @@ mod tests {
 
     #[tokio::test]
     async fn select_first_invalid_second_valid_returns_index_1() {
-        let registry = AddressBasedMockRegistry::new(HashMap::new());
+        let registry = AddressUnstabledMockRegistry::new(HashMap::new());
         let checker = two_transport_checker(registry.clone());
         let (addr0, addr1) = two_transport_signers(&checker).await;
 
@@ -358,7 +358,7 @@ mod tests {
 
     #[tokio::test]
     async fn select_both_valid_returns_first() {
-        let registry = AddressBasedMockRegistry::new(HashMap::new());
+        let registry = AddressUnstabledMockRegistry::new(HashMap::new());
         let checker = two_transport_checker(registry.clone());
         let (addr0, addr1) = two_transport_signers(&checker).await;
 
@@ -372,7 +372,7 @@ mod tests {
 
     #[tokio::test]
     async fn select_none_valid_returns_no_valid_signer() {
-        let registry = AddressBasedMockRegistry::new(HashMap::new());
+        let registry = AddressUnstabledMockRegistry::new(HashMap::new());
         let checker = two_transport_checker(registry);
 
         let err = checker.select_valid_enclave().await.unwrap_err();
@@ -386,7 +386,7 @@ mod tests {
 
     #[tokio::test]
     async fn health_any_valid_returns_true() {
-        let registry = AddressBasedMockRegistry::new(HashMap::new());
+        let registry = AddressUnstabledMockRegistry::new(HashMap::new());
         let checker = two_transport_checker(registry.clone());
         let (addr0, addr1) = two_transport_signers(&checker).await;
 
@@ -398,7 +398,7 @@ mod tests {
 
     #[tokio::test]
     async fn health_latches_with_multi_transport() {
-        let registry = AddressBasedMockRegistry::new(HashMap::new());
+        let registry = AddressUnstabledMockRegistry::new(HashMap::new());
         let checker = two_transport_checker(registry.clone());
         let (addr0, addr1) = two_transport_signers(&checker).await;
 
@@ -415,7 +415,7 @@ mod tests {
 
     #[tokio::test]
     async fn require_valid_signer_checks_first_transport_only() {
-        let registry = AddressBasedMockRegistry::new(HashMap::new());
+        let registry = AddressUnstabledMockRegistry::new(HashMap::new());
         let checker = two_transport_checker(registry.clone());
         let (addr0, addr1) = two_transport_signers(&checker).await;
 

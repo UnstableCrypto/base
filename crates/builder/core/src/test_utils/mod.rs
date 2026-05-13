@@ -1,4 +1,4 @@
-//! Test utilities for the Base block builder.
+//! Test utilities for the Unstable block builder.
 
 mod apis;
 mod contracts;
@@ -12,8 +12,8 @@ use alloy_network::TxSignerSync;
 use alloy_primitives::B256;
 use alloy_signer_local::PrivateKeySigner;
 pub use apis::*;
-use base_common_consensus::{BaseTransactionSigned, BaseTypedTransaction};
-use base_execution_chainspec::BaseChainSpec;
+use base_common_consensus::{UnstableTransactionSigned, UnstableTypedTransaction};
+use base_execution_chainspec::UnstableChainSpec;
 pub use contracts::*;
 pub use driver::*;
 pub use external::*;
@@ -26,15 +26,15 @@ pub use utils::*;
 
 use crate::BuilderConfig;
 
-/// Signs a Base transaction and returns the recovered signed transaction.
+/// Signs a Unstable transaction and returns the recovered signed transaction.
 pub fn sign_base_tx(
     signer: &PrivateKeySigner,
-    mut tx: BaseTypedTransaction,
-) -> eyre::Result<Recovered<BaseTransactionSigned>> {
+    mut tx: UnstableTypedTransaction,
+) -> eyre::Result<Recovered<UnstableTransactionSigned>> {
     let signature = signer
         .sign_transaction_sync(&mut tx)
         .map_err(|e| eyre::eyre!("failed to sign transaction: {e}"))?;
-    let signed = BaseTransactionSigned::new_unhashed(tx, signature);
+    let signed = UnstableTransactionSigned::new_unhashed(tx, signature);
     Ok(Recovered::new_unchecked(signed, signer.address()))
 }
 
@@ -70,7 +70,7 @@ pub async fn setup_test_instance_with_builder_config(
 /// The flashblocks WebSocket port will be automatically set to an available port if set to 0.
 pub async fn setup_test_instance_with_node_config(
     mut builder_config: BuilderConfig,
-    node_config: NodeConfig<BaseChainSpec>,
+    node_config: NodeConfig<UnstableChainSpec>,
 ) -> eyre::Result<LocalInstance> {
     clear_otel_env_vars();
     if builder_config.flashblocks_ws_addr.port() == 0 {

@@ -1,8 +1,8 @@
-//! State provider factory for Base Proofs `ExEx`.
+//! State provider factory for Unstable Proofs `ExEx`.
 
 use alloy_eips::BlockId;
 use base_execution_trie::{
-    BaseProofsStorage, BaseProofsStore, provider::BaseProofsStateProviderRef,
+    UnstableProofsStorage, UnstableProofsStore, provider::UnstableProofsStateProviderRef,
 };
 use jsonrpsee_types::error::ErrorObject;
 use reth_provider::{BlockIdReader, ProviderError, ProviderResult, StateProvider};
@@ -11,23 +11,23 @@ use reth_rpc_eth_types::EthApiError;
 
 /// Creates a factory for state providers using external proofs storage.
 #[derive(Debug)]
-pub struct BaseStateProviderFactory<Eth, P> {
+pub struct UnstableStateProviderFactory<Eth, P> {
     eth_api: Eth,
-    preimage_store: BaseProofsStorage<P>,
+    preimage_store: UnstableProofsStorage<P>,
 }
 
-impl<Eth, P> BaseStateProviderFactory<Eth, P> {
+impl<Eth, P> UnstableStateProviderFactory<Eth, P> {
     /// Creates a new state provider factory.
-    pub const fn new(eth_api: Eth, preimage_store: BaseProofsStorage<P>) -> Self {
+    pub const fn new(eth_api: Eth, preimage_store: UnstableProofsStorage<P>) -> Self {
         Self { eth_api, preimage_store }
     }
 }
 
-impl<'a, Eth, P> BaseStateProviderFactory<Eth, P>
+impl<'a, Eth, P> UnstableStateProviderFactory<Eth, P>
 where
     Eth: FullEthApi + Send + Sync + 'static,
     ErrorObject<'static>: From<Eth::Error>,
-    P: BaseProofsStore + Clone + 'a,
+    P: UnstableProofsStore + Clone + 'a,
 {
     /// Creates a state provider for the given block id.
     pub async fn state_provider(
@@ -62,7 +62,7 @@ where
             return Err(ProviderError::StateForNumberNotFound(block_number));
         }
 
-        let external_overlay_provider = BaseProofsStateProviderRef::new(
+        let external_overlay_provider = UnstableProofsStateProviderRef::new(
             historical_provider,
             &self.preimage_store,
             block_number,

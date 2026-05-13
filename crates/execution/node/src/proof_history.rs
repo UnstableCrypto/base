@@ -2,13 +2,13 @@
 
 use std::{sync::Arc, time::Duration};
 
-use base_execution_chainspec::BaseChainSpec;
-use base_execution_exex::BaseProofsExEx;
+use base_execution_chainspec::UnstableChainSpec;
+use base_execution_exex::UnstableProofsExEx;
 use base_execution_rpc::{
     debug::{DebugApiExt, DebugApiOverrideServer},
     eth::proofs::{EthApiExt, EthApiOverrideServer},
 };
-use base_execution_trie::{BaseProofsStorage, db::MdbxProofsStorage};
+use base_execution_trie::{UnstableProofsStorage, db::MdbxProofsStorage};
 use eyre::ErrReport;
 use futures::FutureExt;
 use reth_db::DatabaseEnv;
@@ -18,13 +18,13 @@ use reth_tasks::TaskExecutor;
 use tokio::time::sleep;
 use tracing::info;
 
-use crate::{BaseNode, args::RollupArgs};
+use crate::{UnstableNode, args::RollupArgs};
 
 /// - no proofs history (plain node),
 /// - in-mem proofs storage,
 /// - MDBX proofs storage.
 pub async fn launch_node_with_proof_history(
-    builder: WithLaunchContext<NodeBuilder<Arc<DatabaseEnv>, BaseChainSpec>>,
+    builder: WithLaunchContext<NodeBuilder<Arc<DatabaseEnv>, UnstableChainSpec>>,
     args: RollupArgs,
 ) -> eyre::Result<(), ErrReport> {
     let RollupArgs {
@@ -35,8 +35,8 @@ pub async fn launch_node_with_proof_history(
         ..
     } = args;
 
-    // Start from a plain BaseNode builder
-    let mut node_builder = builder.node(BaseNode::new(args.clone()));
+    // Start from a plain UnstableNode builder
+    let mut node_builder = builder.node(UnstableNode::new(args.clone()));
 
     if proofs_history {
         let path = args
@@ -49,7 +49,7 @@ pub async fn launch_node_with_proof_history(
             MdbxProofsStorage::new(&path)
                 .map_err(|e| eyre::eyre!("Failed to create MdbxProofsStorage: {e}"))?,
         );
-        let storage: BaseProofsStorage<Arc<MdbxProofsStorage>> = Arc::clone(&mdbx).into();
+        let storage: UnstableProofsStorage<Arc<MdbxProofsStorage>> = Arc::clone(&mdbx).into();
 
         let storage_exec = storage.clone();
 
@@ -63,7 +63,7 @@ pub async fn launch_node_with_proof_history(
                 Ok(())
             })
             .install_exex("proofs-history", async move |exex_context| {
-                Ok(BaseProofsExEx::builder(exex_context, storage_exec)
+                Ok(UnstableProofsExEx::builder(exex_context, storage_exec)
                     .with_proofs_history_window(proofs_history_window)
                     .with_proofs_history_prune_interval(proofs_history_prune_interval)
                     .with_verification_interval(proofs_history_verification_interval)
@@ -100,7 +100,7 @@ fn spawn_proofs_db_metrics(
         info!(
             target: "reth::cli",
             ?metrics_report_interval,
-            "Starting Base proofs storage metrics task"
+            "Starting Unstable proofs storage metrics task"
         );
 
         loop {

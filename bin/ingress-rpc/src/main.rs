@@ -8,7 +8,7 @@ use audit_archiver_lib::{
 };
 use base_bundles::MeterBundleResponse;
 use base_cli_utils::LogConfig;
-use base_common_network::Base;
+use base_common_network::Unstable;
 use clap::Parser;
 use ingress_rpc_lib::{
     BuilderConnector, Config, HealthServer, IngressApiServer, IngressService, KafkaMessageQueue,
@@ -66,14 +66,14 @@ async fn main() -> anyhow::Result<()> {
     let providers = Providers {
         mempool: ProviderBuilder::new()
             .disable_recommended_fillers()
-            .network::<Base>()
+            .network::<Unstable>()
             .connect_http(config.mempool_url),
         simulation: ProviderBuilder::new()
             .disable_recommended_fillers()
-            .network::<Base>()
+            .network::<Unstable>()
             .connect_http(config.simulation_rpc),
         raw_tx_forward: config.raw_tx_forward_rpc.clone().map(|url| {
-            ProviderBuilder::new().disable_recommended_fillers().network::<Base>().connect_http(url)
+            ProviderBuilder::new().disable_recommended_fillers().network::<Unstable>().connect_http(url)
         }),
     };
 

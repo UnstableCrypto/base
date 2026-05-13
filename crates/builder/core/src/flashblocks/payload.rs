@@ -16,13 +16,13 @@ use base_access_lists::FlashblockAccessList;
 use base_builder_publish::WebSocketPublisher;
 use base_bundles::RejectedTransaction;
 use base_common_chains::Upgrades;
-use base_common_consensus::{BaseReceipt, BaseTransactionSigned};
+use base_common_consensus::{UnstableReceipt, UnstableTransactionSigned};
 use base_common_flashblocks::{
-    ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
+    ExecutionPayloadUnstableV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
 };
 use base_execution_consensus::{calculate_receipt_root_no_memo, isthmus};
-use base_execution_evm::{BaseEvmConfig, BaseNextBlockEnvAttributes};
-use base_execution_payload_builder::{BaseBuiltPayload, BasePayloadBuilderAttributes};
+use base_execution_evm::{UnstableEvmConfig, UnstableNextBlockEnvAttributes};
+use base_execution_payload_builder::{UnstableBuiltPayload, UnstablePayloadBuilderAttributes};
 use either::Either;
 use eyre::WrapErr as _;
 use reth_basic_payload_builder::BuildOutcome;
@@ -53,7 +53,7 @@ use crate::{
     flashblocks::{
         FlashblocksExtraCtx,
         best_txs::BestFlashblocksTxs,
-        context::BasePayloadBuilderCtx,
+        context::UnstablePayloadBuilderCtx,
         generator::{BlockCell, BuildArguments},
     },
     traits::{ClientBounds, PoolBounds},
@@ -72,18 +72,18 @@ type NextBestFlashblocksTxs<Pool> = BestFlashblocksTxs<
     >,
 >;
 
-/// Base payload builder
+/// Unstable payload builder
 #[derive(Debug, Clone)]
-pub(super) struct BasePayloadBuilder<Pool, Client> {
+pub(super) struct UnstablePayloadBuilder<Pool, Client> {
     /// The type responsible for creating the evm.
-    pub evm_config: BaseEvmConfig,
+    pub evm_config: UnstableEvmConfig,
     /// The transaction pool
     pub pool: Pool,
     /// Node client
     pub client: Client,
     /// Sender for sending built payloads to [`PayloadHandler`],
     /// which broadcasts outgoing payloads via p2p.
-    pub payload_tx: mpsc::Sender<BaseBuiltPayload>,
+    pub payload_tx: mpsc::Sender<UnstableBuiltPayload>,
     /// WebSocket publisher for broadcasting flashblocks
     /// to all connected subscribers.
     pub ws_pub: Arc<WebSocketPublisher>,
@@ -93,14 +93,14 @@ pub(super) struct BasePayloadBuilder<Pool, Client> {
     pub rejected_tx_sender: Option<mpsc::Sender<Vec<RejectedTransaction>>>,
 }
 
-impl<Pool, Client> BasePayloadBuilder<Pool, Client> {
-    /// `BasePayloadBuilder` constructor.
+impl<Pool, Client> UnstablePayloadBuilder<Pool, Client> {
+    /// `UnstablePayloadBuilder` constructor.
     pub(super) const fn new(
-        evm_config: BaseEvmConfig,
+        evm_config: UnstableEvmConfig,
         pool: Pool,
         client: Client,
         config: BuilderConfig,
-        payload_tx: mpsc::Sender<BaseBuiltPayload>,
+        payload_tx: mpsc::Sender<UnstableBuiltPayload>,
         ws_pub: Arc<WebSocketPublisher>,
         rejected_tx_sender: Option<mpsc::Sender<Vec<RejectedTransaction>>>,
     ) -> Self {
@@ -108,13 +108,13 @@ impl<Pool, Client> BasePayloadBuilder<Pool, Client> {
     }
 }
 
-impl<Pool, Client> reth_basic_payload_builder::PayloadBuilder for BasePayloadBuilder<Pool, Client>
+impl<Pool, Client> reth_basic_payload_builder::PayloadBuilder for UnstablePayloadBuilder<Pool, Client>
 where
     Pool: Clone + Send + Sync,
     Client: Clone + Send + Sync,
 {
-    type Attributes = BasePayloadBuilderAttributes<BaseTransactionSigned>;
-    type BuiltPayload = BaseBuiltPayload;
+    type Attributes = UnstablePayloadBuilderAttributes<UnstableTransactionSigned>;
+    type BuiltPayload = UnstableBuiltPayload;
 
     fn try_build(
         &self,
@@ -138,7 +138,7 @@ where
     }
 }
 
-impl<Pool, Client> BasePayloadBuilder<Pool, Client>
+impl<Pool, Client> UnstablePayloadBuilder<Pool, Client>
 where
     Pool: PoolBounds,
     Client: ClientBounds,
@@ -146,11 +146,11 @@ where
     fn get_base_payload_builder_ctx(
         &self,
         config: reth_basic_payload_builder::PayloadConfig<
-            BasePayloadBuilderAttributes<base_common_consensus::BaseTxEnvelope>,
+            UnstablePayloadBuilderAttributes<base_common_consensus::UnstableTxEnvelope>,
         >,
         cancel: CancellationToken,
         extra: FlashblocksExtraCtx,
-    ) -> eyre::Result<BasePayloadBuilderCtx> {
+    ) -> eyre::Result<UnstablePayloadBuilderCtx> {
         let chain_spec = self.client.chain_spec();
         let timestamp = config.attributes.timestamp();
 
@@ -168,7 +168,7 @@ where
             Default::default()
         };
 
-        let block_env_attributes = BaseNextBlockEnvAttributes {
+        let block_env_attributes = UnstableNextBlockEnvAttributes {
             timestamp,
             suggested_fee_recipient: config.attributes.suggested_fee_recipient(),
             prev_randao: config.attributes.prev_randao(),
@@ -183,7 +183,7 @@ where
             .next_evm_env(&config.parent_header, &block_env_attributes)
             .wrap_err("failed to create next evm env")?;
 
-        Ok(BasePayloadBuilderCtx {
+        Ok(UnstablePayloadBuilderCtx {
             evm_config,
             chain_spec,
             config,
@@ -196,18 +196,18 @@ where
         })
     }
 
-    /// Constructs a Base payload from the transactions sent via the
+    /// Constructs a Unstable payload from the transactions sent via the
     /// Payload attributes by the sequencer. If the `no_tx_pool` argument is passed in
     /// the payload attributes, the transaction pool will be ignored and the only transactions
     /// included in the payload will be those sent through the attributes.
     ///
-    /// Given build arguments including a Base client, transaction pool,
+    /// Given build arguments including a Unstable client, transaction pool,
     /// and configuration, this function creates a transaction payload. Returns
     /// a result indicating success with the payload or an error in case of failure.
     async fn build_payload(
         &self,
-        args: BuildArguments<BasePayloadBuilderAttributes<BaseTransactionSigned>, BaseBuiltPayload>,
-        best_payload: BlockCell<BaseBuiltPayload>,
+        args: BuildArguments<UnstablePayloadBuilderAttributes<UnstableTransactionSigned>, UnstableBuiltPayload>,
+        best_payload: BlockCell<UnstableBuiltPayload>,
     ) -> Result<(), PayloadBuilderError> {
         let block_build_start_time = Instant::now();
         let BuildArguments {
@@ -504,12 +504,12 @@ where
         P: StateRootProvider + HashedPostStateProvider + StorageRootProvider,
     >(
         &self,
-        ctx: &BasePayloadBuilderCtx,
+        ctx: &UnstablePayloadBuilderCtx,
         info: &mut ExecutionInfo,
         state: &mut State<DB>,
         best_txs: &mut NextBestFlashblocksTxs<Pool>,
         block_cancel: &CancellationToken,
-        best_payload: &BlockCell<BaseBuiltPayload>,
+        best_payload: &BlockCell<UnstableBuiltPayload>,
         publish_guard: &parking_lot::Mutex<()>,
         span: &tracing::Span,
         executed_sender_nonces: &mut HashMap<Address, u64>,
@@ -777,7 +777,7 @@ where
     /// Do some logging and metric recording when we stop build flashblocks
     fn record_flashblocks_metrics(
         &self,
-        ctx: &BasePayloadBuilderCtx,
+        ctx: &UnstablePayloadBuilderCtx,
         info: &ExecutionInfo,
         flashblocks_per_block: u64,
         span: &tracing::Span,
@@ -812,9 +812,9 @@ where
     fn finalize_payload<DB, P>(
         &self,
         state: &mut State<DB>,
-        ctx: &BasePayloadBuilderCtx,
+        ctx: &UnstablePayloadBuilderCtx,
         info: &mut ExecutionInfo,
-        finalized_cell: &BlockCell<BaseBuiltPayload>,
+        finalized_cell: &BlockCell<UnstableBuiltPayload>,
     ) -> Result<(), PayloadBuilderError>
     where
         DB: Database<Error = ProviderError> + AsRef<P>,
@@ -885,13 +885,13 @@ where
 }
 
 #[async_trait::async_trait]
-impl<Pool, Client> PayloadBuilder for BasePayloadBuilder<Pool, Client>
+impl<Pool, Client> PayloadBuilder for UnstablePayloadBuilder<Pool, Client>
 where
     Pool: PoolBounds,
     Client: ClientBounds,
 {
-    type Attributes = BasePayloadBuilderAttributes<BaseTransactionSigned>;
-    type BuiltPayload = BaseBuiltPayload;
+    type Attributes = UnstablePayloadBuilderAttributes<UnstableTransactionSigned>;
+    type BuiltPayload = UnstableBuiltPayload;
 
     async fn try_build(
         &self,
@@ -905,9 +905,9 @@ where
 #[skip_serializing_none]
 #[derive(Debug, Serialize, Deserialize)]
 struct FlashblocksMetadata {
-    /// Receipts for transactions in this flashblock (removed in Base 1.0)
-    receipts: Option<HashMap<B256, BaseReceipt>>,
-    /// Changed account balances (removed in Base 1.0)
+    /// Receipts for transactions in this flashblock (removed in Unstable 1.0)
+    receipts: Option<HashMap<B256, UnstableReceipt>>,
+    /// Changed account balances (removed in Unstable 1.0)
     new_account_balances: Option<HashMap<Address, U256>>,
     /// The block number this flashblock belongs to
     block_number: u64,
@@ -917,7 +917,7 @@ struct FlashblocksMetadata {
 
 pub(crate) fn execute_pre_steps<DB>(
     state: &mut State<DB>,
-    ctx: &BasePayloadBuilderCtx,
+    ctx: &UnstablePayloadBuilderCtx,
 ) -> Result<ExecutionInfo, PayloadBuilderError>
 where
     DB: Database<Error = ProviderError> + std::fmt::Debug + revm::Database,
@@ -936,10 +936,10 @@ where
 
 pub(crate) fn build_block<DB, P>(
     state: &mut State<DB>,
-    ctx: &BasePayloadBuilderCtx,
+    ctx: &UnstablePayloadBuilderCtx,
     info: &mut ExecutionInfo,
     calculate_state_root: bool,
-) -> Result<(BaseBuiltPayload, FlashblocksPayloadV1), PayloadBuilderError>
+) -> Result<(UnstableBuiltPayload, FlashblocksPayloadV1), PayloadBuilderError>
 where
     DB: Database<Error = ProviderError> + AsRef<P> + revm::Database,
     P: StateRootProvider + HashedPostStateProvider + StorageRootProvider,
@@ -1044,7 +1044,7 @@ where
     };
 
     // seal the block
-    let block = alloy_consensus::Block::<BaseTransactionSigned>::new(
+    let block = alloy_consensus::Block::<UnstableTransactionSigned>::new(
         header,
         BlockBody {
             transactions: info.executed_transactions.clone(),
@@ -1102,7 +1102,7 @@ where
         .iter()
         .zip(new_receipts.iter())
         .map(|(tx, receipt)| (tx.tx_hash(), receipt.clone()))
-        .collect::<HashMap<B256, BaseReceipt>>();
+        .collect::<HashMap<B256, UnstableReceipt>>();
 
     // finalize and build the FAL
     let fal_builder = std::mem::take(&mut info.extra.access_list_builder);
@@ -1129,7 +1129,7 @@ where
     let fb_payload = FlashblocksPayloadV1 {
         payload_id: ctx.payload_id(),
         index: 0,
-        base: Some(ExecutionPayloadBaseV1 {
+        base: Some(ExecutionPayloadUnstableV1 {
             parent_beacon_block_root: ctx
                 .attributes()
                 .payload_attributes
@@ -1167,7 +1167,7 @@ where
     state.transition_state = untouched_transition_state;
 
     Ok((
-        BaseBuiltPayload::new(ctx.payload_id(), sealed_block, info.total_fees, Some(executed)),
+        UnstableBuiltPayload::new(ctx.payload_id(), sealed_block, info.total_fees, Some(executed)),
         fb_payload,
     ))
 }
@@ -1178,24 +1178,24 @@ mod tests {
 
     use alloy_consensus::{Header, Receipt};
     use alloy_primitives::{Address, B256, Log, U256, map::foldhash::HashMap};
-    use base_common_consensus::BaseReceipt;
+    use base_common_consensus::UnstableReceipt;
     use base_common_flashblocks::Metadata;
-    use base_execution_chainspec::BaseChainSpec;
+    use base_execution_chainspec::UnstableChainSpec;
     use reth_chainspec::ChainSpec;
     use reth_primitives_traits::SealedHeader;
     use reth_provider::noop::NoopProvider;
     use reth_revm::{State, database::StateProviderDatabase};
 
     use super::{FlashblocksMetadata, build_block};
-    use crate::{ExecutionInfo, flashblocks::context::BasePayloadBuilderCtx};
+    use crate::{ExecutionInfo, flashblocks::context::UnstablePayloadBuilderCtx};
 
-    /// Creates a minimal [`BaseChainSpec`] with all L1 hardforks through Cancun
+    /// Creates a minimal [`UnstableChainSpec`] with all L1 hardforks through Cancun
     /// active at genesis but **no** inherited rollup hardforks (Bedrock, Canyon,
     /// Ecotone, Holocene, Isthmus, Jovian are all absent).
     ///
     /// This keeps `build_block` on the simplest code paths: no blob fields,
     /// default extra data, no withdrawals root calculation.
-    fn minimal_chain_spec() -> Arc<BaseChainSpec> {
+    fn minimal_chain_spec() -> Arc<UnstableChainSpec> {
         let genesis: serde_json::Value = serde_json::json!({
             "config": { "chainId": 901 },
             "gasLimit": "0x1C9C380",
@@ -1206,7 +1206,7 @@ mod tests {
         let inner =
             ChainSpec::builder().chain(901.into()).genesis(genesis).cancun_activated().build();
 
-        Arc::new(BaseChainSpec { inner })
+        Arc::new(UnstableChainSpec { inner })
     }
 
     /// Builds a sealed genesis header consistent with [`minimal_chain_spec`].
@@ -1225,7 +1225,7 @@ mod tests {
     fn build_block_empty_no_state_root() {
         let chain_spec = minimal_chain_spec();
         let parent = genesis_header();
-        let ctx = BasePayloadBuilderCtx::for_test(chain_spec, Arc::clone(&parent));
+        let ctx = UnstablePayloadBuilderCtx::for_test(chain_spec, Arc::clone(&parent));
 
         let db = StateProviderDatabase::new(NoopProvider::default());
         let mut state = State::builder().with_database(db).with_bundle_update().build();
@@ -1257,7 +1257,7 @@ mod tests {
     fn build_block_empty_with_state_root() {
         let chain_spec = minimal_chain_spec();
         let parent = genesis_header();
-        let ctx = BasePayloadBuilderCtx::for_test(chain_spec, Arc::clone(&parent));
+        let ctx = UnstablePayloadBuilderCtx::for_test(chain_spec, Arc::clone(&parent));
 
         let db = StateProviderDatabase::new(NoopProvider::default());
         let mut state = State::builder().with_database(db).with_bundle_update().build();
@@ -1288,7 +1288,7 @@ mod tests {
     fn build_block_rejects_block_number_mismatch() {
         let chain_spec = minimal_chain_spec();
         let parent = genesis_header();
-        let mut ctx = BasePayloadBuilderCtx::for_test(chain_spec, Arc::clone(&parent));
+        let mut ctx = UnstablePayloadBuilderCtx::for_test(chain_spec, Arc::clone(&parent));
 
         // Tamper with the EVM block number so it disagrees with parent + 1.
         // parent.number is 0, so the expected block number is 1.
@@ -1319,7 +1319,7 @@ mod tests {
     fn build_block_rejects_missing_beacon_block_root() {
         let chain_spec = minimal_chain_spec();
         let parent = genesis_header();
-        let mut ctx = BasePayloadBuilderCtx::for_test(chain_spec, Arc::clone(&parent));
+        let mut ctx = UnstablePayloadBuilderCtx::for_test(chain_spec, Arc::clone(&parent));
 
         // Clear the parent beacon block root that for_test() sets.
         ctx.config.attributes.payload_attributes.parent_beacon_block_root = None;
@@ -1348,7 +1348,7 @@ mod tests {
         let tx_hash = B256::from([0xAA; 32]);
         let address = Address::from([0xBB; 20]);
 
-        let receipt = BaseReceipt::Eip1559(Receipt {
+        let receipt = UnstableReceipt::Eip1559(Receipt {
             status: true.into(),
             cumulative_gas_used: 21_000,
             logs: Vec::<Log>::new(),

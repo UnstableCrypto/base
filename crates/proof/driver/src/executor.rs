@@ -10,7 +10,7 @@ use core::error::Error;
 use alloy_consensus::{Header, Sealed};
 use alloy_primitives::B256;
 use async_trait::async_trait;
-use base_common_rpc_types_engine::BasePayloadAttributes;
+use base_common_rpc_types_engine::UnstablePayloadAttributes;
 use base_proof_executor::BlockBuildingOutcome;
 
 /// Executor trait for block execution in the driver pipeline.
@@ -35,7 +35,7 @@ pub trait Executor {
     /// Execute the given payload attributes to build and execute a block.
     async fn execute_payload(
         &mut self,
-        attributes: BasePayloadAttributes,
+        attributes: UnstablePayloadAttributes,
     ) -> Result<BlockBuildingOutcome, Self::Error>;
 
     /// Computes the output root for the most recently executed block.

@@ -12,12 +12,12 @@ use alloy_primitives::B256;
 use alloy_provider::{Identity, ProviderBuilder, RootProvider};
 use async_trait::async_trait;
 use base_common_flashblocks::FlashblocksPayloadV1;
-use base_common_network::Base;
-use base_execution_chainspec::BaseChainSpec;
-use base_execution_rpc::BaseEthApiBuilder;
-use base_execution_txpool::BasePooledTransaction;
-use base_node_core::{BasePayloadValidatorBuilder, args::RollupArgs, node::BasePoolBuilder};
-use base_node_runner::{BaseNode, test_utils::init_silenced_tracing};
+use base_common_network::Unstable;
+use base_execution_chainspec::UnstableChainSpec;
+use base_execution_rpc::UnstableEthApiBuilder;
+use base_execution_txpool::UnstablePooledTransaction;
+use base_node_core::{UnstablePayloadValidatorBuilder, args::RollupArgs, node::UnstablePoolBuilder};
+use base_node_runner::{UnstableNode, test_utils::init_silenced_tracing};
 use futures::{FutureExt, StreamExt};
 use nanoid::nanoid;
 use parking_lot::Mutex;
@@ -61,7 +61,7 @@ pub fn clear_otel_env_vars() {
 /// This node uses IPC as the communication channel for the RPC server Engine API.
 #[derive(Debug)]
 pub struct LocalInstance {
-    node_config: NodeConfig<BaseChainSpec>,
+    node_config: NodeConfig<UnstableChainSpec>,
     builder_config: BuilderConfig,
     runtime: Option<Runtime>,
     exit_future: NodeExitFuture,
@@ -85,15 +85,15 @@ impl<P: core::fmt::Debug> core::fmt::Debug for PoolHandle<P> {
 #[async_trait]
 pub trait ExternalTransactionPool: Send + Sync + core::fmt::Debug {
     /// Submits a pooled transaction as if it arrived from an external peer.
-    async fn add_external_transaction(&self, tx: BasePooledTransaction) -> eyre::Result<()>;
+    async fn add_external_transaction(&self, tx: UnstablePooledTransaction) -> eyre::Result<()>;
 }
 
 #[async_trait]
 impl<P> ExternalTransactionPool for PoolHandle<P>
 where
-    P: TransactionPool<Transaction = BasePooledTransaction> + Send + Sync + core::fmt::Debug,
+    P: TransactionPool<Transaction = UnstablePooledTransaction> + Send + Sync + core::fmt::Debug,
 {
-    async fn add_external_transaction(&self, tx: BasePooledTransaction) -> eyre::Result<()> {
+    async fn add_external_transaction(&self, tx: UnstablePooledTransaction) -> eyre::Result<()> {
         TransactionPool::add_external_transaction(&self.pool, tx)
             .await
             .map(|_| ())
@@ -118,16 +118,16 @@ impl LocalInstance {
     /// make sure that sender accounts are funded.
     pub async fn new_with_node_config(
         builder_config: BuilderConfig,
-        node_config: NodeConfig<BaseChainSpec>,
+        node_config: NodeConfig<UnstableChainSpec>,
     ) -> eyre::Result<Self> {
         clear_otel_env_vars();
         init_silenced_tracing();
         let runtime = RuntimeBuilder::new(RuntimeConfig::default()).build()?;
-        let base_node = BaseNode::new(RollupArgs::default());
+        let base_node = UnstableNode::new(RollupArgs::default());
 
         let (rpc_ready_tx, rpc_ready_rx) = oneshot::channel::<()>();
         let (txpool_ready_tx, txpool_ready_rx) =
-            oneshot::channel::<AllTransactionsEvents<BasePooledTransaction>>();
+            oneshot::channel::<AllTransactionsEvents<UnstablePooledTransaction>>();
         let (pool_handle_tx, pool_handle_rx) =
             oneshot::channel::<Arc<dyn ExternalTransactionPool>>();
 
@@ -135,20 +135,20 @@ impl LocalInstance {
         let gas_limit_config = builder_config.gas_limit_config.clone();
         let metering_provider = Arc::clone(&builder_config.metering_provider);
 
-        let addons: base_node_runner::BaseAddOns<
+        let addons: base_node_runner::UnstableAddOns<
             _,
-            BaseEthApiBuilder,
-            BasePayloadValidatorBuilder,
+            UnstableEthApiBuilder,
+            UnstablePayloadValidatorBuilder,
         > = base_node
             .add_ons_builder()
             .with_da_config(da_config.clone())
             .with_gas_limit_config(gas_limit_config.clone())
             .build();
 
-        let node_builder = NodeBuilder::<_, BaseChainSpec>::new(node_config.clone())
+        let node_builder = NodeBuilder::<_, UnstableChainSpec>::new(node_config.clone())
             .with_database(create_test_db(node_config.clone()))
             .with_launch_context(runtime.clone())
-            .with_types::<BaseNode>()
+            .with_types::<UnstableNode>()
             .with_components(
                 base_node
                     .components()
@@ -202,7 +202,7 @@ impl LocalInstance {
     }
 
     /// Returns the Reth node configuration.
-    pub const fn node_config(&self) -> &NodeConfig<BaseChainSpec> {
+    pub const fn node_config(&self) -> &NodeConfig<UnstableChainSpec> {
         &self.node_config
     }
 
@@ -264,8 +264,8 @@ impl LocalInstance {
     }
 
     /// Creates an alloy provider connected to this instance over IPC.
-    pub async fn provider(&self) -> eyre::Result<RootProvider<Base>> {
-        ProviderBuilder::<Identity, Identity, Base>::default()
+    pub async fn provider(&self) -> eyre::Result<RootProvider<Unstable>> {
+        ProviderBuilder::<Identity, Identity, Unstable>::default()
             .connect_ipc(self.rpc_ipc().to_string().into())
             .await
             .map_err(|e| eyre::eyre!("Failed to connect to provider: {e}"))
@@ -295,17 +295,17 @@ impl Future for LocalInstance {
 }
 
 /// Returns the default Reth node configuration used in tests.
-pub fn default_node_config() -> NodeConfig<BaseChainSpec> {
+pub fn default_node_config() -> NodeConfig<UnstableChainSpec> {
     node_config_with_chain_spec(chain_spec())
 }
 
 /// Returns the default test chain spec, lazily initialized from the embedded
 /// genesis template.
-pub fn chain_spec() -> Arc<BaseChainSpec> {
-    static CHAIN_SPEC: LazyLock<Arc<BaseChainSpec>> = LazyLock::new(|| {
+pub fn chain_spec() -> Arc<UnstableChainSpec> {
+    static CHAIN_SPEC: LazyLock<Arc<UnstableChainSpec>> = LazyLock::new(|| {
         let genesis = include_str!("./artifacts/genesis.json.tmpl");
         let genesis = serde_json::from_str(genesis).expect("invalid genesis JSON");
-        let chain_spec = BaseChainSpec::from_genesis(genesis);
+        let chain_spec = UnstableChainSpec::from_genesis(genesis);
         Arc::new(chain_spec)
     });
 
@@ -313,25 +313,25 @@ pub fn chain_spec() -> Arc<BaseChainSpec> {
 }
 
 /// Returns a chain spec identical to the default test chain spec but with
-/// `BaseUpgrade::Azul` activated at genesis (timestamp 0).
-pub fn chain_spec_with_azul() -> Arc<BaseChainSpec> {
-    use base_common_chains::BaseUpgrade;
+/// `UnstableUpgrade::Azul` activated at genesis (timestamp 0).
+pub fn chain_spec_with_azul() -> Arc<UnstableChainSpec> {
+    use base_common_chains::UnstableUpgrade;
     use reth_chainspec::ForkCondition;
 
     let genesis = include_str!("./artifacts/genesis.json.tmpl");
     let genesis = serde_json::from_str(genesis).expect("invalid genesis JSON");
-    let mut spec = BaseChainSpec::from_genesis(genesis);
-    spec.inner.hardforks.insert(BaseUpgrade::Azul, ForkCondition::Timestamp(0));
+    let mut spec = UnstableChainSpec::from_genesis(genesis);
+    spec.inner.hardforks.insert(UnstableUpgrade::Azul, ForkCondition::Timestamp(0));
     Arc::new(spec)
 }
 
-/// Returns a node config using a chain spec with `BaseUpgrade::Azul` activated
+/// Returns a node config using a chain spec with `UnstableUpgrade::Azul` activated
 /// at genesis.
-pub fn default_node_config_with_azul() -> NodeConfig<BaseChainSpec> {
+pub fn default_node_config_with_azul() -> NodeConfig<UnstableChainSpec> {
     node_config_with_chain_spec(chain_spec_with_azul())
 }
 
-fn node_config_with_chain_spec(spec: Arc<BaseChainSpec>) -> NodeConfig<BaseChainSpec> {
+fn node_config_with_chain_spec(spec: Arc<UnstableChainSpec>) -> NodeConfig<UnstableChainSpec> {
     let tempdir = std::env::temp_dir();
     let random_id = nanoid!();
 
@@ -364,14 +364,14 @@ fn node_config_with_chain_spec(spec: Arc<BaseChainSpec>) -> NodeConfig<BaseChain
         pprof_dumps_path: Some(pprof_dumps_path),
     };
 
-    NodeConfig::<BaseChainSpec>::new(spec)
+    NodeConfig::<UnstableChainSpec>::new(spec)
         .with_datadir_args(datadir)
         .with_rpc(rpc)
         .with_network(network)
 }
 
-fn pool_component() -> BasePoolBuilder<BasePooledTransaction> {
-    BasePoolBuilder::<BasePooledTransaction>::default()
+fn pool_component() -> UnstablePoolBuilder<UnstablePooledTransaction> {
+    UnstablePoolBuilder::<UnstablePooledTransaction>::default()
 }
 
 /// A utility for listening to flashblocks WebSocket messages during tests.

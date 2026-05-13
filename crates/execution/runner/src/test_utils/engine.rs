@@ -1,16 +1,16 @@
 //! Engine API integration for canonical block production.
 //!
 //! This module provides a typed, type-safe Engine API client based on
-//! reth's `BaseEngineApiClient` trait instead of raw string-based RPC calls.
+//! reth's `UnstableEngineApiClient` trait instead of raw string-based RPC calls.
 
 use std::{fmt, marker::PhantomData, time::Duration};
 
 use alloy_eips::eip7685::Requests;
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::{ForkchoiceState, ForkchoiceUpdated, PayloadId, PayloadStatus};
-use base_common_rpc_types_engine::BaseExecutionPayloadV4;
-use base_execution_rpc::BaseEngineApiClient;
-use base_node_core::BaseEngineTypes;
+use base_common_rpc_types_engine::UnstableExecutionPayloadV4;
+use base_execution_rpc::UnstableEngineApiClient;
+use base_node_core::UnstableEngineTypes;
 use eyre::Result;
 use jsonrpsee::core::client::SubscriptionClientT;
 use reth_node_builder::{EngineTypes, PayloadTypes};
@@ -125,9 +125,9 @@ impl<P: EngineProtocol> EngineApi<P> {
     pub async fn get_payload_v4(
         &self,
         payload_id: PayloadId,
-    ) -> eyre::Result<<BaseEngineTypes as EngineTypes>::ExecutionPayloadEnvelopeV4> {
+    ) -> eyre::Result<<UnstableEngineTypes as EngineTypes>::ExecutionPayloadEnvelopeV4> {
         debug!(payload_id = %payload_id, timestamp = %chrono::Utc::now(), "Fetching payload");
-        Ok(BaseEngineApiClient::<BaseEngineTypes>::get_payload_v4(&self.client().await, payload_id)
+        Ok(UnstableEngineApiClient::<UnstableEngineTypes>::get_payload_v4(&self.client().await, payload_id)
             .await?)
     }
 
@@ -135,9 +135,9 @@ impl<P: EngineProtocol> EngineApi<P> {
     pub async fn get_payload_v5(
         &self,
         payload_id: PayloadId,
-    ) -> eyre::Result<<BaseEngineTypes as EngineTypes>::ExecutionPayloadEnvelopeV5> {
+    ) -> eyre::Result<<UnstableEngineTypes as EngineTypes>::ExecutionPayloadEnvelopeV5> {
         debug!(payload_id = %payload_id, timestamp = %chrono::Utc::now(), "Fetching payload");
-        Ok(BaseEngineApiClient::<BaseEngineTypes>::get_payload_v5(&self.client().await, payload_id)
+        Ok(UnstableEngineApiClient::<UnstableEngineTypes>::get_payload_v5(&self.client().await, payload_id)
             .await?)
     }
 
@@ -145,20 +145,20 @@ impl<P: EngineProtocol> EngineApi<P> {
     pub async fn get_payload(
         &self,
         payload_id: PayloadId,
-    ) -> eyre::Result<<BaseEngineTypes as EngineTypes>::ExecutionPayloadEnvelopeV4> {
+    ) -> eyre::Result<<UnstableEngineTypes as EngineTypes>::ExecutionPayloadEnvelopeV4> {
         self.get_payload_v4(payload_id).await
     }
 
     /// Submit a new payload to the Engine API
     pub async fn new_payload(
         &self,
-        payload: BaseExecutionPayloadV4,
+        payload: UnstableExecutionPayloadV4,
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
         execution_requests: Requests,
     ) -> eyre::Result<PayloadStatus> {
         debug!(timestamp = %chrono::Utc::now(), "Submitting new payload");
-        Ok(BaseEngineApiClient::<BaseEngineTypes>::new_payload_v4(
+        Ok(UnstableEngineApiClient::<UnstableEngineTypes>::new_payload_v4(
             &self.client().await,
             payload,
             versioned_hashes,
@@ -173,7 +173,7 @@ impl<P: EngineProtocol> EngineApi<P> {
         &self,
         current_head: B256,
         new_head: B256,
-        payload_attributes: Option<<BaseEngineTypes as PayloadTypes>::PayloadAttributes>,
+        payload_attributes: Option<<UnstableEngineTypes as PayloadTypes>::PayloadAttributes>,
     ) -> eyre::Result<ForkchoiceUpdated> {
         debug!(
             "Updating forkchoice at {} (current: {}, new: {})",
@@ -181,7 +181,7 @@ impl<P: EngineProtocol> EngineApi<P> {
             current_head,
             new_head
         );
-        let result = BaseEngineApiClient::<BaseEngineTypes>::fork_choice_updated_v3(
+        let result = UnstableEngineApiClient::<UnstableEngineTypes>::fork_choice_updated_v3(
             &self.client().await,
             ForkchoiceState {
                 head_block_hash: new_head,

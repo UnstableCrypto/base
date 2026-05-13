@@ -1,6 +1,6 @@
 [package]
 name = "base-common-network"
-description = "Base blockchain RPC behavior abstraction"
+description = "Unstable blockchain RPC behavior abstraction"
 
 version.workspace = true
 edition.workspace = true

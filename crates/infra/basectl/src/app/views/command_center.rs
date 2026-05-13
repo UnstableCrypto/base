@@ -592,7 +592,7 @@ fn render_stats_panel(f: &mut Frame<'_>, area: Rect, resources: &Resources) {
                 Style::default().fg(target_usage.map_or(Color::DarkGray, target_usage_color)),
             ),
             Span::raw("  "),
-            Span::styled("Base: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Unstable: ", Style::default().fg(Color::DarkGray)),
             Span::styled(
                 base_share.map_or_else(|| "-".to_string(), |s| format!("{:.0}%", s * 100.0)),
                 Style::default().fg(COLOR_BASE_BLUE),
@@ -723,7 +723,7 @@ fn render_flash_panel(
         Cell::from("Idx").style(header_style),
         Cell::from("Txs").style(header_style),
         Cell::from("Gas").style(header_style),
-        Cell::from("Base Fee").style(header_style),
+        Cell::from("Unstable Fee").style(header_style),
         Cell::from("Δt").style(header_style),
     ]);
 

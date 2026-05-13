@@ -5,10 +5,10 @@ use alloy_primitives::{B64, B256, Bytes, TxKind, U256, address, hex};
 use alloy_provider::{Provider, RootProvider};
 use alloy_rpc_types_engine::{ForkchoiceUpdated, PayloadAttributes, PayloadStatusEnum};
 use alloy_rpc_types_eth::Block;
-use base_common_consensus::{BaseTypedTransaction, TxDeposit};
-use base_common_network::Base;
+use base_common_consensus::{UnstableTypedTransaction, TxDeposit};
+use base_common_network::Unstable;
 use base_common_rpc_types::Transaction;
-use base_common_rpc_types_engine::BasePayloadAttributes;
+use base_common_rpc_types_engine::UnstablePayloadAttributes;
 use chrono::Utc;
 
 use super::{
@@ -17,13 +17,13 @@ use super::{
 };
 use crate::BuilderConfig;
 
-/// The `ChainDriver` is a type that allows driving the Base builder node to build new blocks manually.
+/// The `ChainDriver` is a type that allows driving the Unstable builder node to build new blocks manually.
 /// by calling the `build_new_block` method. It uses the Engine API to interact with the node
 /// and the provider to fetch blocks and transactions.
 #[derive(Debug)]
 pub struct ChainDriver<RpcProtocol: Protocol = Ipc> {
     engine_api: EngineApi<RpcProtocol>,
-    provider: RootProvider<Base>,
+    provider: RootProvider<Unstable>,
     signer: Option<PrivateKeySigner>,
     gas_limit: Option<u64>,
     builder_config: BuilderConfig,
@@ -48,7 +48,7 @@ impl<RpcProtocol: Protocol> ChainDriver<RpcProtocol> {
     }
 
     /// Creates a new `ChainDriver` for some EL node instance.
-    pub fn remote(provider: RootProvider<Base>, engine_api: EngineApi<RpcProtocol>) -> Self {
+    pub fn remote(provider: RootProvider<Unstable>, engine_api: EngineApi<RpcProtocol>) -> Self {
         Self {
             engine_api,
             provider,
@@ -73,7 +73,7 @@ impl<RpcProtocol: Protocol> ChainDriver<RpcProtocol> {
         self
     }
 
-    /// Adds an external Base execution client node that will receive all newly built
+    /// Adds an external Unstable execution client node that will receive all newly built
     /// blocks by this driver and ensure that they are valid. This validation process is
     /// transparent and happens in the background when building new blocks.
     ///
@@ -140,7 +140,7 @@ impl<RpcProtocol: Protocol> ChainDriver<RpcProtocol> {
 
             // Create a temporary signer for the deposit
             let signer = self.signer.clone().unwrap_or_else(PrivateKeySigner::random);
-            let signed_tx = sign_base_tx(&signer, BaseTypedTransaction::Deposit(deposit_tx))?;
+            let signed_tx = sign_base_tx(&signer, UnstableTypedTransaction::Deposit(deposit_tx))?;
             signed_tx.encoded_2718().into()
         };
 
@@ -172,7 +172,7 @@ impl<RpcProtocol: Protocol> ChainDriver<RpcProtocol> {
             ((DEFAULT_DENOMINATOR as u64) << 32) | (DEFAULT_ELASTICITY as u64);
 
         let fcu_result = self
-            .fcu(BasePayloadAttributes {
+            .fcu(UnstablePayloadAttributes {
                 payload_attributes: PayloadAttributes {
                     timestamp: block_timestamp,
                     parent_beacon_block_root: Some(B256::ZERO),
@@ -309,14 +309,14 @@ impl<RpcProtocol: Protocol> ChainDriver<RpcProtocol> {
 
     /// Returns a reference to the underlying alloy provider that is used to
     /// interact with the chain.
-    pub const fn provider(&self) -> &RootProvider<Base> {
+    pub const fn provider(&self) -> &RootProvider<Unstable> {
         &self.provider
     }
 }
 
 // internal methods
 impl<RpcProtocol: Protocol> ChainDriver<RpcProtocol> {
-    async fn fcu(&self, attribs: BasePayloadAttributes) -> eyre::Result<ForkchoiceUpdated> {
+    async fn fcu(&self, attribs: UnstablePayloadAttributes) -> eyre::Result<ForkchoiceUpdated> {
         let latest = self.latest().await?.header.hash;
         let response = self.engine_api.update_forkchoice(latest, latest, Some(attribs)).await?;
 
@@ -332,7 +332,7 @@ impl<RpcProtocol: Protocol> ChainDriver<RpcProtocol> {
 // 2. Zero operator fee scalar
 // 3. Zero operator fee constant
 // 4. DA footprint of 400 applied
-// See: // https://specs.base.org/upgrades/jovian/l1-attributes for Jovian specs.
+// See: // https://specs.unstable.org/upgrades/jovian/l1-attributes for Jovian specs.
 const JOVIAN_DATA: &[u8] = &hex!(
     "3db6be2b0000146b000f79c500000000000000040000000066d052e700000000013ad8a
     3000000000000000000000000000000000000000000000000000000003ef12787000000

@@ -112,7 +112,7 @@ mod tests {
     use alloy_eips::eip1559::MIN_PROTOCOL_BASE_FEE;
     use reth_payload_util::{BestPayloadTransactions, PayloadTransactions};
     use reth_transaction_pool::{
-        CoinbaseTipOrdering, PoolTransaction,
+        TheAlxLabsTipOrdering, PoolTransaction,
         pool::PendingPool,
         test_utils::{MockTransaction, MockTransactionFactory},
     };
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn test_simple_case() {
-        let mut pool = PendingPool::new(CoinbaseTipOrdering::<MockTransaction>::default());
+        let mut pool = PendingPool::new(TheAlxLabsTipOrdering::<MockTransaction>::default());
         let mut f = MockTransactionFactory::default();
 
         // Add 3 regular transaction
@@ -172,7 +172,7 @@ mod tests {
 
     /// This test simulates the nonce-chain gating fix across flashblock boundaries.
     ///
-    /// Scenario (based on real Base Mainnet block 41628995):
+    /// Scenario (based on real Unstable Mainnet block 41628995):
     /// - Sender A has `TX_A` (nonce 0, LOW tip) and `TX_B` (nonce 1, HIGH tip) in the pool
     /// - Sender B has `TX_C` (MEDIUM tip)
     ///
@@ -195,7 +195,7 @@ mod tests {
     fn test_nonce_chain_gating_bug_across_flashblocks() {
         use alloy_primitives::Address;
 
-        let mut pool = PendingPool::new(CoinbaseTipOrdering::<MockTransaction>::default());
+        let mut pool = PendingPool::new(TheAlxLabsTipOrdering::<MockTransaction>::default());
         let mut f = MockTransactionFactory::default();
 
         let sender_a = Address::random();
@@ -241,7 +241,7 @@ mod tests {
         // Simulate: flashblock 1 is complete after TX_A was executed
         iterator.mark_committed(&[*tx_a.hash()]);
         // Simulate pool.prune_transactions by recreating the pool without TX_A
-        let mut pool = PendingPool::new(CoinbaseTipOrdering::<MockTransaction>::default());
+        let mut pool = PendingPool::new(TheAlxLabsTipOrdering::<MockTransaction>::default());
         pool.add_transaction(Arc::new(f.validated(tx_b)), 0);
         pool.add_transaction(Arc::new(f.validated(tx_c)), 0);
 
@@ -343,7 +343,7 @@ mod tests {
     /// Rejected transactions are skipped across flashblock boundaries within the same block.
     #[test]
     fn test_rejected_txs_persist_across_refresh() {
-        let mut pool = PendingPool::new(CoinbaseTipOrdering::<MockTransaction>::default());
+        let mut pool = PendingPool::new(TheAlxLabsTipOrdering::<MockTransaction>::default());
         let mut f = MockTransactionFactory::default();
 
         let tx_1 = f.create_eip1559();
@@ -380,7 +380,7 @@ mod tests {
     /// (simulating cross-block persistence).
     #[test]
     fn test_rejection_cache_persists_across_blocks() {
-        let mut pool = PendingPool::new(CoinbaseTipOrdering::<MockTransaction>::default());
+        let mut pool = PendingPool::new(TheAlxLabsTipOrdering::<MockTransaction>::default());
         let mut f = MockTransactionFactory::default();
 
         let tx_1 = f.create_eip1559();
@@ -414,7 +414,7 @@ mod tests {
     /// A rejected transaction becomes eligible again after the cache TTL expires.
     #[test]
     fn test_rejected_tx_eligible_after_ttl_expiry() {
-        let mut pool = PendingPool::new(CoinbaseTipOrdering::<MockTransaction>::default());
+        let mut pool = PendingPool::new(TheAlxLabsTipOrdering::<MockTransaction>::default());
         let mut f = MockTransactionFactory::default();
 
         let tx_1 = f.create_eip1559();

@@ -12,10 +12,10 @@ use alloy_rpc_types_engine::PayloadId;
 use alloy_rpc_types_eth::{Filter, Header as RPCHeader, Log};
 use arc_swap::Guard;
 use base_common_consensus::OpTxType;
-use base_common_evm::{BaseHaltReason, BaseTxResult};
+use base_common_evm::{UnstableHaltReason, UnstableTxResult};
 use base_common_flashblocks::Flashblock;
-use base_common_network::Base;
-use base_common_rpc_types::{BaseTransactionReceipt, Transaction};
+use base_common_network::Unstable;
+use base_common_rpc_types::{UnstableTransactionReceipt, Transaction};
 use reth_evm::eth::EthTxResult;
 use reth_revm::db::BundleState;
 use reth_rpc_convert::RpcTransaction;
@@ -38,14 +38,14 @@ pub struct PendingBlocksBuilder {
     transactions: Vec<Transaction>,
     account_balances: HashMap<Address, U256>,
     transaction_count: HashMap<Address, U256>,
-    transaction_receipts: HashMap<B256, BaseTransactionReceipt>,
+    transaction_receipts: HashMap<B256, UnstableTransactionReceipt>,
     transactions_by_hash: HashMap<B256, Transaction>,
     transaction_position: HashMap<B256, (BlockNumber, usize)>,
     next_position_per_block: HashMap<BlockNumber, usize>,
     transaction_state: HashMap<B256, EvmState>,
     transaction_senders: HashMap<B256, Address>,
     state_overrides: Option<StateOverride>,
-    transaction_results: HashMap<B256, ExecutionResult<BaseHaltReason>>,
+    transaction_results: HashMap<B256, ExecutionResult<UnstableHaltReason>>,
     execution_times: HashMap<B256, u128>,
     state_root_times: HashMap<B256, u128>,
 
@@ -147,7 +147,7 @@ impl PendingBlocksBuilder {
 
     /// Stores the receipt for a transaction.
     #[inline]
-    pub fn with_receipt(&mut self, hash: B256, receipt: BaseTransactionReceipt) -> &Self {
+    pub fn with_receipt(&mut self, hash: B256, receipt: UnstableTransactionReceipt) -> &Self {
         self.transaction_receipts.insert(hash, receipt);
         self
     }
@@ -178,7 +178,7 @@ impl PendingBlocksBuilder {
     pub fn with_transaction_result(
         &mut self,
         hash: B256,
-        result: ExecutionResult<BaseHaltReason>,
+        result: ExecutionResult<UnstableHaltReason>,
     ) -> &Self {
         self.transaction_results.insert(hash, result);
         self
@@ -249,13 +249,13 @@ pub struct PendingBlocks {
 
     account_balances: HashMap<Address, U256>,
     transaction_count: HashMap<Address, U256>,
-    transaction_receipts: HashMap<B256, BaseTransactionReceipt>,
+    transaction_receipts: HashMap<B256, UnstableTransactionReceipt>,
     transactions_by_hash: HashMap<B256, Transaction>,
     transaction_position: HashMap<B256, (BlockNumber, usize)>,
     transaction_state: HashMap<B256, EvmState>,
     transaction_senders: HashMap<B256, Address>,
     state_overrides: Option<StateOverride>,
-    transaction_results: HashMap<B256, ExecutionResult<BaseHaltReason>>,
+    transaction_results: HashMap<B256, ExecutionResult<UnstableHaltReason>>,
     execution_times: HashMap<B256, u128>,
     state_root_times: HashMap<B256, u128>,
 
@@ -265,7 +265,7 @@ pub struct PendingBlocks {
 impl PendingBlocks {
     fn transaction_with_logs(
         transaction: &Transaction,
-        receipt: &BaseTransactionReceipt,
+        receipt: &UnstableTransactionReceipt,
     ) -> TransactionWithLogs {
         TransactionWithLogs {
             transaction: transaction.clone(),
@@ -370,7 +370,7 @@ impl PendingBlocks {
     }
 
     /// Returns the latest block, optionally with full transaction details.
-    pub fn get_latest_block(&self, full: bool) -> RpcBlock<Base> {
+    pub fn get_latest_block(&self, full: bool) -> RpcBlock<Unstable> {
         let header = self.latest_header();
         let block_number = header.number;
         let block_transactions: Vec<Transaction> =
@@ -383,7 +383,7 @@ impl PendingBlocks {
             BlockTransactions::Hashes(tx_hashes)
         };
 
-        RpcBlock::<Base> {
+        RpcBlock::<Unstable> {
             header: RPCHeader::from_consensus(header, None, None),
             transactions,
             uncles: Vec::new(),
@@ -392,7 +392,7 @@ impl PendingBlocks {
     }
 
     /// Returns the receipt for a transaction.
-    pub fn get_receipt(&self, tx_hash: TxHash) -> Option<&BaseTransactionReceipt> {
+    pub fn get_receipt(&self, tx_hash: TxHash) -> Option<&UnstableTransactionReceipt> {
         self.transaction_receipts.get(&tx_hash)
     }
 
@@ -400,7 +400,7 @@ impl PendingBlocks {
     pub fn get_transaction_result(
         &self,
         tx_hash: &B256,
-    ) -> Option<&ExecutionResult<BaseHaltReason>> {
+    ) -> Option<&ExecutionResult<UnstableHaltReason>> {
         self.transaction_results.get(tx_hash)
     }
 
@@ -415,7 +415,7 @@ impl PendingBlocks {
     }
 
     /// Returns the receipt and state for a transaction.
-    pub fn get_tx_result(&self, tx_hash: &B256) -> Option<BaseTxResult<BaseHaltReason, OpTxType>> {
+    pub fn get_tx_result(&self, tx_hash: &B256) -> Option<UnstableTxResult<UnstableHaltReason, OpTxType>> {
         let (((result, state), tx), sender) = self
             .get_transaction_result(tx_hash)
             .zip(self.get_transaction_state(tx_hash))
@@ -434,7 +434,7 @@ impl PendingBlocks {
         };
 
         let base_tx_result =
-            BaseTxResult { inner: eth_tx_result, is_deposit: tx.inner.inner.is_deposit(), sender };
+            UnstableTxResult { inner: eth_tx_result, is_deposit: tx.inner.inner.is_deposit(), sender };
 
         Some(base_tx_result)
     }
@@ -612,21 +612,21 @@ impl PendingBlocksAPI for Guard<Option<Arc<PendingBlocks>>> {
         self.as_ref().map(|pb| pb.get_transaction_count(address)).unwrap_or_else(|| U256::from(0))
     }
 
-    fn get_block(&self, full: bool) -> Option<RpcBlock<Base>> {
+    fn get_block(&self, full: bool) -> Option<RpcBlock<Unstable>> {
         self.as_ref().map(|pb| pb.get_latest_block(full))
     }
 
     fn get_transaction_receipt(
         &self,
         tx_hash: alloy_primitives::TxHash,
-    ) -> Option<RpcReceipt<Base>> {
+    ) -> Option<RpcReceipt<Unstable>> {
         self.as_ref().and_then(|pb| pb.get_receipt(tx_hash).cloned())
     }
 
     fn get_transaction_by_hash(
         &self,
         tx_hash: alloy_primitives::TxHash,
-    ) -> Option<RpcTransaction<Base>> {
+    ) -> Option<RpcTransaction<Unstable>> {
         self.as_ref().and_then(|pb| pb.get_transaction_by_hash(tx_hash).cloned())
     }
 
@@ -653,11 +653,11 @@ mod tests {
     };
     use alloy_provider::network::TransactionResponse;
     use alloy_rpc_types_engine::PayloadId;
-    use base_common_consensus::{BaseReceipt, BaseTxEnvelope, TxDeposit};
+    use base_common_consensus::{UnstableReceipt, UnstableTxEnvelope, TxDeposit};
     use base_common_flashblocks::{
-        ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
+        ExecutionPayloadUnstableV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
     };
-    use base_common_rpc_types::{BaseTransactionReceipt, L1BlockInfo, Transaction};
+    use base_common_rpc_types::{UnstableTransactionReceipt, L1BlockInfo, Transaction};
     use revm::context_interface::result::ExecutionResult;
 
     use super::*;
@@ -670,7 +670,7 @@ mod tests {
         Flashblock {
             payload_id: PayloadId::default(),
             index: 0,
-            base: Some(ExecutionPayloadBaseV1 {
+            base: Some(ExecutionPayloadUnstableV1 {
                 parent_beacon_block_root: B256::ZERO,
                 parent_hash: B256::ZERO,
                 fee_recipient: Address::ZERO,
@@ -700,7 +700,7 @@ mod tests {
         Transaction {
             inner: alloy_rpc_types_eth::Transaction {
                 inner: Recovered::new_unchecked(
-                    BaseTxEnvelope::Legacy(alloy_consensus::Signed::new_unchecked(
+                    UnstableTxEnvelope::Legacy(alloy_consensus::Signed::new_unchecked(
                         alloy_consensus::TxLegacy::default(),
                         Signature::test_signature(),
                         B256::ZERO,
@@ -728,7 +728,7 @@ mod tests {
             value: U256::ZERO,
             input: Bytes::new(),
         };
-        let envelope = BaseTxEnvelope::Legacy(Signed::new_unchecked(
+        let envelope = UnstableTxEnvelope::Legacy(Signed::new_unchecked(
             legacy,
             Signature::test_signature(),
             hash,
@@ -761,7 +761,7 @@ mod tests {
         Transaction {
             inner: alloy_rpc_types_eth::Transaction {
                 inner: Recovered::new_unchecked(
-                    BaseTxEnvelope::Deposit(Sealed::new_unchecked(deposit, B256::ZERO)),
+                    UnstableTxEnvelope::Deposit(Sealed::new_unchecked(deposit, B256::ZERO)),
                     test_sender(),
                 ),
                 block_hash: None,
@@ -774,11 +774,11 @@ mod tests {
         }
     }
 
-    fn test_receipt(tx_hash: B256, blob_gas_used: Option<u64>) -> BaseTransactionReceipt {
-        BaseTransactionReceipt {
+    fn test_receipt(tx_hash: B256, blob_gas_used: Option<u64>) -> UnstableTransactionReceipt {
+        UnstableTransactionReceipt {
             inner: alloy_rpc_types_eth::TransactionReceipt {
                 inner: ReceiptWithBloom {
-                    receipt: BaseReceipt::Legacy(Receipt {
+                    receipt: UnstableReceipt::Legacy(Receipt {
                         status: alloy_consensus::Eip658Value::Eip658(true),
                         cumulative_gas_used: 21000,
                         logs: vec![],
@@ -801,8 +801,8 @@ mod tests {
         }
     }
 
-    /// Creates an [`BaseTransactionReceipt`] with a single log emitted from `log_address`.
-    fn test_receipt_with_log(tx_hash: B256, log_address: Address) -> BaseTransactionReceipt {
+    /// Creates an [`UnstableTransactionReceipt`] with a single log emitted from `log_address`.
+    fn test_receipt_with_log(tx_hash: B256, log_address: Address) -> UnstableTransactionReceipt {
         let log = Log {
             inner: PrimitiveLog {
                 address: log_address,
@@ -817,10 +817,10 @@ mod tests {
             removed: false,
         };
 
-        BaseTransactionReceipt {
+        UnstableTransactionReceipt {
             inner: alloy_rpc_types_eth::TransactionReceipt {
                 inner: ReceiptWithBloom {
-                    receipt: BaseReceipt::Legacy(Receipt {
+                    receipt: UnstableReceipt::Legacy(Receipt {
                         status: alloy_consensus::Eip658Value::Eip658(true),
                         cumulative_gas_used: 21_000,
                         logs: vec![log],
@@ -848,7 +848,7 @@ mod tests {
         log_address: Address,
         contract_address: Address,
         logs_bloom: Bloom,
-    ) -> BaseTransactionReceipt {
+    ) -> UnstableTransactionReceipt {
         let mut receipt = test_receipt_with_log(tx_hash, log_address);
         receipt.inner.inner.receipt.as_receipt_mut().status =
             alloy_consensus::Eip658Value::Eip658(true);
@@ -858,7 +858,7 @@ mod tests {
         receipt
     }
 
-    fn test_execution_result() -> ExecutionResult<BaseHaltReason> {
+    fn test_execution_result() -> ExecutionResult<UnstableHaltReason> {
         ExecutionResult::Success {
             reason: revm::context::result::SuccessReason::Stop,
             gas_used: 21000,
@@ -973,7 +973,7 @@ mod tests {
         tx_hash: B256,
         log_address: Address,
         topic0: B256,
-    ) -> BaseTransactionReceipt {
+    ) -> UnstableTransactionReceipt {
         let log = Log {
             inner: PrimitiveLog {
                 address: log_address,
@@ -988,10 +988,10 @@ mod tests {
             removed: false,
         };
 
-        BaseTransactionReceipt {
+        UnstableTransactionReceipt {
             inner: alloy_rpc_types_eth::TransactionReceipt {
                 inner: ReceiptWithBloom {
-                    receipt: BaseReceipt::Legacy(Receipt {
+                    receipt: UnstableReceipt::Legacy(Receipt {
                         status: alloy_consensus::Eip658Value::Eip658(true),
                         cumulative_gas_used: 21_000,
                         logs: vec![log],
@@ -1126,10 +1126,10 @@ mod tests {
             removed: false,
         };
 
-        let receipt = BaseTransactionReceipt {
+        let receipt = UnstableTransactionReceipt {
             inner: alloy_rpc_types_eth::TransactionReceipt {
                 inner: ReceiptWithBloom {
-                    receipt: BaseReceipt::Legacy(Receipt {
+                    receipt: UnstableReceipt::Legacy(Receipt {
                         status: alloy_consensus::Eip658Value::Eip658(true),
                         cumulative_gas_used: 42_000,
                         logs: vec![log_match, log_other],

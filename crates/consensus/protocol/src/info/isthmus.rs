@@ -9,11 +9,11 @@ use crate::{
     DecodeError,
     info::{
         bedrock_base::{
-            L1BlockInfoBedrockBaseFields, ambassador_impl_L1BlockInfoBedrockBaseFields,
+            L1BlockInfoBedrockUnstableFields, ambassador_impl_L1BlockInfoBedrockUnstableFields,
         },
         ecotone_base::{
-            L1BlockInfoEcotoneBase, L1BlockInfoEcotoneBaseFields,
-            ambassador_impl_L1BlockInfoEcotoneBaseFields,
+            L1BlockInfoEcotoneUnstable, L1BlockInfoEcotoneUnstableFields,
+            ambassador_impl_L1BlockInfoEcotoneUnstableFields,
         },
     },
 };
@@ -25,13 +25,13 @@ use crate::{
 /// | Bytes   | Field                    |
 /// +---------+--------------------------+
 /// | 4       | Function signature       |
-/// | 4       | `BaseFeeScalar`            |
-/// | 4       | `BlobBaseFeeScalar`        |
+/// | 4       | `UnstableFeeScalar`            |
+/// | 4       | `BlobUnstableFeeScalar`        |
 /// | 8       | `SequenceNumber`           |
 /// | 8       | Timestamp                |
 /// | 8       | `L1BlockNumber`            |
-/// | 32      | `BaseFee`                  |
-/// | 32      | `BlobBaseFee`              |
+/// | 32      | `UnstableFee`                  |
+/// | 32      | `BlobUnstableFee`              |
 /// | 32      | `BlockHash`                |
 /// | 32      | `BatcherHash`              |
 /// | 4       | `OperatorFeeScalar`        |
@@ -39,12 +39,12 @@ use crate::{
 /// +---------+--------------------------+
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Default, Copy, Delegate)]
 #[allow(clippy::duplicated_attributes)]
-#[delegate(L1BlockInfoBedrockBaseFields, target = "base")]
-#[delegate(L1BlockInfoEcotoneBaseFields, target = "base")]
+#[delegate(L1BlockInfoBedrockUnstableFields, target = "base")]
+#[delegate(L1BlockInfoEcotoneUnstableFields, target = "base")]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct L1BlockInfoIsthmus {
     #[cfg_attr(feature = "serde", serde(flatten))]
-    base: L1BlockInfoEcotoneBase,
+    base: L1BlockInfoEcotoneUnstable,
     /// The operator fee scalar
     pub operator_fee_scalar: u32,
     /// The operator fee constant
@@ -53,14 +53,14 @@ pub struct L1BlockInfoIsthmus {
 
 /// Accessors for fields in Isthmus and later.
 #[delegatable_trait]
-pub trait L1BlockInfoIsthmusBaseFields: L1BlockInfoEcotoneBaseFields {
+pub trait L1BlockInfoIsthmusUnstableFields: L1BlockInfoEcotoneUnstableFields {
     /// The operator fee scalar
     fn operator_fee_scalar(&self) -> u32;
     /// The operator fee constant
     fn operator_fee_constant(&self) -> u64;
 }
 
-impl L1BlockInfoIsthmusBaseFields for L1BlockInfoIsthmus {
+impl L1BlockInfoIsthmusUnstableFields for L1BlockInfoIsthmus {
     /// The operator fee scalar
     fn operator_fee_scalar(&self) -> u32 {
         self.operator_fee_scalar
@@ -73,7 +73,7 @@ impl L1BlockInfoIsthmusBaseFields for L1BlockInfoIsthmus {
 
 /// Accessors for all Isthmus fields.
 pub trait L1BlockInfoIsthmusFields:
-    L1BlockInfoEcotoneBaseFields + L1BlockInfoIsthmusBaseFields
+    L1BlockInfoEcotoneUnstableFields + L1BlockInfoIsthmusUnstableFields
 {
 }
 
@@ -123,7 +123,7 @@ impl L1BlockInfoIsthmus {
 
     /// Decodes the body of the [`L1BlockInfoIsthmus`] object.
     pub fn decode_calldata_body(r: &[u8]) -> Result<Self, DecodeError> {
-        let base = L1BlockInfoEcotoneBase::decode_calldata_body(r);
+        let base = L1BlockInfoEcotoneUnstable::decode_calldata_body(r);
 
         // Decode Isthmus-specific fields
         // SAFETY: 4 bytes are copied directly into the array
@@ -166,7 +166,7 @@ impl L1BlockInfoIsthmus {
         operator_fee_constant: u64,
     ) -> Self {
         Self {
-            base: L1BlockInfoEcotoneBase::new(
+            base: L1BlockInfoEcotoneUnstable::new(
                 number,
                 time,
                 base_fee,
@@ -183,35 +183,35 @@ impl L1BlockInfoIsthmus {
     }
     /// Construct from default values and `base_fee`.
     pub fn new_from_base_fee(base_fee: u64) -> Self {
-        Self { base: L1BlockInfoEcotoneBase::new_from_base_fee(base_fee), ..Default::default() }
+        Self { base: L1BlockInfoEcotoneUnstable::new_from_base_fee(base_fee), ..Default::default() }
     }
     /// Construct from default values and `sequence_number`.
     pub fn new_from_sequence_number(sequence_number: u64) -> Self {
         Self {
-            base: L1BlockInfoEcotoneBase::new_from_sequence_number(sequence_number),
+            base: L1BlockInfoEcotoneUnstable::new_from_sequence_number(sequence_number),
             ..Default::default()
         }
     }
     /// Construct from default values and `batcher_address`.
     pub fn new_from_batcher_address(batcher_address: Address) -> Self {
         Self {
-            base: L1BlockInfoEcotoneBase::new_from_batcher_address(batcher_address),
+            base: L1BlockInfoEcotoneUnstable::new_from_batcher_address(batcher_address),
             ..Default::default()
         }
     }
     /// Construct from default values and `base_fee_scalar`.
     pub fn new_from_base_fee_scalar(base_fee: u32) -> Self {
-        let base = L1BlockInfoEcotoneBase::new_from_base_fee_scalar(base_fee);
+        let base = L1BlockInfoEcotoneUnstable::new_from_base_fee_scalar(base_fee);
         Self { base, ..Default::default() }
     }
     /// Construct from default values and `blob_base_fee`.
     pub fn new_from_blob_base_fee(blob_base_fee: u128) -> Self {
-        let base = L1BlockInfoEcotoneBase::new_from_blob_base_fee(blob_base_fee);
+        let base = L1BlockInfoEcotoneUnstable::new_from_blob_base_fee(blob_base_fee);
         Self { base, ..Default::default() }
     }
     /// Construct from default values and `blob_base_fee_scalar`.
     pub fn new_from_blob_base_fee_scalar(base_fee_scalar: u32) -> Self {
-        let base = L1BlockInfoEcotoneBase::new_from_blob_base_fee_scalar(base_fee_scalar);
+        let base = L1BlockInfoEcotoneUnstable::new_from_blob_base_fee_scalar(base_fee_scalar);
         Self { base, ..Default::default() }
     }
     /// Construct from default values and `operator_fee_scalar`.
@@ -224,7 +224,7 @@ impl L1BlockInfoIsthmus {
     }
     /// Construct from default values, `number` and `block_hash`.
     pub fn new_from_number_and_block_hash(number: u64, block_hash: B256) -> Self {
-        let base = L1BlockInfoEcotoneBase::new_from_number_and_block_hash(number, block_hash);
+        let base = L1BlockInfoEcotoneUnstable::new_from_number_and_block_hash(number, block_hash);
         Self { base, ..Default::default() }
     }
 }

@@ -18,7 +18,7 @@ pub enum BlobEncodeError {
     },
 }
 
-/// Encodes raw byte payloads into the Base EIP-4844 blob wire format.
+/// Encodes raw byte payloads into the Unstable EIP-4844 blob wire format.
 ///
 /// The encoded blob can be decoded back to the original payload with
 /// [`BlobDecoder::decode`](super::BlobDecoder::decode).
@@ -26,7 +26,7 @@ pub enum BlobEncodeError {
 pub struct BlobEncoder;
 
 impl BlobEncoder {
-    /// Blob encoding version used by the Base blob codec.
+    /// Blob encoding version used by the Unstable blob codec.
     pub const BLOB_ENCODING_VERSION: u8 = 0;
 
     /// Maximum number of data bytes that fit in a single blob.
@@ -81,7 +81,7 @@ impl BlobEncoder {
         //
         // FE0 layout: [high_byte | version | len[1] | len[2] | len[3] | 27 payload bytes]
         //
-        // The Base blob encoding stores payload data across field elements.
+        // The Unstable blob encoding stores payload data across field elements.
         // Each field element is 32 bytes: [high_byte | 31 payload bytes].
         // Every 4 field elements the 4 high bytes carry 6-bit chunks that
         // reassemble into 3 additional payload bytes (x, y, z).

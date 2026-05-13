@@ -1,6 +1,6 @@
 use alloy_primitives::Address;
 use async_trait::async_trait;
-use base_common_rpc_types_engine::BaseExecutionPayloadEnvelope;
+use base_common_rpc_types_engine::UnstableExecutionPayloadEnvelope;
 use base_consensus_gossip::P2pRpcRequest;
 use base_consensus_rpc::NetworkAdminQuery;
 use base_consensus_sources::BlockSignerError;
@@ -51,7 +51,7 @@ pub struct NetworkActor<E: NetworkEngineClient, T: GossipTransport> {
     /// A channel to receive admin rpc requests.
     pub(super) admin_rpc: mpsc::Receiver<NetworkAdminQuery>,
     /// A channel to receive unsafe blocks and send them through the gossip layer.
-    pub(super) publish_rx: mpsc::Receiver<BaseExecutionPayloadEnvelope>,
+    pub(super) publish_rx: mpsc::Receiver<UnstableExecutionPayloadEnvelope>,
     /// A channel to use to interact with the engine actor.
     pub(super) engine_client: E,
 }
@@ -68,7 +68,7 @@ pub struct NetworkInboundData {
     /// A channel to send unsafe blocks to the network actor.
     /// This channel should only be used by the sequencer actor/admin RPC api to forward their
     /// newly produced unsafe blocks to the network actor.
-    pub gossip_payload_tx: mpsc::Sender<BaseExecutionPayloadEnvelope>,
+    pub gossip_payload_tx: mpsc::Sender<UnstableExecutionPayloadEnvelope>,
 }
 
 impl<E: NetworkEngineClient> NetworkActor<E, NetworkHandler> {
@@ -221,7 +221,7 @@ mod tests {
     use alloy_signer::SignerSync;
     use alloy_signer_local::PrivateKeySigner;
     use arbitrary::Arbitrary;
-    use base_common_rpc_types_engine::BaseExecutionPayload;
+    use base_common_rpc_types_engine::UnstableExecutionPayload;
     use rand::Rng;
 
     use super::*;
@@ -235,8 +235,8 @@ mod tests {
         let expected_address = pubkey.address();
         const CHAIN_ID: u64 = 1337;
 
-        let block = BaseExecutionPayloadEnvelope {
-            execution_payload: BaseExecutionPayload::V1(
+        let block = UnstableExecutionPayloadEnvelope {
+            execution_payload: UnstableExecutionPayload::V1(
                 ExecutionPayloadV1::arbitrary(&mut arbitrary::Unstructured::new(&bytes)).unwrap(),
             ),
             parent_beacon_block_root: None,
@@ -271,8 +271,8 @@ mod tests {
         let expected_address = pubkey.address();
         const CHAIN_ID: u64 = 1337;
 
-        let block = BaseExecutionPayloadEnvelope {
-            execution_payload: BaseExecutionPayload::V3(
+        let block = UnstableExecutionPayloadEnvelope {
+            execution_payload: UnstableExecutionPayload::V3(
                 ExecutionPayloadV3::arbitrary(&mut arbitrary::Unstructured::new(&bytes)).unwrap(),
             ),
             parent_beacon_block_root: Some(B256::random()),

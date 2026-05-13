@@ -12,7 +12,7 @@ TEE signer identities up to date.
 
 ## Why Change the Proof System
 
-Base's current [fault-proof system](/protocol/fault-proof) is optimistic and interactive: a
+Unstable's current [fault-proof system](/protocol/fault-proof) is optimistic and interactive: a
 proposal resolves unless someone challenges it. That model has two limits for Azul.
 
 - Withdrawals take at least 7 days because every proposal inherits the full challenge window.
@@ -74,7 +74,7 @@ The proof flow for Azul is:
 1. The proposer identifies the next canonical checkpoint range and requests a TEE proof.
 2. The TEE prover re-executes that L2 block range inside an AWS Nitro Enclave and signs the
    resulting output root.
-3. The proposer verifies the result against canonical Base L2 state and submits a new
+3. The proposer verifies the result against canonical Unstable L2 state and submits a new
    `AggregateVerifier` game to L1.
 4. A challenger can independently recompute the same checkpoint roots and, if it finds an invalid
    claim, sources the ZK proof needed to dispute it.
@@ -94,7 +94,7 @@ supports faster settlement when both proof systems are available.
 
 ## Proposer
 
-The proposer turns safe or finalized Base L2 checkpoints into L1 `AggregateVerifier` games. It
+The proposer turns safe or finalized Unstable L2 checkpoints into L1 `AggregateVerifier` games. It
 finds the latest canonical parent state, requests a TEE proof for the next checkpoint interval,
 verifies the returned output root against canonical L2 state, and submits the next proposal with
 the required bond.
@@ -103,8 +103,8 @@ the required bond.
 
 Anyone can run a challenger. A challenger independently recomputes checkpoint output roots for
 in-progress games, identifies the first invalid claim, and submits the required dispute
-transaction. The permissionless dispute path is a ZK proof challenge. Base will run a challenger as
-a security backstop, and Base's challenger also has access to a TEE nullification path for invalid
+transaction. The permissionless dispute path is a ZK proof challenge. Unstable will run a challenger as
+a security backstop, and Unstable's challenger also has access to a TEE nullification path for invalid
 TEE-backed proposals.
 
 ## TEE Provers

@@ -63,7 +63,7 @@ pub struct PipelineConfig {
     pub max_retries: u32,
     /// Maximum number of concurrent RPC calls during the recovery scan.
     pub recovery_scan_concurrency: usize,
-    /// Base driver configuration.
+    /// Unstable driver configuration.
     pub driver: DriverConfig,
     /// Optional address of the `TEEProverRegistry` contract on L1.
     /// When set, the pipeline validates signers via `isValidSigner` before submission.

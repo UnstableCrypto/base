@@ -40,7 +40,7 @@ pub struct ExecutionPayloadFlashblockDeltaV1 {
 /// parent hash, block number, and other header fields that are determined at
 /// block creation and cannot be modified.
 #[derive(Clone, Debug, PartialEq, Eq, Default, Deserialize, Serialize)]
-pub struct ExecutionPayloadBaseV1 {
+pub struct ExecutionPayloadUnstableV1 {
     /// Ecotone parent beacon block root
     pub parent_beacon_block_root: B256,
     /// The parent hash of the block.
@@ -73,7 +73,7 @@ pub struct FlashblocksPayloadV1 {
     pub index: u64,
     /// The base execution payload configuration
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub base: Option<ExecutionPayloadBaseV1>,
+    pub base: Option<ExecutionPayloadUnstableV1>,
     /// The delta/diff containing modified portions of the execution payload
     pub diff: ExecutionPayloadFlashblockDeltaV1,
     /// Additional metadata associated with the flashblock
@@ -90,14 +90,14 @@ mod tests {
 
     use super::*;
 
-    /// Pin the JSON field names and serde encoding of [`ExecutionPayloadBaseV1`].
+    /// Pin the JSON field names and serde encoding of [`ExecutionPayloadUnstableV1`].
     ///
     /// Any change to field names, serde attributes, or encoding (e.g. switching
     /// `block_number` from hex-quantity to plain integer) will break downstream
     /// consumers parsing the flashblocks websocket.
     #[test]
     fn base_v1_json_format_is_stable() {
-        let base = ExecutionPayloadBaseV1 {
+        let base = ExecutionPayloadUnstableV1 {
             parent_beacon_block_root: B256::from([0x01; 32]),
             parent_hash: B256::from([0x02; 32]),
             fee_recipient: Address::from([0xAA; 20]),
@@ -134,7 +134,7 @@ mod tests {
         assert_eq!(obj["timestamp"], json!("0x6553f100"));
 
         // Round-trip
-        let deserialized: ExecutionPayloadBaseV1 = serde_json::from_value(json.clone()).unwrap();
+        let deserialized: ExecutionPayloadUnstableV1 = serde_json::from_value(json.clone()).unwrap();
         assert_eq!(deserialized, base);
     }
 
@@ -215,7 +215,7 @@ mod tests {
         let payload = FlashblocksPayloadV1 {
             payload_id: PayloadId::new([0x01; 8]),
             index: 0,
-            base: Some(ExecutionPayloadBaseV1::default()),
+            base: Some(ExecutionPayloadUnstableV1::default()),
             diff: ExecutionPayloadFlashblockDeltaV1::default(),
             metadata: json!({"block_number": 42}),
         };

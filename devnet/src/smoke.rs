@@ -6,7 +6,7 @@ use alloy_network::Ethereum;
 use alloy_provider::RootProvider;
 use alloy_rpc_client::RpcClient;
 use alloy_rpc_types_engine::JwtSecret;
-use base_common_network::Base;
+use base_common_network::Unstable;
 use base_tx_forwarding::TxForwardingConfig;
 use eyre::{Result, WrapErr};
 use tempfile::TempDir;
@@ -95,18 +95,18 @@ impl Devnet {
         Ok(RootProvider::<Ethereum>::new(client))
     }
 
-    /// Returns an L2 builder provider with Base network.
-    pub fn l2_builder_provider(&self) -> Result<RootProvider<Base>> {
+    /// Returns an L2 builder provider with Unstable network.
+    pub fn l2_builder_provider(&self) -> Result<RootProvider<Unstable>> {
         let url = self.l2_rpc_url()?;
         let client = RpcClient::builder().http(url);
-        Ok(RootProvider::<Base>::new(client))
+        Ok(RootProvider::<Unstable>::new(client))
     }
 
-    /// Returns an L2 client provider with Base network.
-    pub fn l2_client_provider(&self) -> Result<RootProvider<Base>> {
+    /// Returns an L2 client provider with Unstable network.
+    pub fn l2_client_provider(&self) -> Result<RootProvider<Unstable>> {
         let url = self.l2_client_rpc_url()?;
         let client = RpcClient::builder().http(url);
-        Ok(RootProvider::<Base>::new(client))
+        Ok(RootProvider::<Unstable>::new(client))
     }
 
     /// Returns all RPC URLs for this devnet instance.

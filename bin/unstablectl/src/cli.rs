@@ -2,10 +2,10 @@
 
 use clap::{Parser, Subcommand};
 
-/// Base infrastructure control CLI.
+/// Unstable infrastructure control CLI.
 #[derive(Debug, Parser)]
 #[command(name = "basectl")]
-#[command(about = "Base infrastructure control CLI")]
+#[command(about = "Unstable infrastructure control CLI")]
 pub(crate) struct Cli {
     /// Chain configuration (mainnet, sepolia, devnet, or path to config file)
     #[arg(short = 'c', long = "config", default_value = "mainnet", global = true)]

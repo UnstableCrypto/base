@@ -1,7 +1,7 @@
-//! Handler related to Base chain
+//! Handler related to Unstable chain
 use alloc::boxed::Box;
 
-use base_common_chains::BaseUpgrade;
+use base_common_chains::UnstableUpgrade;
 use base_common_consensus::Predeploys;
 use revm::{
     context::{
@@ -27,26 +27,26 @@ use revm::{
 };
 
 use crate::{
-    BaseContextTr, BaseHaltReason, L1BlockInfo,
-    transaction::{BaseTransactionError, BaseTxTr, DEPOSIT_TRANSACTION_TYPE},
+    UnstableContextTr, UnstableHaltReason, L1BlockInfo,
+    transaction::{UnstableTransactionError, UnstableTxTr, DEPOSIT_TRANSACTION_TYPE},
 };
 
-/// Base handler extends the [`Handler`] with Base-specific logic.
+/// Unstable handler extends the [`Handler`] with Unstable-specific logic.
 #[derive(Debug, Clone)]
-pub struct BaseHandler<EVM, ERROR, FRAME> {
-    /// Mainnet handler allows us to use functions from the mainnet handler inside the Base handler.
+pub struct UnstableHandler<EVM, ERROR, FRAME> {
+    /// Mainnet handler allows us to use functions from the mainnet handler inside the Unstable handler.
     /// So we dont duplicate the logic
     pub mainnet: MainnetHandler<EVM, ERROR, FRAME>,
 }
 
-impl<EVM, ERROR, FRAME> BaseHandler<EVM, ERROR, FRAME> {
-    /// Create a new Base handler.
+impl<EVM, ERROR, FRAME> UnstableHandler<EVM, ERROR, FRAME> {
+    /// Create a new Unstable handler.
     pub fn new() -> Self {
         Self { mainnet: MainnetHandler::default() }
     }
 }
 
-impl<EVM, ERROR, FRAME> Default for BaseHandler<EVM, ERROR, FRAME> {
+impl<EVM, ERROR, FRAME> Default for UnstableHandler<EVM, ERROR, FRAME> {
     fn default() -> Self {
         Self::new()
     }
@@ -66,15 +66,15 @@ impl<DB, TX> IsTxError for EVMError<DB, TX> {
     }
 }
 
-impl<EVM, ERROR, FRAME> Handler for BaseHandler<EVM, ERROR, FRAME>
+impl<EVM, ERROR, FRAME> Handler for UnstableHandler<EVM, ERROR, FRAME>
 where
-    EVM: EvmTr<Context: BaseContextTr, Frame = FRAME>,
-    ERROR: EvmTrError<EVM> + From<BaseTransactionError> + FromStringError + IsTxError,
+    EVM: EvmTr<Context: UnstableContextTr, Frame = FRAME>,
+    ERROR: EvmTrError<EVM> + From<UnstableTransactionError> + FromStringError + IsTxError,
     FRAME: FrameTr<FrameResult = FrameResult, FrameInit = FrameInit>,
 {
     type Evm = EVM;
     type Error = ERROR;
-    type HaltReason = BaseHaltReason;
+    type HaltReason = UnstableHaltReason;
 
     fn validate_env(&self, evm: &mut Self::Evm) -> Result<(), Self::Error> {
         // Do not perform any extra validation for deposit transactions, they are pre-verified on L1.
@@ -84,16 +84,16 @@ where
         if tx_type == DEPOSIT_TRANSACTION_TYPE {
             // Do not allow for a system transaction to be processed if Regolith is enabled.
             if tx.is_system_transaction()
-                && evm.ctx().cfg().spec().is_enabled_in(BaseUpgrade::Regolith)
+                && evm.ctx().cfg().spec().is_enabled_in(UnstableUpgrade::Regolith)
             {
-                return Err(BaseTransactionError::DepositSystemTxPostRegolith.into());
+                return Err(UnstableTransactionError::DepositSystemTxPostRegolith.into());
             }
             return Ok(());
         }
 
         // Check that non-deposit transactions have enveloped_tx set
         if tx.enveloped_tx().is_none() {
-            return Err(BaseTransactionError::MissingEnvelopedTx.into());
+            return Err(UnstableTransactionError::MissingEnvelopedTx.into());
         }
 
         self.mainnet.validate_env(evm)
@@ -189,7 +189,7 @@ where
         let tx = ctx.tx();
         let is_deposit = tx.tx_type() == DEPOSIT_TRANSACTION_TYPE;
         let tx_gas_limit = tx.gas_limit();
-        let is_regolith = ctx.cfg().spec().is_enabled_in(BaseUpgrade::Regolith);
+        let is_regolith = ctx.cfg().spec().is_enabled_in(UnstableUpgrade::Regolith);
 
         let instruction_result = frame_result.interpreter_result().result;
         let gas = frame_result.gas_mut();
@@ -238,7 +238,7 @@ where
         frame_result.gas_mut().record_refund(eip7702_refund);
 
         let is_deposit = evm.ctx().tx().tx_type() == DEPOSIT_TRANSACTION_TYPE;
-        let is_regolith = evm.ctx().cfg().spec().is_enabled_in(BaseUpgrade::Regolith);
+        let is_regolith = evm.ctx().cfg().spec().is_enabled_in(UnstableUpgrade::Regolith);
 
         // Prior to Regolith, deposit transactions did not receive gas refunds.
         let is_gas_refund_disabled = is_deposit && !is_regolith;
@@ -276,7 +276,7 @@ where
         };
 
         let l1_cost = l1_block_info.calculate_tx_l1_cost(enveloped_tx, spec);
-        let operator_fee_cost = if spec.is_enabled_in(BaseUpgrade::Isthmus) {
+        let operator_fee_cost = if spec.is_enabled_in(UnstableUpgrade::Isthmus) {
             l1_block_info.operator_fee_charge(
                 enveloped_tx,
                 U256::from(frame_result.gas().used()),
@@ -311,12 +311,12 @@ where
         }
 
         let exec_result =
-            post_execution::output(evm.ctx(), frame_result).map_haltreason(BaseHaltReason::Base);
+            post_execution::output(evm.ctx(), frame_result).map_haltreason(UnstableHaltReason::Unstable);
 
         if exec_result.is_halt() {
             let is_deposit = evm.ctx().tx().tx_type() == DEPOSIT_TRANSACTION_TYPE;
-            if is_deposit && evm.ctx().cfg().spec().is_enabled_in(BaseUpgrade::Regolith) {
-                return Err(ERROR::from(BaseTransactionError::HaltedDepositPostRegolith));
+            if is_deposit && evm.ctx().cfg().spec().is_enabled_in(UnstableUpgrade::Regolith) {
+                return Err(ERROR::from(UnstableTransactionError::HaltedDepositPostRegolith));
             }
         }
         evm.ctx().journal_mut().commit_tx();
@@ -360,13 +360,13 @@ where
             // We can now commit the changes.
             journal.commit_tx();
 
-            let gas_used = if spec.is_enabled_in(BaseUpgrade::Regolith) || !is_system_tx {
+            let gas_used = if spec.is_enabled_in(UnstableUpgrade::Regolith) || !is_system_tx {
                 gas_limit
             } else {
                 0
             };
             // clear the journal
-            output = Ok(ExecutionResult::Halt { reason: BaseHaltReason::FailedDeposit, gas_used })
+            output = Ok(ExecutionResult::Halt { reason: UnstableHaltReason::FailedDeposit, gas_used })
         }
 
         // do the cleanup
@@ -378,14 +378,14 @@ where
     }
 }
 
-impl<EVM, ERROR> InspectorHandler for BaseHandler<EVM, ERROR, EthFrame<EthInterpreter>>
+impl<EVM, ERROR> InspectorHandler for UnstableHandler<EVM, ERROR, EthFrame<EthInterpreter>>
 where
     EVM: InspectorEvmTr<
-            Context: BaseContextTr,
+            Context: UnstableContextTr,
             Frame = EthFrame<EthInterpreter>,
             Inspector: Inspector<<<Self as Handler>::Evm as EvmTr>::Context, EthInterpreter>,
         >,
-    ERROR: EvmTrError<EVM> + From<BaseTransactionError> + FromStringError + IsTxError,
+    ERROR: EvmTrError<EVM> + From<UnstableTransactionError> + FromStringError + IsTxError,
 {
     type IT = EthInterpreter;
 }
@@ -407,11 +407,11 @@ mod tests {
     };
 
     use super::*;
-    use crate::{BaseContext, BaseSpecId, BaseTransaction, Builder, DefaultBase, L1BlockInfo};
+    use crate::{UnstableContext, UnstableSpecId, UnstableTransaction, Builder, DefaultUnstable, L1BlockInfo};
 
     /// Creates frame result.
     fn call_last_frame_return(
-        ctx: BaseContext<EmptyDB>,
+        ctx: UnstableContext<EmptyDB>,
         instruction_result: InstructionResult,
         gas: Gas,
     ) -> Gas {
@@ -423,7 +423,7 @@ mod tests {
         ));
 
         let mut handler =
-            BaseHandler::<_, EVMError<_, BaseTransactionError>, EthFrame<EthInterpreter>>::new();
+            UnstableHandler::<_, EVMError<_, UnstableTransactionError>, EthFrame<EthInterpreter>>::new();
 
         handler.last_frame_result(&mut evm, &mut exec_result).unwrap();
         handler.refund(&mut evm, &mut exec_result, 0);
@@ -433,8 +433,8 @@ mod tests {
     #[test]
     fn test_revert_gas() {
         let ctx = Context::base()
-            .with_tx(BaseTransaction::builder().base(TxEnv::builder().gas_limit(100)).build_fill())
-            .with_cfg(CfgEnv::new_with_spec(BaseSpecId::new(BaseUpgrade::Bedrock)));
+            .with_tx(UnstableTransaction::builder().base(TxEnv::builder().gas_limit(100)).build_fill())
+            .with_cfg(CfgEnv::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Bedrock)));
 
         let gas = call_last_frame_return(ctx, InstructionResult::Revert, Gas::new(90));
         assert_eq!(gas.remaining(), 90);
@@ -445,8 +445,8 @@ mod tests {
     #[test]
     fn test_consume_gas() {
         let ctx = Context::base()
-            .with_tx(BaseTransaction::builder().base(TxEnv::builder().gas_limit(100)).build_fill())
-            .with_cfg(CfgEnv::new_with_spec(BaseSpecId::new(BaseUpgrade::Regolith)));
+            .with_tx(UnstableTransaction::builder().base(TxEnv::builder().gas_limit(100)).build_fill())
+            .with_cfg(CfgEnv::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Regolith)));
 
         let gas = call_last_frame_return(ctx, InstructionResult::Stop, Gas::new(90));
         assert_eq!(gas.remaining(), 90);
@@ -458,12 +458,12 @@ mod tests {
     fn test_consume_gas_with_refund() {
         let ctx = Context::base()
             .with_tx(
-                BaseTransaction::builder()
+                UnstableTransaction::builder()
                     .base(TxEnv::builder().gas_limit(100))
                     .source_hash(B256::from([1u8; 32]))
                     .build_fill(),
             )
-            .with_cfg(CfgEnv::new_with_spec(BaseSpecId::new(BaseUpgrade::Regolith)));
+            .with_cfg(CfgEnv::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Regolith)));
 
         let mut ret_gas = Gas::new(90);
         ret_gas.record_refund(20);
@@ -483,12 +483,12 @@ mod tests {
     fn test_consume_gas_deposit_tx() {
         let ctx = Context::base()
             .with_tx(
-                BaseTransaction::builder()
+                UnstableTransaction::builder()
                     .base(TxEnv::builder().gas_limit(100))
                     .source_hash(B256::from([1u8; 32]))
                     .build_fill(),
             )
-            .with_cfg(CfgEnv::new_with_spec(BaseSpecId::new(BaseUpgrade::Bedrock)));
+            .with_cfg(CfgEnv::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Bedrock)));
         let gas = call_last_frame_return(ctx, InstructionResult::Stop, Gas::new(90));
         assert_eq!(gas.remaining(), 0);
         assert_eq!(gas.spent(), 100);
@@ -499,13 +499,13 @@ mod tests {
     fn test_consume_gas_sys_deposit_tx() {
         let ctx = Context::base()
             .with_tx(
-                BaseTransaction::builder()
+                UnstableTransaction::builder()
                     .base(TxEnv::builder().gas_limit(100))
                     .source_hash(B256::from([1u8; 32]))
                     .is_system_transaction()
                     .build_fill(),
             )
-            .with_cfg(CfgEnv::new_with_spec(BaseSpecId::new(BaseUpgrade::Bedrock)));
+            .with_cfg(CfgEnv::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Bedrock)));
         let gas = call_last_frame_return(ctx, InstructionResult::Stop, Gas::new(90));
         assert_eq!(gas.remaining(), 100);
         assert_eq!(gas.spent(), 0);
@@ -529,7 +529,7 @@ mod tests {
                 l1_base_fee_scalar: U256::from(1_000),
                 ..Default::default()
             })
-            .with_cfg(CfgEnv::new_with_spec(BaseSpecId::new(BaseUpgrade::Regolith)));
+            .with_cfg(CfgEnv::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Regolith)));
         ctx.modify_tx(|tx| {
             tx.deposit.source_hash = B256::from([1u8; 32]);
             tx.deposit.mint = Some(10);
@@ -538,7 +538,7 @@ mod tests {
         let mut evm = ctx.build_base();
 
         let handler =
-            BaseHandler::<_, EVMError<_, BaseTransactionError>, EthFrame<EthInterpreter>>::new();
+            UnstableHandler::<_, EVMError<_, UnstableTransactionError>, EthFrame<EthInterpreter>>::new();
         handler.validate_against_state_and_deduct_caller(&mut evm).unwrap();
 
         // Check the account balance is updated.
@@ -566,9 +566,9 @@ mod tests {
                 l2_block: Some(U256::from(0)),
                 ..Default::default()
             })
-            .with_cfg(CfgEnv::new_with_spec(BaseSpecId::new(BaseUpgrade::Regolith)))
+            .with_cfg(CfgEnv::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Regolith)))
             .with_tx(
-                BaseTransaction::builder()
+                UnstableTransaction::builder()
                     .base(TxEnv::builder().gas_limit(100))
                     .enveloped_tx(Some(bytes!("FACADE")))
                     .source_hash(B256::ZERO)
@@ -579,7 +579,7 @@ mod tests {
         let mut evm = ctx.build_base();
 
         let handler =
-            BaseHandler::<_, EVMError<_, BaseTransactionError>, EthFrame<EthInterpreter>>::new();
+            UnstableHandler::<_, EVMError<_, UnstableTransactionError>, EthFrame<EthInterpreter>>::new();
         handler.validate_against_state_and_deduct_caller(&mut evm).unwrap();
 
         // Check the account balance is updated.
@@ -626,14 +626,14 @@ mod tests {
                 ..Default::default()
             })
             .with_block(BlockEnv { number: BLOCK_NUM, ..Default::default() })
-            .with_cfg(CfgEnv::new_with_spec(BaseSpecId::new(BaseUpgrade::Isthmus)));
+            .with_cfg(CfgEnv::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Isthmus)));
 
         let mut evm = ctx.build_base();
 
         assert_ne!(evm.ctx().chain().l2_block, Some(BLOCK_NUM));
 
         let handler =
-            BaseHandler::<_, EVMError<_, BaseTransactionError>, EthFrame<EthInterpreter>>::new();
+            UnstableHandler::<_, EVMError<_, UnstableTransactionError>, EthFrame<EthInterpreter>>::new();
         handler.validate_against_state_and_deduct_caller(&mut evm).unwrap();
 
         assert_eq!(
@@ -658,15 +658,15 @@ mod tests {
     fn test_azul_tx_gas_limit_cap_rejected() {
         let ctx = Context::base()
             .with_tx(
-                BaseTransaction::builder()
+                UnstableTransaction::builder()
                     .base(TxEnv::builder().gas_limit(16_777_217))
                     .enveloped_tx(Some(bytes!("FACADE")))
                     .build_fill(),
             )
-            .with_cfg(CfgEnv::new_with_spec(BaseSpecId::new(BaseUpgrade::Azul)));
+            .with_cfg(CfgEnv::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Azul)));
         let mut evm = ctx.build_base();
         let handler =
-            BaseHandler::<_, EVMError<_, BaseTransactionError>, EthFrame<EthInterpreter>>::new();
+            UnstableHandler::<_, EVMError<_, UnstableTransactionError>, EthFrame<EthInterpreter>>::new();
         let result = handler.validate_env(&mut evm);
         assert!(result.is_err(), "gas_limit above cap should be rejected");
     }
@@ -675,15 +675,15 @@ mod tests {
     fn test_azul_tx_gas_limit_at_cap_ok() {
         let ctx = Context::base()
             .with_tx(
-                BaseTransaction::builder()
+                UnstableTransaction::builder()
                     .base(TxEnv::builder().gas_limit(16_777_216))
                     .enveloped_tx(Some(bytes!("FACADE")))
                     .build_fill(),
             )
-            .with_cfg(CfgEnv::new_with_spec(BaseSpecId::new(BaseUpgrade::Azul)));
+            .with_cfg(CfgEnv::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Azul)));
         let mut evm = ctx.build_base();
         let handler =
-            BaseHandler::<_, EVMError<_, BaseTransactionError>, EthFrame<EthInterpreter>>::new();
+            UnstableHandler::<_, EVMError<_, UnstableTransactionError>, EthFrame<EthInterpreter>>::new();
         let result = handler.validate_env(&mut evm);
         assert!(result.is_ok(), "gas_limit at cap should be accepted");
     }
@@ -692,15 +692,15 @@ mod tests {
     fn test_jovian_no_tx_gas_limit_cap() {
         let ctx = Context::base()
             .with_tx(
-                BaseTransaction::builder()
+                UnstableTransaction::builder()
                     .base(TxEnv::builder().gas_limit(16_777_217))
                     .enveloped_tx(Some(bytes!("FACADE")))
                     .build_fill(),
             )
-            .with_cfg(CfgEnv::new_with_spec(BaseSpecId::new(BaseUpgrade::Jovian)));
+            .with_cfg(CfgEnv::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Jovian)));
         let mut evm = ctx.build_base();
         let handler =
-            BaseHandler::<_, EVMError<_, BaseTransactionError>, EthFrame<EthInterpreter>>::new();
+            UnstableHandler::<_, EVMError<_, UnstableTransactionError>, EthFrame<EthInterpreter>>::new();
         let result = handler.validate_env(&mut evm);
         assert!(result.is_ok(), "Jovian should not enforce gas limit cap");
     }
@@ -709,29 +709,29 @@ mod tests {
     fn test_azul_deposit_skips_gas_limit_cap() {
         let ctx = Context::base()
             .with_tx(
-                BaseTransaction::builder()
+                UnstableTransaction::builder()
                     .base(TxEnv::builder().gas_limit(16_777_217))
                     .source_hash(B256::from([1u8; 32]))
                     .build_fill(),
             )
-            .with_cfg(CfgEnv::new_with_spec(BaseSpecId::new(BaseUpgrade::Azul)));
+            .with_cfg(CfgEnv::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Azul)));
         let mut evm = ctx.build_base();
         let handler =
-            BaseHandler::<_, EVMError<_, BaseTransactionError>, EthFrame<EthInterpreter>>::new();
+            UnstableHandler::<_, EVMError<_, UnstableTransactionError>, EthFrame<EthInterpreter>>::new();
         let result = handler.validate_env(&mut evm);
         assert!(result.is_ok(), "deposit txs should skip gas limit cap");
     }
 
     #[test]
     fn test_osaka_opcodes_activated_azul() {
-        assert_eq!(BaseSpecId::new(BaseUpgrade::Azul).into_eth_spec(), SpecId::OSAKA);
+        assert_eq!(UnstableSpecId::new(UnstableUpgrade::Azul).into_eth_spec(), SpecId::OSAKA);
     }
 
     /// Runs CLZ bytecode (`PUSH1 0x80, CLZ, PUSH1 0x00, MSTORE, PUSH1 0x20, PUSH1 0x00, RETURN`)
     /// against the given spec and returns the execution result.
     fn run_clz_bytecode(
-        spec: BaseSpecId,
-    ) -> revm::context_interface::result::ExecutionResult<BaseHaltReason> {
+        spec: UnstableSpecId,
+    ) -> revm::context_interface::result::ExecutionResult<UnstableHaltReason> {
         let contract = Address::from([0x42; 20]);
         let mut db = InMemoryDB::default();
         db.insert_account_info(
@@ -749,7 +749,7 @@ mod tests {
         let ctx = Context::base()
             .with_db(db)
             .with_tx(
-                BaseTransaction::builder()
+                UnstableTransaction::builder()
                     .base(TxEnv::builder().gas_limit(100_000).kind(TxKind::Call(contract)))
                     .enveloped_tx(Some(bytes!("FACADE")))
                     .build_fill(),
@@ -764,13 +764,13 @@ mod tests {
         let mut evm = ctx.build_base();
 
         let mut handler =
-            BaseHandler::<_, EVMError<_, BaseTransactionError>, EthFrame<EthInterpreter>>::new();
+            UnstableHandler::<_, EVMError<_, UnstableTransactionError>, EthFrame<EthInterpreter>>::new();
         handler.run(&mut evm).unwrap()
     }
 
     #[test]
     fn test_clz_opcode_azul() {
-        let result = run_clz_bytecode(BaseSpecId::new(BaseUpgrade::Azul));
+        let result = run_clz_bytecode(UnstableSpecId::new(UnstableUpgrade::Azul));
         assert!(result.is_success(), "CLZ opcode should execute successfully on AZUL");
 
         let output = result.output().unwrap();
@@ -781,7 +781,7 @@ mod tests {
 
     #[test]
     fn test_clz_opcode_not_on_jovian() {
-        let result = run_clz_bytecode(BaseSpecId::new(BaseUpgrade::Jovian));
+        let result = run_clz_bytecode(UnstableSpecId::new(UnstableUpgrade::Jovian));
         assert!(!result.is_success(), "CLZ opcode should not be available on JOVIAN (pre-OSAKA)");
     }
 }

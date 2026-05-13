@@ -12,9 +12,9 @@ use alloy_primitives::{Address, BlockNumber};
 use alloy_rpc_types_eth::state::StateOverride;
 use arc_swap::ArcSwapOption;
 use base_common_chains::Upgrades;
-use base_common_consensus::{BaseBlock, BaseTxEnvelope};
+use base_common_consensus::{UnstableBlock, UnstableTxEnvelope};
 use base_common_flashblocks::Flashblock;
-use base_execution_evm::{BaseEvmConfig, BaseNextBlockEnvAttributes};
+use base_execution_evm::{UnstableEvmConfig, UnstableNextBlockEnvAttributes};
 use rayon::prelude::*;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_evm::ConfigureEvm;
@@ -38,7 +38,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum StateUpdate {
     /// New canonical block to reconcile against pending state.
-    Canonical(RecoveredBlock<BaseBlock>),
+    Canonical(RecoveredBlock<UnstableBlock>),
     /// Incoming flashblock payload to extend pending state.
     Flashblock(Flashblock),
 }
@@ -180,7 +180,7 @@ where
     fn process_canonical_block(
         &self,
         prev_pending_blocks: Option<Arc<PendingBlocks>>,
-        block: &RecoveredBlock<BaseBlock>,
+        block: &RecoveredBlock<UnstableBlock>,
     ) -> Result<Option<Arc<PendingBlocks>>> {
         let pending_blocks = match &prev_pending_blocks {
             Some(pb) => pb,
@@ -364,7 +364,7 @@ where
             .map_err(|e| ProviderError::StateProvider(e.to_string()))?
             .ok_or(ProviderError::MissingCanonicalHeader { block_number: canonical_block })?;
 
-        let evm_config = BaseEvmConfig::base(self.client.chain_spec());
+        let evm_config = UnstableEvmConfig::base(self.client.chain_spec());
         let state_provider = self
             .client
             .state_by_block_number_or_tag(BlockNumberOrTag::Number(canonical_block))
@@ -398,7 +398,7 @@ where
             // Extract L1 block info using the AssembledBlock method
             let l1_block_info = assembled.l1_block_info()?;
 
-            let block_env_attributes = BaseNextBlockEnvAttributes {
+            let block_env_attributes = UnstableNextBlockEnvAttributes {
                 timestamp: assembled.base.timestamp,
                 suggested_fee_recipient: assembled.base.fee_recipient,
                 prev_randao: assembled.base.prev_randao,
@@ -414,13 +414,13 @@ where
 
             // Parallel sender recovery - batch all ECDSA operations upfront
             let recovery_start = Instant::now();
-            let txs_with_senders: Vec<(BaseTxEnvelope, Address)> = assembled
+            let txs_with_senders: Vec<(UnstableTxEnvelope, Address)> = assembled
                 .block
                 .body
                 .transactions
                 .par_iter()
                 .cloned()
-                .map(|tx| -> Result<(BaseTxEnvelope, Address)> {
+                .map(|tx| -> Result<(UnstableTxEnvelope, Address)> {
                     let tx_hash = tx.tx_hash();
                     let sender = match prev_pending_blocks
                         .as_ref()

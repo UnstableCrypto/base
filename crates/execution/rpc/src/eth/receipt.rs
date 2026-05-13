@@ -1,4 +1,4 @@
-//! Loads and formats Base receipt RPC response.
+//! Loads and formats Unstable receipt RPC response.
 
 use std::fmt::Debug;
 
@@ -6,9 +6,9 @@ use alloy_consensus::{BlockHeader, Receipt, ReceiptWithBloom, TxReceipt};
 use alloy_eips::eip2718::Encodable2718;
 use alloy_rpc_types_eth::{Log, TransactionReceipt};
 use base_common_chains::Upgrades;
-use base_common_consensus::{BaseReceipt, BaseTransaction};
+use base_common_consensus::{UnstableReceipt, UnstableTransaction};
 use base_common_flz::tx_estimated_size_fjord as estimate_tx_compressed_size;
-use base_common_rpc_types::{BaseTransactionReceipt, L1BlockInfo, TransactionReceiptFields};
+use base_common_rpc_types::{UnstableTransactionReceipt, L1BlockInfo, TransactionReceiptFields};
 use base_execution_evm::RethL1BlockInfo;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_node_api::NodePrimitives;
@@ -21,36 +21,36 @@ use reth_rpc_eth_api::{
 use reth_rpc_eth_types::{EthApiError, receipt::build_receipt};
 use reth_storage_api::BlockReader;
 
-use crate::{BaseEthApi, BaseEthApiError, eth::RpcNodeCore};
+use crate::{UnstableEthApi, UnstableEthApiError, eth::RpcNodeCore};
 
-impl<N, Rpc> LoadReceipt for BaseEthApi<N, Rpc>
+impl<N, Rpc> LoadReceipt for UnstableEthApi<N, Rpc>
 where
     N: RpcNodeCore,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = BaseEthApiError>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Error = UnstableEthApiError>,
 {
 }
 
-/// Converter for Base receipts.
+/// Converter for Unstable receipts.
 #[derive(Debug, Clone)]
-pub struct BaseReceiptConverter<Provider> {
+pub struct UnstableReceiptConverter<Provider> {
     provider: Provider,
 }
 
-impl<Provider> BaseReceiptConverter<Provider> {
-    /// Creates a new [`BaseReceiptConverter`].
+impl<Provider> UnstableReceiptConverter<Provider> {
+    /// Creates a new [`UnstableReceiptConverter`].
     pub const fn new(provider: Provider) -> Self {
         Self { provider }
     }
 }
 
-impl<Provider, N> ReceiptConverter<N> for BaseReceiptConverter<Provider>
+impl<Provider, N> ReceiptConverter<N> for UnstableReceiptConverter<Provider>
 where
-    N: NodePrimitives<SignedTx: BaseTransaction, Receipt = BaseReceipt>,
+    N: NodePrimitives<SignedTx: UnstableTransaction, Receipt = UnstableReceipt>,
     Provider:
         BlockReader<Block = N::Block> + ChainSpecProvider<ChainSpec: Upgrades> + Debug + 'static,
 {
-    type RpcReceipt = BaseTransactionReceipt;
-    type Error = BaseEthApiError;
+    type RpcReceipt = UnstableTransactionReceipt;
+    type Error = UnstableEthApiError;
 
     fn convert_receipts(
         &self,
@@ -96,7 +96,7 @@ where
             l1_block_info.clear_tx_l1_cost();
 
             receipts.push(
-                BaseReceiptBuilder::new(&self.provider.chain_spec(), input, &mut l1_block_info)?
+                UnstableReceiptBuilder::new(&self.provider.chain_spec(), input, &mut l1_block_info)?
                     .build(),
             );
         }
@@ -167,26 +167,26 @@ impl ReceiptFieldsBuilder {
     }
 
     /// Applies [`L1BlockInfo`](base_common_evm::L1BlockInfo).
-    pub fn l1_block_info<T: Encodable2718 + BaseTransaction>(
+    pub fn l1_block_info<T: Encodable2718 + UnstableTransaction>(
         mut self,
         chain_spec: &impl Upgrades,
         tx: &T,
         l1_block_info: &mut base_common_evm::L1BlockInfo,
-    ) -> Result<Self, BaseEthApiError> {
+    ) -> Result<Self, UnstableEthApiError> {
         let raw_tx = tx.encoded_2718();
         let timestamp = self.block_timestamp;
 
         self.l1_fee = Some(
             l1_block_info
                 .l1_tx_data_fee(chain_spec, timestamp, &raw_tx, tx.is_deposit())
-                .map_err(|_| BaseEthApiError::L1BlockFeeError)?
+                .map_err(|_| UnstableEthApiError::L1BlockFeeError)?
                 .saturating_to(),
         );
 
         self.l1_data_gas = Some(
             l1_block_info
                 .l1_data_gas(chain_spec, timestamp, &raw_tx)
-                .map_err(|_| BaseEthApiError::L1BlockGasError)?
+                .map_err(|_| UnstableEthApiError::L1BlockGasError)?
                 .saturating_add(l1_block_info.l1_fee_overhead.unwrap_or_default())
                 .saturating_to(),
         );
@@ -269,24 +269,24 @@ impl ReceiptFieldsBuilder {
     }
 }
 
-/// Builds an [`BaseTransactionReceipt`].
+/// Builds an [`UnstableTransactionReceipt`].
 #[derive(Debug)]
-pub struct BaseReceiptBuilder {
-    /// Core receipt with all fields from an L1 receipt and used as the basis for the Base receipt.
-    pub core_receipt: TransactionReceipt<ReceiptWithBloom<BaseReceipt<Log>>>,
-    /// Additional Base receipt fields.
+pub struct UnstableReceiptBuilder {
+    /// Core receipt with all fields from an L1 receipt and used as the basis for the Unstable receipt.
+    pub core_receipt: TransactionReceipt<ReceiptWithBloom<UnstableReceipt<Log>>>,
+    /// Additional Unstable receipt fields.
     pub receipt_fields: TransactionReceiptFields,
 }
 
-impl BaseReceiptBuilder {
+impl UnstableReceiptBuilder {
     /// Returns a new builder.
     pub fn new<N>(
         chain_spec: &impl Upgrades,
         input: ConvertReceiptInput<'_, N>,
         l1_block_info: &mut base_common_evm::L1BlockInfo,
-    ) -> Result<Self, BaseEthApiError>
+    ) -> Result<Self, UnstableEthApiError>
     where
-        N: NodePrimitives<SignedTx: BaseTransaction, Receipt = BaseReceipt>,
+        N: NodePrimitives<SignedTx: UnstableTransaction, Receipt = UnstableReceipt>,
     {
         let timestamp = input.meta.timestamp;
         let block_number = input.meta.block_number;
@@ -297,12 +297,12 @@ impl BaseReceiptBuilder {
                 let logs = Log::collect_for_receipt(next_log_index, meta, logs);
                 Receipt { status, cumulative_gas_used, logs }
             };
-            let mapped_receipt: BaseReceipt<Log> = match receipt {
-                BaseReceipt::Legacy(receipt) => BaseReceipt::Legacy(map_logs(receipt)),
-                BaseReceipt::Eip2930(receipt) => BaseReceipt::Eip2930(map_logs(receipt)),
-                BaseReceipt::Eip1559(receipt) => BaseReceipt::Eip1559(map_logs(receipt)),
-                BaseReceipt::Eip7702(receipt) => BaseReceipt::Eip7702(map_logs(receipt)),
-                BaseReceipt::Deposit(receipt) => BaseReceipt::Deposit(receipt.map_inner(map_logs)),
+            let mapped_receipt: UnstableReceipt<Log> = match receipt {
+                UnstableReceipt::Legacy(receipt) => UnstableReceipt::Legacy(map_logs(receipt)),
+                UnstableReceipt::Eip2930(receipt) => UnstableReceipt::Eip2930(map_logs(receipt)),
+                UnstableReceipt::Eip1559(receipt) => UnstableReceipt::Eip1559(map_logs(receipt)),
+                UnstableReceipt::Eip7702(receipt) => UnstableReceipt::Eip7702(map_logs(receipt)),
+                UnstableReceipt::Deposit(receipt) => UnstableReceipt::Deposit(receipt.map_inner(map_logs)),
             };
             mapped_receipt.into_with_bloom()
         });
@@ -329,14 +329,14 @@ impl BaseReceiptBuilder {
         Ok(Self { core_receipt, receipt_fields })
     }
 
-    /// Builds [`BaseTransactionReceipt`] by combining core L1 receipt fields and additional Base
+    /// Builds [`UnstableTransactionReceipt`] by combining core L1 receipt fields and additional Unstable
     /// receipt fields.
-    pub fn build(self) -> BaseTransactionReceipt {
+    pub fn build(self) -> UnstableTransactionReceipt {
         let Self { core_receipt: inner, receipt_fields } = self;
 
         let TransactionReceiptFields { l1_block_info, .. } = receipt_fields;
 
-        BaseTransactionReceipt { inner, l1_block_info }
+        UnstableTransactionReceipt { inner, l1_block_info }
     }
 }
 
@@ -346,8 +346,8 @@ mod tests {
     use alloy_eips::eip2718::Decodable2718;
     use alloy_primitives::{Address, Bytes, Signature, U256, hex};
     use base_common_chains::ChainConfig;
-    use base_common_consensus::{BasePrimitives, BaseTransactionSigned, BaseTypedTransaction};
-    use base_execution_chainspec::BaseChainSpec;
+    use base_common_consensus::{UnstablePrimitives, UnstableTransactionSigned, UnstableTypedTransaction};
+    use base_execution_chainspec::UnstableChainSpec;
     use reth_primitives_traits::Recovered;
 
     use super::*;
@@ -366,7 +366,7 @@ mod tests {
         "02f904940a8303fba78401d6d2798401db2b6d830493e0943e6f4f7866654c18f536170780344aa8772950b680b904246a761202000000000000000000000000087000a300de7200382b55d40045000000e5d60e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000014000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003a0000000000000000000000000000000000000000000000000000000000000022482ad56cb0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000120000000000000000000000000dc6ff44d5d932cbd77b52e5612ba0529dc6226f1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000044095ea7b300000000000000000000000021c4928109acb0659a88ae5329b5374a3024694c0000000000000000000000000000000000000000000000049b9ca9a6943400000000000000000000000000000000000000000000000000000000000000000000000000000000000021c4928109acb0659a88ae5329b5374a3024694c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000024b6b55f250000000000000000000000000000000000000000000000049b9ca9a694340000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000415ec214a3950bea839a7e6fbb0ba1540ac2076acd50820e2d5ef83d0902cdffb24a47aff7de5190290769c4f0a9c6fabf63012986a0d590b1b571547a8c7050ea1b00000000000000000000000000000000000000000000000000000000000000c080a06db770e6e25a617fe9652f0958bd9bd6e49281a53036906386ed39ec48eadf63a07f47cf51a4a40b4494cf26efc686709a9b03939e20ee27e59682f5faa536667e"
     );
 
-    /// Timestamp of Base mainnet block 124665056.
+    /// Timestamp of Unstable mainnet block 124665056.
     ///
     /// <https://optimistic.etherscan.io/block/124665056>
     const BLOCK_124665056_TIMESTAMP: u64 = 1724928889;
@@ -395,16 +395,16 @@ mod tests {
     #[test]
     fn base_receipt_fields_from_block_and_tx() {
         // rig
-        let tx_0 = BaseTransactionSigned::decode_2718(
+        let tx_0 = UnstableTransactionSigned::decode_2718(
             &mut TX_SET_L1_BLOCK_OP_MAINNET_BLOCK_124665056.as_slice(),
         )
         .unwrap();
 
         let tx_1 =
-            BaseTransactionSigned::decode_2718(&mut TX_1_OP_MAINNET_BLOCK_124665056.as_slice())
+            UnstableTransactionSigned::decode_2718(&mut TX_1_OP_MAINNET_BLOCK_124665056.as_slice())
                 .unwrap();
 
-        let block: Block<BaseTransactionSigned> = Block {
+        let block: Block<UnstableTransactionSigned> = Block {
             body: BlockBody { transactions: [tx_0, tx_1.clone()].to_vec(), ..Default::default() },
             ..Default::default()
         };
@@ -413,7 +413,7 @@ mod tests {
             base_execution_evm::extract_l1_info(&block.body).expect("should extract l1 info");
 
         // test
-        let base_mainnet = BaseChainSpec::mainnet();
+        let base_mainnet = UnstableChainSpec::mainnet();
         assert!(Upgrades::is_fjord_active_at_timestamp(&base_mainnet, BLOCK_124665056_TIMESTAMP));
 
         let receipt_meta = ReceiptFieldsBuilder::new(BLOCK_124665056_TIMESTAMP, 124665056)
@@ -485,7 +485,7 @@ mod tests {
     #[test]
     fn base_non_zero_operator_fee_params_included_in_receipt() {
         let tx_1 =
-            BaseTransactionSigned::decode_2718(&mut TX_1_OP_MAINNET_BLOCK_124665056.as_slice())
+            UnstableTransactionSigned::decode_2718(&mut TX_1_OP_MAINNET_BLOCK_124665056.as_slice())
                 .unwrap();
 
         let mut l1_block_info = base_common_evm::L1BlockInfo {
@@ -495,7 +495,7 @@ mod tests {
         };
 
         let receipt_meta = ReceiptFieldsBuilder::new(BLOCK_124665056_TIMESTAMP, 124665056)
-            .l1_block_info(&BaseChainSpec::mainnet(), &tx_1, &mut l1_block_info)
+            .l1_block_info(&UnstableChainSpec::mainnet(), &tx_1, &mut l1_block_info)
             .expect("should parse revm l1 info")
             .build();
 
@@ -509,7 +509,7 @@ mod tests {
     #[test]
     fn base_zero_operator_fee_params_not_included_in_receipt() {
         let tx_1 =
-            BaseTransactionSigned::decode_2718(&mut TX_1_OP_MAINNET_BLOCK_124665056.as_slice())
+            UnstableTransactionSigned::decode_2718(&mut TX_1_OP_MAINNET_BLOCK_124665056.as_slice())
                 .unwrap();
 
         let mut l1_block_info = base_common_evm::L1BlockInfo {
@@ -519,7 +519,7 @@ mod tests {
         };
 
         let receipt_meta = ReceiptFieldsBuilder::new(BLOCK_124665056_TIMESTAMP, 124665056)
-            .l1_block_info(&BaseChainSpec::mainnet(), &tx_1, &mut l1_block_info)
+            .l1_block_info(&UnstableChainSpec::mainnet(), &tx_1, &mut l1_block_info)
             .expect("should parse revm l1 info")
             .build();
 
@@ -537,9 +537,9 @@ mod tests {
         let system = hex!(
             "7ef8f8a0389e292420bcbf9330741f72074e39562a09ff5a00fd22e4e9eee7e34b81bca494deaddeaddeaddeaddeaddeaddeaddeaddead00019442000000000000000000000000000000000000158080830f424080b8a4440a5e20000008dd00101c120000000000000004000000006721035b00000000014189960000000000000000000000000000000000000000000000000000000349b4dcdc000000000000000000000000000000000000000000000000000000004ef9325cc5991ce750960f636ca2ffbb6e209bb3ba91412f21dd78c14ff154d1930f1f9a0000000000000000000000005050f69a9786f081509234f1a7f4684b5e5b76c9"
         );
-        let tx_0 = BaseTransactionSigned::decode_2718(&mut &system[..]).unwrap();
+        let tx_0 = UnstableTransactionSigned::decode_2718(&mut &system[..]).unwrap();
 
-        let block: alloy_consensus::Block<BaseTransactionSigned> = Block {
+        let block: alloy_consensus::Block<UnstableTransactionSigned> = Block {
             body: BlockBody { transactions: vec![tx_0], ..Default::default() },
             ..Default::default()
         };
@@ -550,10 +550,10 @@ mod tests {
         let tx = hex!(
             "02f86c8221058034839a4ae283021528942f16386bb37709016023232523ff6d9daf444be380841249c58bc080a001b927eda2af9b00b52a57be0885e0303c39dd2831732e14051c2336470fd468a0681bf120baf562915841a48601c2b54a6742511e535cf8f71c95115af7ff63bd"
         );
-        let tx_1 = BaseTransactionSigned::decode_2718(&mut &tx[..]).unwrap();
+        let tx_1 = UnstableTransactionSigned::decode_2718(&mut &tx[..]).unwrap();
 
         let receipt_meta = ReceiptFieldsBuilder::new(1730216981, 21713817)
-            .l1_block_info(&BaseChainSpec::mainnet(), &tx_1, &mut l1_block_info)
+            .l1_block_info(&UnstableChainSpec::mainnet(), &tx_1, &mut l1_block_info)
             .expect("should parse revm l1 info")
             .build();
 
@@ -601,14 +601,14 @@ mod tests {
 
         let signature = Signature::new(U256::default(), U256::default(), true);
 
-        let tx = BaseTransactionSigned::new_unhashed(BaseTypedTransaction::Eip7702(tx), signature);
+        let tx = UnstableTransactionSigned::new_unhashed(UnstableTypedTransaction::Eip7702(tx), signature);
 
         let mut l1_block_info = base_common_evm::L1BlockInfo {
             da_footprint_gas_scalar: Some(DA_FOOTPRINT_GAS_SCALAR),
             ..Default::default()
         };
 
-        let hardforks = BaseChainSpec::mainnet();
+        let hardforks = UnstableChainSpec::mainnet();
 
         let receipt = ReceiptFieldsBuilder::new(ChainConfig::mainnet().jovian_timestamp, u64::MAX)
             .l1_block_info(&hardforks, &tx, &mut l1_block_info)
@@ -636,20 +636,20 @@ mod tests {
 
         let signature = Signature::new(U256::default(), U256::default(), true);
 
-        let tx = BaseTransactionSigned::new_unhashed(BaseTypedTransaction::Eip7702(tx), signature);
+        let tx = UnstableTransactionSigned::new_unhashed(UnstableTypedTransaction::Eip7702(tx), signature);
 
         let mut l1_block_info = base_common_evm::L1BlockInfo {
             da_footprint_gas_scalar: Some(DA_FOOTPRINT_GAS_SCALAR),
             ..Default::default()
         };
 
-        let hardforks = BaseChainSpec::mainnet();
+        let hardforks = UnstableChainSpec::mainnet();
 
-        let receipt = BaseReceiptBuilder::new(
+        let receipt = UnstableReceiptBuilder::new(
             &hardforks,
-            ConvertReceiptInput::<BasePrimitives> {
+            ConvertReceiptInput::<UnstablePrimitives> {
                 tx: Recovered::new_unchecked(&tx, Address::default()),
-                receipt: BaseReceipt::Eip7702(Receipt {
+                receipt: UnstableReceipt::Eip7702(Receipt {
                     status: Eip658Value::Eip658(true),
                     cumulative_gas_used: 100,
                     logs: vec![],
@@ -690,20 +690,20 @@ mod tests {
 
         let signature = Signature::new(U256::default(), U256::default(), true);
 
-        let tx = BaseTransactionSigned::new_unhashed(BaseTypedTransaction::Eip7702(tx), signature);
+        let tx = UnstableTransactionSigned::new_unhashed(UnstableTypedTransaction::Eip7702(tx), signature);
 
         let mut l1_block_info = base_common_evm::L1BlockInfo {
             da_footprint_gas_scalar: Some(DA_FOOTPRINT_GAS_SCALAR),
             ..Default::default()
         };
 
-        let hardforks = BaseChainSpec::mainnet();
+        let hardforks = UnstableChainSpec::mainnet();
 
-        let receipt = BaseReceiptBuilder::new(
+        let receipt = UnstableReceiptBuilder::new(
             &hardforks,
-            ConvertReceiptInput::<BasePrimitives> {
+            ConvertReceiptInput::<UnstablePrimitives> {
                 tx: Recovered::new_unchecked(&tx, Address::default()),
-                receipt: BaseReceipt::Eip7702(Receipt {
+                receipt: UnstableReceipt::Eip7702(Receipt {
                     status: Eip658Value::Eip658(true),
                     cumulative_gas_used: 100,
                     logs: vec![],

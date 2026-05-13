@@ -1,4 +1,4 @@
-//! Implements the Base engine API RPC methods.
+//! Implements the Unstable engine API RPC methods.
 
 use alloy_eips::eip7685::Requests;
 use alloy_primitives::{B256, BlockHash, U64};
@@ -6,7 +6,7 @@ use alloy_rpc_types_engine::{
     ClientVersionV1, ExecutionPayloadBodiesV1, ExecutionPayloadInputV2, ExecutionPayloadV3,
     ForkchoiceState, ForkchoiceUpdated, PayloadId, PayloadStatus,
 };
-use base_common_rpc_types_engine::{BaseExecutionPayloadV4, ExecutionData};
+use base_common_rpc_types_engine::{UnstableExecutionPayloadV4, ExecutionData};
 use derive_more::Constructor;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee_core::{RpcResult, server::RpcModule};
@@ -20,7 +20,7 @@ use tracing::{debug, instrument, trace};
 
 /// The list of all supported Engine capabilities available over the engine endpoint.
 ///
-/// Spec: <https://specs.base.org/protocol/execution>
+/// Spec: <https://specs.unstable.org/protocol/execution>
 pub const ENGINE_CAPABILITIES: &[&str] = &[
     "engine_forkchoiceUpdatedV1",
     "engine_forkchoiceUpdatedV2",
@@ -37,16 +37,16 @@ pub const ENGINE_CAPABILITIES: &[&str] = &[
     "engine_getPayloadBodiesByRangeV1",
 ];
 
-/// Extension trait that gives access to Base engine API RPC methods.
+/// Extension trait that gives access to Unstable engine API RPC methods.
 ///
 /// Note:
 /// > The provider should use a JWT authentication layer.
 ///
-/// This follows the Base specs that can be found at:
-/// <https://specs.base.org/protocol/execution#engine-api>
+/// This follows the Unstable specs that can be found at:
+/// <https://specs.unstable.org/protocol/execution#engine-api>
 #[cfg_attr(not(feature = "client"), rpc(server, namespace = "engine"), server_bounds(Engine::PayloadAttributes: jsonrpsee::core::DeserializeOwned))]
 #[cfg_attr(feature = "client", rpc(server, client, namespace = "engine", client_bounds(Engine::PayloadAttributes: jsonrpsee::core::Serialize + Clone), server_bounds(Engine::PayloadAttributes: jsonrpsee::core::DeserializeOwned)))]
-pub trait BaseEngineApi<Engine: EngineTypes> {
+pub trait UnstableEngineApi<Engine: EngineTypes> {
     /// Sends the given payload to the execution layer client, as specified for the Shanghai fork.
     ///
     /// See also <https://github.com/ethereum/execution-apis/blob/584905270d8ad665718058060267061ecfd79ca5/src/engine/shanghai.md#engine_newpayloadv2>
@@ -82,7 +82,7 @@ pub trait BaseEngineApi<Engine: EngineTypes> {
     #[method(name = "newPayloadV4")]
     async fn new_payload_v4(
         &self,
-        payload: BaseExecutionPayloadV4,
+        payload: UnstableExecutionPayloadV4,
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
         execution_requests: Requests,
@@ -108,7 +108,7 @@ pub trait BaseEngineApi<Engine: EngineTypes> {
     /// See also <https://github.com/ethereum/execution-apis/blob/6709c2a795b707202e93c4f2867fa0bf2640a84f/src/engine/shanghai.md#engine_forkchoiceupdatedv2>
     ///
     /// Rollup modifications:
-    /// - The `payload_attributes` parameter is extended with the [`EngineTypes::PayloadAttributes`](EngineTypes) type as described in <https://specs.base.org/protocol/execution#extended-payloadattributesv2>
+    /// - The `payload_attributes` parameter is extended with the [`EngineTypes::PayloadAttributes`](EngineTypes) type as described in <https://specs.unstable.org/protocol/execution#extended-payloadattributesv2>
     #[method(name = "forkchoiceUpdatedV2")]
     async fn fork_choice_updated_v2(
         &self,
@@ -124,7 +124,7 @@ pub trait BaseEngineApi<Engine: EngineTypes> {
     /// Rollup modifications:
     /// - Must be called with an Ecotone payload
     /// - Attributes must contain the parent beacon block root field
-    /// - The `payload_attributes` parameter is extended with the [`EngineTypes::PayloadAttributes`](EngineTypes) type as described in <https://specs.base.org/protocol/execution#extended-payloadattributesv2>
+    /// - The `payload_attributes` parameter is extended with the [`EngineTypes::PayloadAttributes`](EngineTypes) type as described in <https://specs.unstable.org/protocol/execution#extended-payloadattributesv2>
     #[method(name = "forkchoiceUpdatedV3")]
     async fn fork_choice_updated_v3(
         &self,
@@ -187,8 +187,8 @@ pub trait BaseEngineApi<Engine: EngineTypes> {
     /// Note:
     /// > Provider software MAY stop the corresponding build process after serving this call.
     ///
-    /// Returns the [`BaseExecutionPayloadEnvelopeV5`], which uses
-    /// [`BaseExecutionPayloadV4`](base_common_rpc_types_engine::BaseExecutionPayloadV4) for the
+    /// Returns the [`UnstableExecutionPayloadEnvelopeV5`], which uses
+    /// [`UnstableExecutionPayloadV4`](base_common_rpc_types_engine::UnstableExecutionPayloadV4) for the
     /// execution payload and otherwise follows the V5 envelope shape.
     #[method(name = "getPayloadV5")]
     async fn get_payload_v5(
@@ -246,12 +246,12 @@ pub trait BaseEngineApi<Engine: EngineTypes> {
 /// The Engine API implementation that grants the Consensus layer access to data and
 /// functions in the Execution layer that are crucial for the consensus process.
 #[derive(Debug, Constructor)]
-pub struct BaseEngineApi<Provider, EngineT: EngineTypes, Pool, Validator, ChainSpec> {
+pub struct UnstableEngineApi<Provider, EngineT: EngineTypes, Pool, Validator, ChainSpec> {
     inner: EngineApi<Provider, EngineT, Pool, Validator, ChainSpec>,
 }
 
 impl<Provider, PayloadT, Pool, Validator, ChainSpec> Clone
-    for BaseEngineApi<Provider, PayloadT, Pool, Validator, ChainSpec>
+    for UnstableEngineApi<Provider, PayloadT, Pool, Validator, ChainSpec>
 where
     PayloadT: EngineTypes,
 {
@@ -261,8 +261,8 @@ where
 }
 
 #[async_trait::async_trait]
-impl<Provider, EngineT, Pool, Validator, ChainSpec> BaseEngineApiServer<EngineT>
-    for BaseEngineApi<Provider, EngineT, Pool, Validator, ChainSpec>
+impl<Provider, EngineT, Pool, Validator, ChainSpec> UnstableEngineApiServer<EngineT>
+    for UnstableEngineApi<Provider, EngineT, Pool, Validator, ChainSpec>
 where
     Provider: HeaderProvider + BlockReader + StateProviderFactory + 'static,
     EngineT: EngineTypes<ExecutionData = ExecutionData>,
@@ -290,7 +290,7 @@ where
 
     async fn new_payload_v4(
         &self,
-        payload: BaseExecutionPayloadV4,
+        payload: UnstableExecutionPayloadV4,
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
         execution_requests: Requests,
@@ -433,10 +433,10 @@ where
 }
 
 impl<Provider, EngineT, Pool, Validator, ChainSpec> IntoEngineApiRpcModule
-    for BaseEngineApi<Provider, EngineT, Pool, Validator, ChainSpec>
+    for UnstableEngineApi<Provider, EngineT, Pool, Validator, ChainSpec>
 where
     EngineT: EngineTypes,
-    Self: BaseEngineApiServer<EngineT>,
+    Self: UnstableEngineApiServer<EngineT>,
 {
     fn into_rpc_module(self) -> RpcModule<()> {
         self.into_rpc().remove_context()

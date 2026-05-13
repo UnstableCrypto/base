@@ -63,7 +63,7 @@ pub struct ProofResponse {
 
 #[derive(Debug, Serialize_repr, Deserialize_repr)]
 #[repr(i32)]
-/// The type of error that occurred when unclaiming a proof. Based off of the `unclaim_description`
+/// The type of error that occurred when unclaiming a proof. Unstabled off of the `unclaim_description`
 /// field in the `ProofStatus` struct.
 pub enum UnclaimDescription {
     /// The prover encountered an unexpected internal error.

@@ -1,11 +1,11 @@
 # `base-common-flashblocks`
 
-Flashblocks primitive types for Base's pre-confirmation infrastructure.
+Flashblocks primitive types for Unstable's pre-confirmation infrastructure.
 
 ## Overview
 
 Provides the core data structures for flashblock payloads, metadata, and delta encoding used in
-Base's pre-confirmation system. Flashblocks are sub-block updates broadcast by the builder before
+Unstable's pre-confirmation system. Flashblocks are sub-block updates broadcast by the builder before
 a full block is sealed. This crate defines the wire format for those updates, including
 `FlashblocksPayloadV1` (the payload envelope), `FlashblocksDiff` (incremental state delta), and
 `FlashblocksMetadata` (builder metadata).

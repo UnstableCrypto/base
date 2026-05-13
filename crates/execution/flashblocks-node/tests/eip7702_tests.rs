@@ -11,7 +11,7 @@ use alloy_provider::Provider;
 use alloy_signer::SignerSync;
 use alloy_sol_types::SolCall;
 use base_common_flashblocks::{
-    ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
+    ExecutionPayloadUnstableV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
 };
 use base_flashblocks_node::test_harness::FlashblocksHarness;
 use base_node_runner::test_utils::L1_BLOCK_INFO_DEPOSIT_TX;
@@ -46,7 +46,7 @@ impl TestSetup {
         self.harness.send_flashblock(flashblock).await
     }
 
-    fn provider(&self) -> alloy_provider::RootProvider<base_common_network::Base> {
+    fn provider(&self) -> alloy_provider::RootProvider<base_common_network::Unstable> {
         self.harness.provider()
     }
 }
@@ -124,7 +124,7 @@ fn create_base_flashblock(setup: &TestSetup) -> Flashblock {
     Flashblock {
         payload_id: alloy_rpc_types_engine::PayloadId::new([0; 8]),
         index: 0,
-        base: Some(ExecutionPayloadBaseV1 {
+        base: Some(ExecutionPayloadUnstableV1 {
             parent_beacon_block_root: B256::default(),
             parent_hash: B256::default(),
             fee_recipient: Address::ZERO,

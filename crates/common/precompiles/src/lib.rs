@@ -6,10 +6,10 @@
 extern crate alloc;
 
 mod provider;
-pub use provider::BasePrecompiles;
+pub use provider::UnstablePrecompiles;
 
 mod spec;
-pub use spec::BasePrecompileSpec;
+pub use spec::UnstablePrecompileSpec;
 
 mod bn254_pair;
 

@@ -19,11 +19,11 @@ use alloy_transport_http::{
 };
 use async_trait::async_trait;
 use base_common_genesis::RollupConfig;
-use base_common_network::{Base, BaseEngineApi};
+use base_common_network::{Unstable, UnstableEngineApi};
 use base_common_rpc_types::Transaction;
 use base_common_rpc_types_engine::{
-    BaseExecutionPayloadEnvelopeV3, BaseExecutionPayloadEnvelopeV4, BaseExecutionPayloadEnvelopeV5,
-    BaseExecutionPayloadV4, BasePayloadAttributes,
+    UnstableExecutionPayloadEnvelopeV3, UnstableExecutionPayloadEnvelopeV4, UnstableExecutionPayloadEnvelopeV5,
+    UnstableExecutionPayloadV4, UnstablePayloadAttributes,
 };
 use base_protocol::{FromBlockError, L2BlockInfo};
 use http_body_util::Full;
@@ -48,7 +48,7 @@ pub enum EngineClientError {
 /// `EngineClient` trait that is very coupled to its only implementation.
 /// The main reason this exists is for mocking/unit testing.
 #[async_trait]
-pub trait EngineClient: BaseEngineApi + Send + Sync {
+pub trait EngineClient: UnstableEngineApi + Send + Sync {
     /// Returns a reference to the inner [`RollupConfig`].
     fn cfg(&self) -> &RollupConfig;
 
@@ -56,7 +56,7 @@ pub trait EngineClient: BaseEngineApi + Send + Sync {
     fn get_l1_block(&self, block: BlockId) -> EthGetBlock<<Ethereum as Network>::BlockResponse>;
 
     /// Fetches the L2 block with the provided `BlockId`.
-    fn get_l2_block(&self, block: BlockId) -> EthGetBlock<<Base as Network>::BlockResponse>;
+    fn get_l2_block(&self, block: BlockId) -> EthGetBlock<<Unstable as Network>::BlockResponse>;
 
     /// Get the account and storage values of the specified account including the merkle proofs.
     /// This call can be used to verify that the data has not been tampered with.
@@ -81,14 +81,14 @@ pub trait EngineClient: BaseEngineApi + Send + Sync {
 
 /// An Engine API client that provides authenticated HTTP communication with an execution layer.
 ///
-/// The [`BaseEngineClient`] handles JWT authentication and manages connections to both L1 and L2
+/// The [`UnstableEngineClient`] handles JWT authentication and manages connections to both L1 and L2
 /// execution layers. It automatically selects the appropriate Engine API version based on the
 /// rollup configuration and block timestamps.
 #[derive(Clone, Debug)]
-pub struct BaseEngineClient<L1Provider, L2Provider>
+pub struct UnstableEngineClient<L1Provider, L2Provider>
 where
     L1Provider: Provider,
-    L2Provider: Provider<Base>,
+    L2Provider: Provider<Unstable>,
 {
     /// The L2 engine provider for Engine API calls.
     engine: L2Provider,
@@ -98,10 +98,10 @@ where
     cfg: Arc<RollupConfig>,
 }
 
-impl<L1Provider, L2Provider> BaseEngineClient<L1Provider, L2Provider>
+impl<L1Provider, L2Provider> UnstableEngineClient<L1Provider, L2Provider>
 where
     L1Provider: Provider,
-    L2Provider: Provider<Base>,
+    L2Provider: Provider<Unstable>,
 {
     /// Creates a new RPC client for the given address and JWT secret.
     ///
@@ -155,7 +155,7 @@ where
     }
 }
 
-/// The builder for the [`BaseEngineClient`].
+/// The builder for the [`UnstableEngineClient`].
 #[derive(Debug, Clone)]
 pub struct EngineClientBuilder {
     /// The L2 Engine API endpoint URL.
@@ -169,15 +169,15 @@ pub struct EngineClientBuilder {
 }
 
 impl EngineClientBuilder {
-    /// Creates a new [`BaseEngineClient`] with authenticated connections.
+    /// Creates a new [`UnstableEngineClient`] with authenticated connections.
     ///
     /// Sets up JWT-authenticated connections to the Engine API endpoint along with an
     /// unauthenticated connection to the L1 chain. Supports both HTTP and WebSocket schemes
     /// for the L2 Engine API URL.
     pub async fn build(
         self,
-    ) -> TransportResult<BaseEngineClient<RootProvider, RootProvider<Base>>> {
-        let engine = BaseEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(
+    ) -> TransportResult<UnstableEngineClient<RootProvider, RootProvider<Unstable>>> {
+        let engine = UnstableEngineClient::<RootProvider, RootProvider<Unstable>>::rpc_client::<Unstable>(
             self.l2,
             self.l2_jwt,
         )
@@ -185,15 +185,15 @@ impl EngineClientBuilder {
 
         let l1_provider = RootProvider::new_http(self.l1_rpc);
 
-        Ok(BaseEngineClient { engine, l1_provider, cfg: self.cfg })
+        Ok(UnstableEngineClient { engine, l1_provider, cfg: self.cfg })
     }
 }
 
 #[async_trait]
-impl<L1Provider, L2Provider> EngineClient for BaseEngineClient<L1Provider, L2Provider>
+impl<L1Provider, L2Provider> EngineClient for UnstableEngineClient<L1Provider, L2Provider>
 where
     L1Provider: Provider,
-    L2Provider: Provider<Base>,
+    L2Provider: Provider<Unstable>,
 {
     fn cfg(&self) -> &RollupConfig {
         self.cfg.as_ref()
@@ -203,7 +203,7 @@ where
         self.l1_provider.get_block(block)
     }
 
-    fn get_l2_block(&self, block: BlockId) -> EthGetBlock<<Base as Network>::BlockResponse> {
+    fn get_l2_block(&self, block: BlockId) -> EthGetBlock<<Unstable as Network>::BlockResponse> {
         self.engine.get_block(block)
     }
 
@@ -235,16 +235,16 @@ where
 }
 
 #[async_trait::async_trait]
-impl<L1Provider, L2Provider> BaseEngineApi for BaseEngineClient<L1Provider, L2Provider>
+impl<L1Provider, L2Provider> UnstableEngineApi for UnstableEngineClient<L1Provider, L2Provider>
 where
     L1Provider: Provider,
-    L2Provider: Provider<Base>,
+    L2Provider: Provider<Unstable>,
 {
     async fn new_payload_v2(
         &self,
         payload: ExecutionPayloadInputV2,
     ) -> TransportResult<PayloadStatus> {
-        let call = <L2Provider as BaseEngineApi>::new_payload_v2(&self.engine, payload);
+        let call = <L2Provider as UnstableEngineApi>::new_payload_v2(&self.engine, payload);
 
         record_call_time(call, Metrics::NEW_PAYLOAD_METHOD).await
     }
@@ -254,7 +254,7 @@ where
         payload: ExecutionPayloadV3,
         parent_beacon_block_root: B256,
     ) -> TransportResult<PayloadStatus> {
-        let call = <L2Provider as BaseEngineApi>::new_payload_v3(
+        let call = <L2Provider as UnstableEngineApi>::new_payload_v3(
             &self.engine,
             payload,
             parent_beacon_block_root,
@@ -265,10 +265,10 @@ where
 
     async fn new_payload_v4(
         &self,
-        payload: BaseExecutionPayloadV4,
+        payload: UnstableExecutionPayloadV4,
         parent_beacon_block_root: B256,
     ) -> TransportResult<PayloadStatus> {
-        let call = <L2Provider as BaseEngineApi>::new_payload_v4(
+        let call = <L2Provider as UnstableEngineApi>::new_payload_v4(
             &self.engine,
             payload,
             parent_beacon_block_root,
@@ -280,9 +280,9 @@ where
     async fn fork_choice_updated_v2(
         &self,
         fork_choice_state: ForkchoiceState,
-        payload_attributes: Option<BasePayloadAttributes>,
+        payload_attributes: Option<UnstablePayloadAttributes>,
     ) -> TransportResult<ForkchoiceUpdated> {
-        let call = <L2Provider as BaseEngineApi>::fork_choice_updated_v2(
+        let call = <L2Provider as UnstableEngineApi>::fork_choice_updated_v2(
             &self.engine,
             fork_choice_state,
             payload_attributes,
@@ -294,9 +294,9 @@ where
     async fn fork_choice_updated_v3(
         &self,
         fork_choice_state: ForkchoiceState,
-        payload_attributes: Option<BasePayloadAttributes>,
+        payload_attributes: Option<UnstablePayloadAttributes>,
     ) -> TransportResult<ForkchoiceUpdated> {
-        let call = <L2Provider as BaseEngineApi>::fork_choice_updated_v3(
+        let call = <L2Provider as UnstableEngineApi>::fork_choice_updated_v3(
             &self.engine,
             fork_choice_state,
             payload_attributes,
@@ -309,7 +309,7 @@ where
         &self,
         payload_id: PayloadId,
     ) -> TransportResult<ExecutionPayloadEnvelopeV2> {
-        let call = <L2Provider as BaseEngineApi>::get_payload_v2(&self.engine, payload_id);
+        let call = <L2Provider as UnstableEngineApi>::get_payload_v2(&self.engine, payload_id);
 
         record_call_time(call, Metrics::GET_PAYLOAD_METHOD).await
     }
@@ -317,8 +317,8 @@ where
     async fn get_payload_v3(
         &self,
         payload_id: PayloadId,
-    ) -> TransportResult<BaseExecutionPayloadEnvelopeV3> {
-        let call = <L2Provider as BaseEngineApi>::get_payload_v3(&self.engine, payload_id);
+    ) -> TransportResult<UnstableExecutionPayloadEnvelopeV3> {
+        let call = <L2Provider as UnstableEngineApi>::get_payload_v3(&self.engine, payload_id);
 
         record_call_time(call, Metrics::GET_PAYLOAD_METHOD).await
     }
@@ -326,8 +326,8 @@ where
     async fn get_payload_v4(
         &self,
         payload_id: PayloadId,
-    ) -> TransportResult<BaseExecutionPayloadEnvelopeV4> {
-        let call = <L2Provider as BaseEngineApi>::get_payload_v4(&self.engine, payload_id);
+    ) -> TransportResult<UnstableExecutionPayloadEnvelopeV4> {
+        let call = <L2Provider as UnstableEngineApi>::get_payload_v4(&self.engine, payload_id);
 
         record_call_time(call, Metrics::GET_PAYLOAD_METHOD).await
     }
@@ -335,8 +335,8 @@ where
     async fn get_payload_v5(
         &self,
         payload_id: PayloadId,
-    ) -> TransportResult<BaseExecutionPayloadEnvelopeV5> {
-        let call = <L2Provider as BaseEngineApi>::get_payload_v5(&self.engine, payload_id);
+    ) -> TransportResult<UnstableExecutionPayloadEnvelopeV5> {
+        let call = <L2Provider as UnstableEngineApi>::get_payload_v5(&self.engine, payload_id);
 
         record_call_time(call, Metrics::GET_PAYLOAD_METHOD).await
     }
@@ -345,7 +345,7 @@ where
         &self,
         block_hashes: Vec<BlockHash>,
     ) -> TransportResult<ExecutionPayloadBodiesV1> {
-        <L2Provider as BaseEngineApi>::get_payload_bodies_by_hash_v1(&self.engine, block_hashes)
+        <L2Provider as UnstableEngineApi>::get_payload_bodies_by_hash_v1(&self.engine, block_hashes)
             .await
     }
 
@@ -354,7 +354,7 @@ where
         start: u64,
         count: u64,
     ) -> TransportResult<ExecutionPayloadBodiesV1> {
-        <L2Provider as BaseEngineApi>::get_payload_bodies_by_range_v1(&self.engine, start, count)
+        <L2Provider as UnstableEngineApi>::get_payload_bodies_by_range_v1(&self.engine, start, count)
             .await
     }
 
@@ -362,14 +362,14 @@ where
         &self,
         client_version: ClientVersionV1,
     ) -> TransportResult<Vec<ClientVersionV1>> {
-        <L2Provider as BaseEngineApi>::get_client_version_v1(&self.engine, client_version).await
+        <L2Provider as UnstableEngineApi>::get_client_version_v1(&self.engine, client_version).await
     }
 
     async fn exchange_capabilities(
         &self,
         capabilities: Vec<String>,
     ) -> TransportResult<Vec<String>> {
-        <L2Provider as BaseEngineApi>::exchange_capabilities(&self.engine, capabilities).await
+        <L2Provider as UnstableEngineApi>::exchange_capabilities(&self.engine, capabilities).await
     }
 }
 
@@ -414,7 +414,7 @@ mod tests {
         let jwt = JwtSecret::random();
         // No server is running; HTTP transport does not connect at build time.
         let _provider =
-            BaseEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(addr, jwt)
+            UnstableEngineClient::<RootProvider, RootProvider<Unstable>>::rpc_client::<Unstable>(addr, jwt)
                 .await
                 .unwrap();
     }
@@ -425,7 +425,7 @@ mod tests {
         let addr: Url = "https://127.0.0.1:8551".parse().unwrap();
         let jwt = JwtSecret::random();
         let _provider =
-            BaseEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(addr, jwt)
+            UnstableEngineClient::<RootProvider, RootProvider<Unstable>>::rpc_client::<Unstable>(addr, jwt)
                 .await
                 .unwrap();
     }
@@ -436,7 +436,7 @@ mod tests {
         let addr: Url = "htpp://127.0.0.1:8551".parse().unwrap();
         let jwt = JwtSecret::random();
         let error =
-            BaseEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(addr, jwt)
+            UnstableEngineClient::<RootProvider, RootProvider<Unstable>>::rpc_client::<Unstable>(addr, jwt)
                 .await
                 .unwrap_err();
 
@@ -455,7 +455,7 @@ mod tests {
         let addr: Url = format!("ws://127.0.0.1:{port}").parse().unwrap();
         let jwt = JwtSecret::random();
         let _provider =
-            BaseEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(addr, jwt)
+            UnstableEngineClient::<RootProvider, RootProvider<Unstable>>::rpc_client::<Unstable>(addr, jwt)
                 .await
                 .unwrap();
     }
@@ -476,7 +476,7 @@ mod tests {
         let addr: Url = "https://127.0.0.1:9999".parse().unwrap();
         let jwt = JwtSecret::random();
         let _provider =
-            BaseEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(addr, jwt)
+            UnstableEngineClient::<RootProvider, RootProvider<Unstable>>::rpc_client::<Unstable>(addr, jwt)
                 .await
                 .unwrap();
     }

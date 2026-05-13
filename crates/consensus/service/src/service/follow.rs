@@ -6,7 +6,7 @@ use std::{
 use alloy_eips::BlockNumberOrTag;
 use alloy_provider::RootProvider;
 use base_common_genesis::RollupConfig;
-use base_common_network::Base;
+use base_common_network::Unstable;
 use base_consensus_engine::{Engine, EngineClient, EngineState};
 use base_consensus_rpc::RpcBuilder;
 use base_consensus_safedb::{DisabledSafeDB, SafeDBReader};
@@ -31,7 +31,7 @@ use crate::{
 pub struct FollowNode {
     config: Arc<RollupConfig>,
     engine_config: EngineConfig,
-    local_l2_provider: RootProvider<Base>,
+    local_l2_provider: RootProvider<Unstable>,
     l2_source: DelegateL2Client,
     proofs_enabled: bool,
     proofs_max_blocks_ahead: u64,
@@ -44,7 +44,7 @@ impl FollowNode {
     pub const fn new(
         config: Arc<RollupConfig>,
         engine_config: EngineConfig,
-        local_l2_provider: RootProvider<Base>,
+        local_l2_provider: RootProvider<Unstable>,
         l2_source: DelegateL2Client,
         rpc_builder: Option<RpcBuilder>,
         l1_config: L1Config,

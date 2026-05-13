@@ -7,7 +7,7 @@ use crate::{CryptoError, ProofEncoder};
 /// ECDSA signature length in bytes (r: 32 + s: 32 + v: 1).
 pub const ECDSA_SIGNATURE_LENGTH: usize = 65;
 
-/// Base length of the proof journal without intermediate roots:
+/// Unstable length of the proof journal without intermediate roots:
 /// address(20) + 5 × bytes32(32) + 2 × uint64(8) = 196 bytes.
 pub const PROOF_JOURNAL_BASE_LENGTH: usize = 196;
 

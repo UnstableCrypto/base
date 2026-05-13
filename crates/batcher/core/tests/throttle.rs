@@ -19,7 +19,7 @@ use base_batcher_encoder::{
     BatchPipeline, BatchSubmission, ReorgError, StepError, StepResult, SubmissionId,
 };
 use base_batcher_source::{L2BlockEvent, SourceError, UnsafeBlockSource};
-use base_common_consensus::BaseBlock;
+use base_common_consensus::UnstableBlock;
 use base_runtime::{
     Cancellation, Clock, Spawner,
     deterministic::{Config, Runner},
@@ -218,7 +218,7 @@ fn test_throttle_transitions_from_active_to_inactive() {
     }
 
     impl BatchPipeline for DynamicPipeline {
-        fn add_block(&mut self, _: BaseBlock) -> Result<(), (ReorgError, Box<BaseBlock>)> {
+        fn add_block(&mut self, _: UnstableBlock) -> Result<(), (ReorgError, Box<UnstableBlock>)> {
             Ok(())
         }
 

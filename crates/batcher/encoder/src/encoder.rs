@@ -8,7 +8,7 @@ use std::{
 
 use alloy_eips::eip2718::Encodable2718;
 use alloy_primitives::B256;
-use base_common_consensus::{BaseBlock, BaseTxEnvelope};
+use base_common_consensus::{UnstableBlock, UnstableTxEnvelope};
 use base_common_genesis::RollupConfig;
 use base_comp::{
     BatchComposer, ChannelOut, CompressionAlgo, CompressorType, Config, ShadowCompressor,
@@ -35,7 +35,7 @@ pub struct BatchEncoder {
     /// Current L1 head block number (for channel duration tracking).
     l1_head: u64,
     /// L2 blocks waiting to be encoded. Pruned when all their frames are confirmed.
-    blocks: VecDeque<BaseBlock>,
+    blocks: VecDeque<UnstableBlock>,
     /// Index into `blocks`: next block not yet fed into the current channel.
     block_cursor: usize,
     /// Hash of the last block's header (or `B256::ZERO` if empty). Used for reorg detection.
@@ -121,12 +121,12 @@ impl BatchEncoder {
     }
 
     /// Estimate the DA bytes represented by non-deposit transactions in `block`.
-    fn block_da_backlog_bytes(block: &BaseBlock) -> u64 {
+    fn block_da_backlog_bytes(block: &UnstableBlock) -> u64 {
         block
             .body
             .transactions
             .iter()
-            .filter(|tx| !matches!(tx, BaseTxEnvelope::Deposit(_)))
+            .filter(|tx| !matches!(tx, UnstableTxEnvelope::Deposit(_)))
             .map(|tx| tx.encode_2718_len() as u64)
             .sum()
     }
@@ -460,7 +460,7 @@ impl BatchEncoder {
 }
 
 impl BatchPipeline for BatchEncoder {
-    fn add_block(&mut self, block: BaseBlock) -> Result<(), (ReorgError, Box<BaseBlock>)> {
+    fn add_block(&mut self, block: UnstableBlock) -> Result<(), (ReorgError, Box<UnstableBlock>)> {
         if !self.blocks.is_empty() && block.header.parent_hash != self.tip {
             return Err((
                 ReorgError::ParentMismatch { expected: self.tip, got: block.header.parent_hash },
@@ -895,7 +895,7 @@ impl BatchPipeline for BatchEncoder {
 mod tests {
     use alloy_consensus::{BlockBody, Header, SignableTransaction, TxLegacy};
     use alloy_primitives::{Bytes, Sealed, Signature};
-    use base_common_consensus::{BaseTxEnvelope, TxDeposit};
+    use base_common_consensus::{UnstableTxEnvelope, TxDeposit};
     use base_common_genesis::ChainGenesis;
     use base_comp::BatchComposeError;
     use base_protocol::{BatchReader, L1BlockInfoBedrock, L1BlockInfoTx};
@@ -903,25 +903,25 @@ mod tests {
 
     use super::*;
 
-    fn make_deposit_tx() -> BaseTxEnvelope {
+    fn make_deposit_tx() -> UnstableTxEnvelope {
         let calldata = L1BlockInfoTx::Bedrock(L1BlockInfoBedrock::default()).encode_calldata();
-        BaseTxEnvelope::Deposit(Sealed::new(TxDeposit { input: calldata, ..Default::default() }))
+        UnstableTxEnvelope::Deposit(Sealed::new(TxDeposit { input: calldata, ..Default::default() }))
     }
 
-    fn make_block(parent_hash: B256) -> BaseBlock {
-        BaseBlock {
+    fn make_block(parent_hash: B256) -> UnstableBlock {
+        UnstableBlock {
             header: Header { parent_hash, ..Default::default() },
             body: BlockBody { transactions: vec![make_deposit_tx()], ..Default::default() },
         }
     }
 
-    fn make_block_with_user_tx(parent_hash: B256) -> BaseBlock {
+    fn make_block_with_user_tx(parent_hash: B256) -> UnstableBlock {
         let user_tx = {
             let signed = TxLegacy::default().into_signed(Signature::test_signature());
-            BaseTxEnvelope::Legacy(signed)
+            UnstableTxEnvelope::Legacy(signed)
         };
 
-        BaseBlock {
+        UnstableBlock {
             header: Header { parent_hash, ..Default::default() },
             body: BlockBody {
                 transactions: vec![make_deposit_tx(), user_tx],
@@ -930,7 +930,7 @@ mod tests {
         }
     }
 
-    fn make_user_tx_chain(len: usize) -> Vec<BaseBlock> {
+    fn make_user_tx_chain(len: usize) -> Vec<UnstableBlock> {
         let mut parent_hash = B256::ZERO;
         (0..len)
             .map(|number| {
@@ -942,7 +942,7 @@ mod tests {
             .collect()
     }
 
-    fn make_block_at(parent_hash: B256, number: u64, timestamp: u64) -> BaseBlock {
+    fn make_block_at(parent_hash: B256, number: u64, timestamp: u64) -> UnstableBlock {
         let mut block = make_block(parent_hash);
         block.header.number = number;
         block.header.timestamp = timestamp;
@@ -1510,30 +1510,30 @@ mod tests {
     // skipped: skipping would produce a gap in the L2 block sequence submitted
     // to L1, which the derivation spec prohibits.
 
-    fn make_empty_block(parent_hash: B256) -> BaseBlock {
-        BaseBlock {
+    fn make_empty_block(parent_hash: B256) -> UnstableBlock {
+        UnstableBlock {
             header: Header { parent_hash, ..Default::default() },
             body: BlockBody { transactions: vec![], ..Default::default() },
         }
     }
 
-    fn make_non_deposit_block(parent_hash: B256) -> BaseBlock {
+    fn make_non_deposit_block(parent_hash: B256) -> UnstableBlock {
         let user_tx = {
             let signed = TxLegacy::default().into_signed(Signature::test_signature());
-            BaseTxEnvelope::Legacy(signed)
+            UnstableTxEnvelope::Legacy(signed)
         };
-        BaseBlock {
+        UnstableBlock {
             header: Header { parent_hash, ..Default::default() },
             body: BlockBody { transactions: vec![user_tx], ..Default::default() },
         }
     }
 
-    fn make_bad_calldata_block(parent_hash: B256) -> BaseBlock {
-        let deposit = BaseTxEnvelope::Deposit(Sealed::new(TxDeposit {
+    fn make_bad_calldata_block(parent_hash: B256) -> UnstableBlock {
+        let deposit = UnstableTxEnvelope::Deposit(Sealed::new(TxDeposit {
             input: Bytes::new(),
             ..Default::default()
         }));
-        BaseBlock {
+        UnstableBlock {
             header: Header { parent_hash, ..Default::default() },
             body: BlockBody { transactions: vec![deposit], ..Default::default() },
         }
@@ -1545,7 +1545,7 @@ mod tests {
     #[case::empty_block(make_empty_block(B256::ZERO), BatchComposeError::EmptyBlock)]
     #[case::not_deposit(make_non_deposit_block(B256::ZERO), BatchComposeError::NotDepositTx)]
     #[case::bad_calldata(make_bad_calldata_block(B256::ZERO), BatchComposeError::L1InfoDecode)]
-    fn test_step_fatal(#[case] block: BaseBlock, #[case] expected_source: BatchComposeError) {
+    fn test_step_fatal(#[case] block: UnstableBlock, #[case] expected_source: BatchComposeError) {
         let mut encoder = default_encoder();
         encoder.add_block(block).unwrap();
         let err = encoder.step().unwrap_err();
@@ -1836,13 +1836,13 @@ mod tests {
 
     // --- prune_safe tests ---
 
-    fn make_numbered_block(parent_hash: B256, number: u64) -> BaseBlock {
+    fn make_numbered_block(parent_hash: B256, number: u64) -> UnstableBlock {
         let calldata = L1BlockInfoTx::Bedrock(L1BlockInfoBedrock::default()).encode_calldata();
-        let deposit = BaseTxEnvelope::Deposit(Sealed::new(TxDeposit {
+        let deposit = UnstableTxEnvelope::Deposit(Sealed::new(TxDeposit {
             input: calldata,
             ..Default::default()
         }));
-        BaseBlock {
+        UnstableBlock {
             header: Header { parent_hash, number, ..Default::default() },
             body: BlockBody { transactions: vec![deposit], ..Default::default() },
         }

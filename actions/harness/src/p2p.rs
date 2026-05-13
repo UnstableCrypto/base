@@ -10,7 +10,7 @@ use alloy_signer::SignerSync;
 use alloy_signer_local::PrivateKeySigner;
 use async_trait::async_trait;
 use base_common_rpc_types_engine::{
-    BaseExecutionPayloadEnvelope, NetworkPayloadEnvelope, PayloadHash,
+    UnstableExecutionPayloadEnvelope, NetworkPayloadEnvelope, PayloadHash,
 };
 use base_consensus_gossip::P2pRpcRequest;
 use base_consensus_node::GossipTransport;
@@ -164,7 +164,7 @@ pub enum TestGossipTransportError {}
 impl GossipTransport for TestGossipTransport {
     type Error = TestGossipTransportError;
 
-    async fn publish(&mut self, payload: BaseExecutionPayloadEnvelope) -> Result<(), Self::Error> {
+    async fn publish(&mut self, payload: UnstableExecutionPayloadEnvelope) -> Result<(), Self::Error> {
         let parent_beacon_block_root = payload.parent_beacon_block_root;
         let (signature, payload_hash) = if self.expected_signer.is_some() {
             let key = self.signing_key.as_ref().expect(

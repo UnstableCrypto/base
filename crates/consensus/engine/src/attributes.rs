@@ -1,11 +1,11 @@
 //! Contains a utility method to check if attributes match a block.
 
-use alloy_eips::{Decodable2718, eip1559::BaseFeeParams};
+use alloy_eips::{Decodable2718, eip1559::UnstableFeeParams};
 use alloy_network::TransactionResponse;
 use alloy_primitives::{Address, B256, Bytes};
 use alloy_rpc_types_eth::{Block, BlockTransactions, Withdrawals};
 use base_common_consensus::{
-    BaseTxEnvelope, EIP1559ParamError, HoloceneExtraData, JovianExtraData,
+    UnstableTxEnvelope, EIP1559ParamError, HoloceneExtraData, JovianExtraData,
 };
 use base_common_genesis::RollupConfig;
 use base_common_rpc_types::Transaction;
@@ -148,7 +148,7 @@ impl AttributesMatch {
                 "Checking attributes transaction against block transaction",
             );
             // Let's try to deserialize the attributes transaction
-            let Ok(attr_tx) = BaseTxEnvelope::decode_2718_exact(attr_tx_bytes.as_ref()) else {
+            let Ok(attr_tx) = UnstableTxEnvelope::decode_2718_exact(attr_tx_bytes.as_ref()) else {
                 error!(
                     "Impossible to deserialize transaction from attributes. If we have stored these attributes it means the transactions where well formatted. This is a bug"
                 );
@@ -202,7 +202,7 @@ impl AttributesMatch {
             // Since holocene is supposed to be active, canyon should be as well. We take the canyon
             // base fee params.
             Some((0, 0)) => {
-                let BaseFeeParams { max_change_denominator, elasticity_multiplier } =
+                let UnstableFeeParams { max_change_denominator, elasticity_multiplier } =
                     config.chain_op_config.post_canyon_params();
 
                 (elasticity_multiplier, max_change_denominator)
@@ -246,8 +246,8 @@ impl AttributesMatch {
 
         if ae != be || ad != bd {
             return AttributesMismatch::EIP1559Parameters(
-                BaseFeeParams { max_change_denominator: ad, elasticity_multiplier: ae },
-                BaseFeeParams { max_change_denominator: bd, elasticity_multiplier: be },
+                UnstableFeeParams { max_change_denominator: ad, elasticity_multiplier: ae },
+                UnstableFeeParams { max_change_denominator: bd, elasticity_multiplier: be },
             )
             .into();
         }
@@ -259,10 +259,10 @@ impl AttributesMatch {
         if let Some(block_mbf) = jovian_block_mbf {
             let Some(attr_mbf) = attributes.attributes().min_base_fee else {
                 error!("min_base_fee for attributes not set while jovian is active. This is a bug");
-                return AttributesMismatch::MissingAttributesMinBaseFee.into();
+                return AttributesMismatch::MissingAttributesMinUnstableFee.into();
             };
             if attr_mbf != block_mbf {
-                return AttributesMismatch::MinBaseFee(attr_mbf, block_mbf).into();
+                return AttributesMismatch::MinUnstableFee(attr_mbf, block_mbf).into();
             }
         }
 
@@ -378,10 +378,10 @@ pub enum AttributesMismatch {
     MissingBlockEIP1559,
     /// The `min_base_fee` payload for the [`AttributesWithParent`] is missing when jovian is
     /// active.
-    MissingAttributesMinBaseFee,
+    MissingAttributesMinUnstableFee,
     /// The `min_base_fee` of the attributes does not match the `min_base_fee` of the block
     /// extra data when jovian is active. Carries (`attributes`, `block`).
-    MinBaseFee(u64, u64),
+    MinUnstableFee(u64, u64),
     /// The version in the extra data EIP1559 payload is incorrect. Should be 0.
     InvalidExtraDataVersion,
     /// An unknown extra data decoding error occurred.
@@ -389,7 +389,7 @@ pub enum AttributesMismatch {
     /// Holocene EIP1559 params cannot have a 0 denominator unless elasticity is also 0
     InvalidEIP1559ParamsCombination,
     /// The EIP1559 base fee parameters of the attributes and the block don't match
-    EIP1559Parameters(BaseFeeParams, BaseFeeParams),
+    EIP1559Parameters(UnstableFeeParams, UnstableFeeParams),
     /// Transactions mismatch.
     Transactions(u64, u64),
     /// The gas limit of the block does not match the gas limit of the attributes.
@@ -425,7 +425,7 @@ mod tests {
     use arbitrary::{Arbitrary, Unstructured};
     use base_common_chains::Registry;
     use base_common_consensus::{HoloceneExtraData, JovianExtraData};
-    use base_common_rpc_types_engine::BasePayloadAttributes;
+    use base_common_rpc_types_engine::UnstablePayloadAttributes;
     use base_protocol::{BlockInfo, L2BlockInfo};
 
     use super::*;
@@ -433,7 +433,7 @@ mod tests {
 
     fn default_attributes() -> AttributesWithParent {
         AttributesWithParent {
-            attributes: BasePayloadAttributes::default(),
+            attributes: UnstablePayloadAttributes::default(),
             parent: L2BlockInfo::default(),
             derived_from: Some(BlockInfo::default()),
             is_last_in_span: true,
@@ -614,7 +614,7 @@ mod tests {
     fn test_attributes_mismatch_check_transactions_len() {
         let cfg = default_rollup_config();
         let (mut attributes, block) = test_transactions_match_helper();
-        attributes.attributes = BasePayloadAttributes {
+        attributes.attributes = UnstablePayloadAttributes {
             transactions: attributes.attributes.transactions.map(|mut txs| {
                 txs.pop();
                 txs
@@ -664,7 +664,7 @@ mod tests {
         let cfg = default_rollup_config();
         let (mut attributes, block) = test_transactions_match_helper();
         attributes.attributes =
-            BasePayloadAttributes { transactions: None, ..attributes.attributes };
+            UnstablePayloadAttributes { transactions: None, ..attributes.attributes };
 
         let block_txs_len = block.transactions.len();
 
@@ -715,7 +715,7 @@ mod tests {
         let (mut attributes, mut block) = test_transactions_match_helper();
 
         attributes.attributes =
-            BasePayloadAttributes { transactions: Some(vec![]), ..attributes.attributes };
+            UnstablePayloadAttributes { transactions: Some(vec![]), ..attributes.attributes };
 
         block.transactions = BlockTransactions::Full(vec![]);
 
@@ -725,7 +725,7 @@ mod tests {
         // Edge case: if the block transactions and the payload attributes are empty, we can also
         // use the hash format (this is the default value of `BlockTransactions`).
         attributes.attributes =
-            BasePayloadAttributes { transactions: None, ..attributes.attributes };
+            UnstablePayloadAttributes { transactions: None, ..attributes.attributes };
         block.transactions = BlockTransactions::Hashes(vec![]);
 
         let check = AttributesMatch::check(cfg, &attributes, &block);
@@ -740,7 +740,7 @@ mod tests {
         let (mut attributes, mut block) = test_transactions_match_helper();
 
         attributes.attributes =
-            BasePayloadAttributes { transactions: Some(vec![]), ..attributes.attributes };
+            UnstablePayloadAttributes { transactions: Some(vec![]), ..attributes.attributes };
 
         block.transactions = BlockTransactions::Hashes(vec![]);
 
@@ -755,7 +755,7 @@ mod tests {
         let (mut attributes, mut block) = test_transactions_match_helper();
 
         attributes.attributes =
-            BasePayloadAttributes { transactions: Some(vec![]), ..attributes.attributes };
+            UnstablePayloadAttributes { transactions: Some(vec![]), ..attributes.attributes };
 
         block.transactions = BlockTransactions::Uncle;
 
@@ -833,8 +833,8 @@ mod tests {
         assert_eq!(
             check,
             AttributesMatch::Mismatch(EIP1559Parameters(
-                BaseFeeParams { max_change_denominator: 250, elasticity_multiplier: 6 },
-                BaseFeeParams { max_change_denominator: 0, elasticity_multiplier: 0 }
+                UnstableFeeParams { max_change_denominator: 250, elasticity_multiplier: 6 },
+                UnstableFeeParams { max_change_denominator: 0, elasticity_multiplier: 0 }
             ))
         );
         assert!(check.is_mismatch());
@@ -847,7 +847,7 @@ mod tests {
         attributes.attributes.eip_1559_params = Some(Default::default());
         block.header.extra_data = HoloceneExtraData::encode(
             Default::default(),
-            BaseFeeParams { max_change_denominator: 250, elasticity_multiplier: 6 },
+            UnstableFeeParams { max_change_denominator: 250, elasticity_multiplier: 6 },
         )
         .unwrap();
 
@@ -862,7 +862,7 @@ mod tests {
 
         let eip1559_extra_params = HoloceneExtraData::encode(
             Default::default(),
-            BaseFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 },
+            UnstableFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 },
         )
         .unwrap();
         let eip1559_params: FixedBytes<8> =
@@ -882,13 +882,13 @@ mod tests {
 
         let eip1559_extra_params = HoloceneExtraData::encode(
             Default::default(),
-            BaseFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 },
+            UnstableFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 },
         )
         .unwrap();
 
         let eip1559_params: FixedBytes<8> = HoloceneExtraData::encode(
             Default::default(),
-            BaseFeeParams { max_change_denominator: 99, elasticity_multiplier: 2 },
+            UnstableFeeParams { max_change_denominator: 99, elasticity_multiplier: 2 },
         )
         .unwrap()
         .split_off(1)
@@ -903,8 +903,8 @@ mod tests {
         assert_eq!(
             check,
             AttributesMatch::Mismatch(AttributesMismatch::EIP1559Parameters(
-                BaseFeeParams { max_change_denominator: 99, elasticity_multiplier: 2 },
-                BaseFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 }
+                UnstableFeeParams { max_change_denominator: 99, elasticity_multiplier: 2 },
+                UnstableFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 }
             ))
         );
         assert!(check.is_mismatch());
@@ -917,7 +917,7 @@ mod tests {
 
         let eip1559_extra_params = HoloceneExtraData::encode(
             Default::default(),
-            BaseFeeParams { max_change_denominator: 5, elasticity_multiplier: 0 },
+            UnstableFeeParams { max_change_denominator: 5, elasticity_multiplier: 0 },
         )
         .unwrap();
         let eip1559_params: FixedBytes<8> =
@@ -941,7 +941,7 @@ mod tests {
 
         let eip1559_extra_params = HoloceneExtraData::encode(
             Default::default(),
-            BaseFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 },
+            UnstableFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 },
         )
         .unwrap();
         let eip1559_params: FixedBytes<8> =
@@ -967,7 +967,7 @@ mod tests {
 
         let eip1559_extra_params = HoloceneExtraData::encode(
             Default::default(),
-            BaseFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 },
+            UnstableFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 },
         )
         .unwrap();
         let eip1559_params: FixedBytes<8> =
@@ -1005,11 +1005,11 @@ mod tests {
         assert_eq!(
             check,
             AttributesMatch::Mismatch(EIP1559Parameters(
-                BaseFeeParams {
+                UnstableFeeParams {
                     max_change_denominator: u64::MAX as u128,
                     elasticity_multiplier: u64::MAX as u128
                 },
-                BaseFeeParams { max_change_denominator: 0, elasticity_multiplier: 0 }
+                UnstableFeeParams { max_change_denominator: 0, elasticity_multiplier: 0 }
             ))
         );
         assert!(check.is_mismatch());
@@ -1032,7 +1032,7 @@ mod tests {
 
         let eip1559_params: FixedBytes<8> = HoloceneExtraData::encode(
             Default::default(),
-            BaseFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 },
+            UnstableFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 },
         )
         .unwrap()
         .split_off(1)
@@ -1051,7 +1051,7 @@ mod tests {
         attributes.attributes.min_base_fee = Some(123);
         block.header.extra_data = JovianExtraData::encode(
             Default::default(),
-            BaseFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 },
+            UnstableFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 },
             123,
         )
         .unwrap();
@@ -1068,13 +1068,13 @@ mod tests {
         attributes.attributes.min_base_fee = Some(123);
         block.header.extra_data = JovianExtraData::encode(
             Default::default(),
-            BaseFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 },
+            UnstableFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 },
             456,
         )
         .unwrap();
 
         let check = AttributesMatch::check(&cfg, &attributes, &block);
-        assert_eq!(check, AttributesMatch::Mismatch(AttributesMismatch::MinBaseFee(123, 456)));
+        assert_eq!(check, AttributesMatch::Mismatch(AttributesMismatch::MinUnstableFee(123, 456)));
         assert!(check.is_mismatch());
     }
 
@@ -1085,7 +1085,7 @@ mod tests {
         attributes.attributes.min_base_fee = None;
         block.header.extra_data = JovianExtraData::encode(
             Default::default(),
-            BaseFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 },
+            UnstableFeeParams { max_change_denominator: 100, elasticity_multiplier: 2 },
             456,
         )
         .unwrap();
@@ -1093,7 +1093,7 @@ mod tests {
         let check = AttributesMatch::check(&cfg, &attributes, &block);
         assert_eq!(
             check,
-            AttributesMatch::Mismatch(AttributesMismatch::MissingAttributesMinBaseFee)
+            AttributesMatch::Mismatch(AttributesMismatch::MissingAttributesMinUnstableFee)
         );
         assert!(check.is_mismatch());
     }

@@ -1,4 +1,4 @@
-//! Base payload builder implementation.
+//! Unstable payload builder implementation.
 use std::{marker::PhantomData, sync::Arc};
 
 use alloy_consensus::{BlockHeader, Transaction, Typed2718};
@@ -7,9 +7,9 @@ use alloy_primitives::{B256, U256};
 use alloy_rpc_types_debug::ExecutionWitness;
 use alloy_rpc_types_engine::PayloadId;
 use base_common_chains::Upgrades;
-use base_common_consensus::{BaseTransaction, Predeploys};
+use base_common_consensus::{UnstableTransaction, Predeploys};
 use base_common_evm::L1BlockInfo;
-use base_execution_txpool::{BasePooledTx, estimated_da_size::DataAvailabilitySized};
+use base_execution_txpool::{UnstablePooledTx, estimated_da_size::DataAvailabilitySized};
 use reth_basic_payload_builder::{
     BuildArguments, BuildOutcome, BuildOutcomeKind, MissingPayloadBehaviour, PayloadBuilder,
     PayloadConfig, is_better_payload,
@@ -39,18 +39,18 @@ use revm::context::{Block, BlockEnv};
 use tracing::{debug, trace, warn};
 
 use crate::{
-    Attributes, BasePayloadBuilderAttributes, PayloadPrimitives, config::BaseBuilderConfig,
-    error::BasePayloadBuilderError, payload::BaseBuiltPayload,
+    Attributes, UnstablePayloadBuilderAttributes, PayloadPrimitives, config::UnstableBuilderConfig,
+    error::UnstablePayloadBuilderError, payload::UnstableBuiltPayload,
 };
 
-/// Base payload builder
+/// Unstable payload builder
 #[derive(Debug)]
-pub struct BasePayloadBuilder<
+pub struct UnstablePayloadBuilder<
     Pool,
     Client,
     Evm,
     Txs = (),
-    Attrs = BasePayloadBuilderAttributes<TxTy<<Evm as ConfigureEvm>::Primitives>>,
+    Attrs = UnstablePayloadBuilderAttributes<TxTy<<Evm as ConfigureEvm>::Primitives>>,
 > {
     /// The rollup's compute pending block configuration option.
     pub compute_pending_block: bool,
@@ -61,7 +61,7 @@ pub struct BasePayloadBuilder<
     /// Node client.
     pub client: Client,
     /// Settings for the builder, e.g. DA settings.
-    pub config: BaseBuilderConfig,
+    pub config: UnstableBuilderConfig,
     /// The type responsible for yielding the best transactions for the payload if mempool
     /// transactions are allowed.
     pub best_transactions: Txs,
@@ -69,7 +69,7 @@ pub struct BasePayloadBuilder<
     _pd: PhantomData<Attrs>,
 }
 
-impl<Pool, Client, Evm, Txs, Attrs> Clone for BasePayloadBuilder<Pool, Client, Evm, Txs, Attrs>
+impl<Pool, Client, Evm, Txs, Attrs> Clone for UnstablePayloadBuilder<Pool, Client, Evm, Txs, Attrs>
 where
     Pool: Clone,
     Client: Clone,
@@ -89,20 +89,20 @@ where
     }
 }
 
-impl<Pool, Client, Evm, Attrs> BasePayloadBuilder<Pool, Client, Evm, (), Attrs> {
-    /// `BasePayloadBuilder` constructor.
+impl<Pool, Client, Evm, Attrs> UnstablePayloadBuilder<Pool, Client, Evm, (), Attrs> {
+    /// `UnstablePayloadBuilder` constructor.
     ///
     /// Configures the builder with the default settings.
     pub fn new(pool: Pool, client: Client, evm_config: Evm) -> Self {
         Self::with_builder_config(pool, client, evm_config, Default::default())
     }
 
-    /// Configures the builder with the given [`BaseBuilderConfig`].
+    /// Configures the builder with the given [`UnstableBuilderConfig`].
     pub const fn with_builder_config(
         pool: Pool,
         client: Client,
         evm_config: Evm,
-        config: BaseBuilderConfig,
+        config: UnstableBuilderConfig,
     ) -> Self {
         Self {
             pool,
@@ -116,7 +116,7 @@ impl<Pool, Client, Evm, Attrs> BasePayloadBuilder<Pool, Client, Evm, (), Attrs> 
     }
 }
 
-impl<Pool, Client, Evm, Txs, Attrs> BasePayloadBuilder<Pool, Client, Evm, Txs, Attrs> {
+impl<Pool, Client, Evm, Txs, Attrs> UnstablePayloadBuilder<Pool, Client, Evm, Txs, Attrs> {
     /// Sets the rollup's compute pending block configuration option.
     pub const fn set_compute_pending_block(mut self, compute_pending_block: bool) -> Self {
         self.compute_pending_block = compute_pending_block;
@@ -128,9 +128,9 @@ impl<Pool, Client, Evm, Txs, Attrs> BasePayloadBuilder<Pool, Client, Evm, Txs, A
     pub fn with_transactions<T>(
         self,
         best_transactions: T,
-    ) -> BasePayloadBuilder<Pool, Client, Evm, T, Attrs> {
+    ) -> UnstablePayloadBuilder<Pool, Client, Evm, T, Attrs> {
         let Self { pool, client, compute_pending_block, evm_config, config, .. } = self;
-        BasePayloadBuilder {
+        UnstablePayloadBuilder {
             pool,
             client,
             compute_pending_block,
@@ -152,9 +152,9 @@ impl<Pool, Client, Evm, Txs, Attrs> BasePayloadBuilder<Pool, Client, Evm, Txs, A
     }
 }
 
-impl<Pool, Client, Evm, N, T, Attrs> BasePayloadBuilder<Pool, Client, Evm, T, Attrs>
+impl<Pool, Client, Evm, N, T, Attrs> UnstablePayloadBuilder<Pool, Client, Evm, T, Attrs>
 where
-    Pool: TransactionPool<Transaction: BasePooledTx<Consensus = N::SignedTx>>,
+    Pool: TransactionPool<Transaction: UnstablePooledTx<Consensus = N::SignedTx>>,
     Client: StateProviderFactory + ChainSpecProvider<ChainSpec: Upgrades>,
     N: PayloadPrimitives,
     Evm: ConfigureEvm<
@@ -163,27 +163,27 @@ where
         >,
     Attrs: Attributes<Transaction = TxTy<Evm::Primitives>>,
 {
-    /// Constructs a Base payload from the transactions sent via the
+    /// Constructs a Unstable payload from the transactions sent via the
     /// Payload attributes by the sequencer. If the `no_tx_pool` argument is passed in
     /// the payload attributes, the transaction pool will be ignored and the only transactions
     /// included in the payload will be those sent through the attributes.
     ///
-    /// Given build arguments including a Base client, transaction pool,
+    /// Given build arguments including a Unstable client, transaction pool,
     /// and configuration, this function creates a transaction payload. Returns
     /// a result indicating success with the payload or an error in case of failure.
     fn build_payload<'a, Txs>(
         &self,
-        args: BuildArguments<Attrs, BaseBuiltPayload<N>>,
+        args: BuildArguments<Attrs, UnstableBuiltPayload<N>>,
         best: impl FnOnce(BestTransactionsAttributes) -> Txs + Send + Sync + 'a,
-    ) -> Result<BuildOutcome<BaseBuiltPayload<N>>, PayloadBuilderError>
+    ) -> Result<BuildOutcome<UnstableBuiltPayload<N>>, PayloadBuilderError>
     where
         Txs: PayloadTransactions<
-            Transaction: PoolTransaction<Consensus = N::SignedTx> + BasePooledTx,
+            Transaction: PoolTransaction<Consensus = N::SignedTx> + UnstablePooledTx,
         >,
     {
         let BuildArguments { mut cached_reads, config, cancel, best_payload } = args;
 
-        let ctx = BasePayloadBuilderCtx {
+        let ctx = UnstablePayloadBuilderCtx {
             evm_config: self.evm_config.clone(),
             builder_config: self.config.clone(),
             chain_spec: self.client.chain_spec(),
@@ -219,7 +219,7 @@ where
             Attrs::try_new(parent.hash(), attributes, 3).map_err(PayloadBuilderError::other)?;
 
         let config = PayloadConfig { parent_header: Arc::new(parent), attributes };
-        let ctx = BasePayloadBuilderCtx {
+        let ctx = UnstablePayloadBuilderCtx {
             evm_config: self.evm_config.clone(),
             builder_config: self.config.clone(),
             chain_spec: self.client.chain_spec(),
@@ -235,22 +235,22 @@ where
     }
 }
 
-/// Implementation of the [`PayloadBuilder`] trait for [`BasePayloadBuilder`].
+/// Implementation of the [`PayloadBuilder`] trait for [`UnstablePayloadBuilder`].
 impl<Pool, Client, Evm, N, Txs, Attrs> PayloadBuilder
-    for BasePayloadBuilder<Pool, Client, Evm, Txs, Attrs>
+    for UnstablePayloadBuilder<Pool, Client, Evm, Txs, Attrs>
 where
     N: PayloadPrimitives,
     Client: StateProviderFactory + ChainSpecProvider<ChainSpec: Upgrades> + Clone,
-    Pool: TransactionPool<Transaction: BasePooledTx<Consensus = N::SignedTx>>,
+    Pool: TransactionPool<Transaction: UnstablePooledTx<Consensus = N::SignedTx>>,
     Evm: ConfigureEvm<
             Primitives = N,
             NextBlockEnvCtx: BuildNextEnv<Attrs, N::BlockHeader, Client::ChainSpec>,
         >,
-    Txs: BasePayloadTransactions<Pool::Transaction>,
+    Txs: UnstablePayloadTransactions<Pool::Transaction>,
     Attrs: Attributes<Transaction = N::SignedTx>,
 {
     type Attributes = Attrs;
-    type BuiltPayload = BaseBuiltPayload<N>;
+    type BuiltPayload = UnstableBuiltPayload<N>;
 
     fn try_build(
         &self,
@@ -289,7 +289,7 @@ where
 
 /// The type that builds the payload.
 ///
-/// Payload building for Base is composed of several steps.
+/// Payload building for Unstable is composed of several steps.
 /// The first steps are mandatory and defined by the protocol.
 ///
 /// 1. first all System calls are applied.
@@ -322,8 +322,8 @@ impl<Txs> Builder<'_, Txs> {
         self,
         db: impl Database<Error = ProviderError>,
         state_provider: impl StateProvider,
-        ctx: BasePayloadBuilderCtx<Evm, ChainSpec, Attrs>,
-    ) -> Result<BuildOutcomeKind<BaseBuiltPayload<N>>, PayloadBuilderError>
+        ctx: UnstablePayloadBuilderCtx<Evm, ChainSpec, Attrs>,
+    ) -> Result<BuildOutcomeKind<UnstableBuiltPayload<N>>, PayloadBuilderError>
     where
         Evm: ConfigureEvm<
                 Primitives = N,
@@ -332,7 +332,7 @@ impl<Txs> Builder<'_, Txs> {
         ChainSpec: EthChainSpec + Upgrades,
         N: PayloadPrimitives,
         Txs: PayloadTransactions<
-            Transaction: PoolTransaction<Consensus = N::SignedTx> + BasePooledTx,
+            Transaction: PoolTransaction<Consensus = N::SignedTx> + UnstablePooledTx,
         >,
         Attrs: Attributes<Transaction = N::SignedTx>,
     {
@@ -392,7 +392,7 @@ impl<Txs> Builder<'_, Txs> {
         let no_tx_pool = ctx.attributes().no_tx_pool();
 
         let payload =
-            BaseBuiltPayload::new(ctx.payload_id(), sealed_block, info.total_fees, Some(executed));
+            UnstableBuiltPayload::new(ctx.payload_id(), sealed_block, info.total_fees, Some(executed));
 
         if no_tx_pool {
             // if `no_tx_pool` is set only transactions from the payload attributes will be included
@@ -408,7 +408,7 @@ impl<Txs> Builder<'_, Txs> {
     pub fn witness<Evm, ChainSpec, N, Attrs>(
         self,
         state_provider: impl StateProvider,
-        ctx: &BasePayloadBuilderCtx<Evm, ChainSpec, Attrs>,
+        ctx: &UnstablePayloadBuilderCtx<Evm, ChainSpec, Attrs>,
     ) -> Result<ExecutionWitness, PayloadBuilderError>
     where
         Evm: ConfigureEvm<
@@ -449,7 +449,7 @@ impl<Txs> Builder<'_, Txs> {
 }
 
 /// A type that returns the [`PayloadTransactions`] that should be included in the pool.
-pub trait BasePayloadTransactions<Transaction>: Clone + Send + Sync + Unpin + 'static {
+pub trait UnstablePayloadTransactions<Transaction>: Clone + Send + Sync + Unpin + 'static {
     /// Returns an iterator that yields the transaction in the order they should get included in the
     /// new payload.
     fn best_transactions<Pool: TransactionPool<Transaction = Transaction>>(
@@ -459,7 +459,7 @@ pub trait BasePayloadTransactions<Transaction>: Clone + Send + Sync + Unpin + 's
     ) -> impl PayloadTransactions<Transaction = Transaction>;
 }
 
-impl<T: PoolTransaction> BasePayloadTransactions<T> for () {
+impl<T: PoolTransaction> UnstablePayloadTransactions<T> for () {
     fn best_transactions<Pool: TransactionPool<Transaction = T>>(
         &self,
         pool: Pool,
@@ -539,15 +539,15 @@ impl ExecutionInfo {
 
 /// Container type that holds all necessities to build a new payload.
 #[derive(derive_more::Debug)]
-pub struct BasePayloadBuilderCtx<
+pub struct UnstablePayloadBuilderCtx<
     Evm: ConfigureEvm,
     ChainSpec,
-    Attrs = BasePayloadBuilderAttributes<TxTy<<Evm as ConfigureEvm>::Primitives>>,
+    Attrs = UnstablePayloadBuilderAttributes<TxTy<<Evm as ConfigureEvm>::Primitives>>,
 > {
     /// The type that knows how to perform system calls and configure the evm.
     pub evm_config: Evm,
     /// Additional config for the builder/sequencer, e.g. DA and gas limit
-    pub builder_config: BaseBuilderConfig,
+    pub builder_config: UnstableBuilderConfig,
     /// The chainspec
     pub chain_spec: Arc<ChainSpec>,
     /// How to build the payload.
@@ -555,10 +555,10 @@ pub struct BasePayloadBuilderCtx<
     /// Marker to check whether the job has been cancelled.
     pub cancel: CancelOnDrop,
     /// The currently best payload.
-    pub best_payload: Option<BaseBuiltPayload<Evm::Primitives>>,
+    pub best_payload: Option<UnstableBuiltPayload<Evm::Primitives>>,
 }
 
-impl<Evm, ChainSpec, Attrs> BasePayloadBuilderCtx<Evm, ChainSpec, Attrs>
+impl<Evm, ChainSpec, Attrs> UnstablePayloadBuilderCtx<Evm, ChainSpec, Attrs>
 where
     Evm: ConfigureEvm<
             Primitives: PayloadPrimitives,
@@ -645,7 +645,7 @@ where
             // A sequencer's block should never contain blob transactions.
             if sequencer_tx.value().is_eip4844() {
                 return Err(PayloadBuilderError::other(
-                    BasePayloadBuilderError::BlobTransactionRejected,
+                    UnstablePayloadBuilderError::BlobTransactionRejected,
                 ));
             }
 
@@ -654,7 +654,7 @@ where
             // Deposit transactions do not have signatures, so if the tx is a deposit, this
             // will just pull in its `from` address.
             let sequencer_tx = sequencer_tx.value().try_clone_into_recovered().map_err(|_| {
-                PayloadBuilderError::other(BasePayloadBuilderError::TransactionEcRecoverFailed)
+                PayloadBuilderError::other(UnstablePayloadBuilderError::TransactionEcRecoverFailed)
             })?;
 
             let gas_used = match builder.execute_transaction(sequencer_tx.clone()) {
@@ -691,7 +691,7 @@ where
         info: &mut ExecutionInfo,
         builder: &mut Builder,
         mut best_txs: impl PayloadTransactions<
-            Transaction: PoolTransaction<Consensus = TxTy<Evm::Primitives>> + BasePooledTx,
+            Transaction: PoolTransaction<Consensus = TxTy<Evm::Primitives>> + UnstablePooledTx,
         >,
     ) -> Result<Option<()>, PayloadBuilderError>
     where

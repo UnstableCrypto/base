@@ -1,4 +1,4 @@
-//! Base Node types config.
+//! Unstable Node types config.
 
 use std::{
     marker::PhantomData,
@@ -10,28 +10,28 @@ use alloy_consensus::BlockHeader;
 use alloy_primitives::{Address, B64, B256, Bytes, bytes::BytesMut};
 use alloy_rlp::Encodable;
 use base_common_chains::Upgrades;
-use base_common_consensus::BasePrimitives;
-use base_common_rpc_types_engine::{BasePayloadAttributes, ExecutionData};
-use base_execution_chainspec::BaseChainSpec;
-use base_execution_consensus::BaseBeaconConsensus;
-use base_execution_evm::{BaseEvmConfig, BaseRethReceiptBuilder};
+use base_common_consensus::UnstablePrimitives;
+use base_common_rpc_types_engine::{UnstablePayloadAttributes, ExecutionData};
+use base_execution_chainspec::UnstableChainSpec;
+use base_execution_consensus::UnstableBeaconConsensus;
+use base_execution_evm::{UnstableEvmConfig, UnstableRethReceiptBuilder};
 use base_execution_payload_builder::{
-    Attributes, BaseBuiltPayload, PayloadPrimitives,
-    builder::BasePayloadTransactions,
-    config::{BaseBuilderConfig, BaseDAConfig, GasLimitConfig},
+    Attributes, UnstableBuiltPayload, PayloadPrimitives,
+    builder::UnstablePayloadTransactions,
+    config::{UnstableBuilderConfig, UnstableDAConfig, GasLimitConfig},
 };
 use base_execution_rpc::{
     MinerApiExtServer,
-    config::{BaseEthConfigApiServer, BaseEthConfigHandler},
-    eth::BaseEthApiBuilder,
-    miner::BaseMinerExtApi,
-    witness::BaseDebugWitnessApi,
+    config::{UnstableEthConfigApiServer, UnstableEthConfigHandler},
+    eth::UnstableEthApiBuilder,
+    miner::UnstableMinerExtApi,
+    witness::UnstableDebugWitnessApi,
 };
 use base_execution_txpool::{
-    BaseOrdering, BasePooledTransaction, BasePooledTx, BaseTransactionPool,
-    BaseTransactionValidator, TimestampedTransaction,
+    UnstableOrdering, UnstablePooledTransaction, UnstablePooledTx, UnstableTransactionPool,
+    UnstableTransactionValidator, TimestampedTransaction,
 };
-use reth_chainspec::{BaseFeeParams, ChainSpecProvider, EthChainSpec, Hardforks};
+use reth_chainspec::{UnstableFeeParams, ChainSpecProvider, EthChainSpec, Hardforks};
 use reth_discv5::discv5::enr::{IP_ENR_KEY, IP6_ENR_KEY};
 use reth_evm::ConfigureEvm;
 use reth_network::{
@@ -71,66 +71,66 @@ use reth_trie_common::KeccakKeyHasher;
 use serde::de::DeserializeOwned;
 
 use crate::{
-    BaseEngineApiBuilder, BaseEngineTypes, BaseStorage,
+    UnstableEngineApiBuilder, UnstableEngineTypes, UnstableStorage,
     args::{RollupArgs, TxpoolOrdering},
-    engine::BaseEngineValidator,
+    engine::UnstableEngineValidator,
 };
 
-/// Discovery v5 protocol version for Base.
+/// Discovery v5 protocol version for Unstable.
 pub const BASE_V0_PROTOCOL_VERSION: [u8; 6] = *b"basev0";
 
-/// Marker trait for Base node types with standard engine, chain spec, and primitives.
-pub trait BaseNodeTypes:
-    NodeTypes<Payload = BaseEngineTypes, ChainSpec = BaseChainSpec, Primitives = BasePrimitives>
+/// Marker trait for Unstable node types with standard engine, chain spec, and primitives.
+pub trait UnstableNodeTypes:
+    NodeTypes<Payload = UnstableEngineTypes, ChainSpec = UnstableChainSpec, Primitives = UnstablePrimitives>
 {
 }
-/// Blanket impl for all node types that conform to the Base spec.
-impl<N> BaseNodeTypes for N where
-    N: NodeTypes<Payload = BaseEngineTypes, ChainSpec = BaseChainSpec, Primitives = BasePrimitives>
+/// Blanket impl for all node types that conform to the Unstable spec.
+impl<N> UnstableNodeTypes for N where
+    N: NodeTypes<Payload = UnstableEngineTypes, ChainSpec = UnstableChainSpec, Primitives = UnstablePrimitives>
 {
 }
 
-/// Helper trait for Base node types with full configuration including storage and execution
+/// Helper trait for Unstable node types with full configuration including storage and execution
 /// data.
-pub trait BaseFullNodeTypes:
+pub trait UnstableFullNodeTypes:
     NodeTypes<
-        ChainSpec = BaseChainSpec,
+        ChainSpec = UnstableChainSpec,
         Primitives: PayloadPrimitives,
-        Storage = BaseStorage,
+        Storage = UnstableStorage,
         Payload: EngineTypes<ExecutionData = ExecutionData>,
     >
 {
 }
 
-impl<N> BaseFullNodeTypes for N where
+impl<N> UnstableFullNodeTypes for N where
     N: NodeTypes<
-            ChainSpec = BaseChainSpec,
+            ChainSpec = UnstableChainSpec,
             Primitives: PayloadPrimitives,
-            Storage = BaseStorage,
+            Storage = UnstableStorage,
             Payload: EngineTypes<ExecutionData = ExecutionData>,
         >
 {
 }
 
-/// Local payload attributes builder for Base.
+/// Local payload attributes builder for Unstable.
 ///
 /// This mirrors the upstream `LocalPayloadAttributesBuilder` for
-/// `op_alloy_rpc_types_engine::BasePayloadAttributes`, but targets
-/// `base_common_rpc_types_engine::BasePayloadAttributes`.
+/// `op_alloy_rpc_types_engine::UnstablePayloadAttributes`, but targets
+/// `base_common_rpc_types_engine::UnstablePayloadAttributes`.
 #[derive(Debug)]
-pub struct BaseLocalPayloadAttributesBuilder {
-    chain_spec: Arc<BaseChainSpec>,
+pub struct UnstableLocalPayloadAttributesBuilder {
+    chain_spec: Arc<UnstableChainSpec>,
 }
 
-impl BaseLocalPayloadAttributesBuilder {
+impl UnstableLocalPayloadAttributesBuilder {
     /// Creates a new builder.
-    pub const fn new(chain_spec: Arc<BaseChainSpec>) -> Self {
+    pub const fn new(chain_spec: Arc<UnstableChainSpec>) -> Self {
         Self { chain_spec }
     }
 }
 
-impl PayloadAttributesBuilder<BasePayloadAttributes> for BaseLocalPayloadAttributesBuilder {
-    fn build(&self, parent: &SealedHeader<alloy_consensus::Header>) -> BasePayloadAttributes {
+impl PayloadAttributesBuilder<UnstablePayloadAttributes> for UnstableLocalPayloadAttributesBuilder {
+    fn build(&self, parent: &SealedHeader<alloy_consensus::Header>) -> UnstablePayloadAttributes {
         /// Dummy system transaction for dev mode.
         const TX_SET_L1_BLOCK_BASE_MAINNET_BLOCK_1: [u8; 349] = alloy_primitives::hex!(
             "7ef90159a024fa2288af14732611c4b9a8f99b2c929eaf2af8fb45981a752a01417994df3b94deaddeaddeaddeaddeaddeaddeaddeaddead00019442000000000000000000000000000000000000158080830f424080b90104015d8eb900000000000000000000000000000000000000000000000000000000010ac02800000000000000000000000000000000000000000000000000000000648a5ce300000000000000000000000000000000000000000000000000000003ded24b5e5c13d307623a926cd31415036c8b7fa14572f9dac64528e857a470511fc3077100000000000000000000000000000000000000000000000000000000000000010000000000000000000000005050f69a9786f081509234f1a7f4684b5e5b76c900000000000000000000000000000000000000000000000000000000000000bc00000000000000000000000000000000000000000000000000000000000a6fe0"
@@ -141,7 +141,7 @@ impl PayloadAttributesBuilder<BasePayloadAttributes> for BaseLocalPayloadAttribu
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
         );
 
-        let default_eip_1559_params = BaseFeeParams::optimism();
+        let default_eip_1559_params = UnstableFeeParams::optimism();
         let denominator = std::env::var("BASE_DEV_EIP1559_DENOMINATOR")
             .ok()
             .and_then(|v| v.parse::<u32>().ok())
@@ -158,7 +158,7 @@ impl PayloadAttributesBuilder<BasePayloadAttributes> for BaseLocalPayloadAttribu
         eip1559_bytes[4..8].copy_from_slice(&elasticity.to_be_bytes());
         let eip_1559_params = Some(B64::from(eip1559_bytes));
 
-        BasePayloadAttributes {
+        UnstablePayloadAttributes {
             payload_attributes: alloy_rpc_types_engine::PayloadAttributes {
                 timestamp,
                 prev_randao: B256::random(),
@@ -181,11 +181,11 @@ impl PayloadAttributesBuilder<BasePayloadAttributes> for BaseLocalPayloadAttribu
     }
 }
 
-/// Type configuration for a regular Base node.
+/// Type configuration for a regular Unstable node.
 #[derive(Debug, Default, Clone)]
 #[non_exhaustive]
-pub struct BaseNode {
-    /// Additional Base args
+pub struct UnstableNode {
+    /// Additional Unstable args
     pub args: RollupArgs,
     /// Data availability configuration for the payload builder.
     ///
@@ -193,35 +193,35 @@ pub struct BaseNode {
     /// the `miner_` api).
     ///
     /// By default no throttling is applied.
-    pub da_config: BaseDAConfig,
+    pub da_config: UnstableDAConfig,
     /// Gas limit configuration for the payload builder.
     /// Used to control the gas limit of the blocks produced by the payload builder (configured by the
     /// batcher via the `miner_` api)
     pub gas_limit_config: GasLimitConfig,
 }
 
-/// A [`ComponentsBuilder`] with its generic arguments set to a stack of Base-specific builders.
-pub type BaseNodeComponentBuilder<Node, Payload = BasePayloadBuilder> = ComponentsBuilder<
+/// A [`ComponentsBuilder`] with its generic arguments set to a stack of Unstable-specific builders.
+pub type UnstableNodeComponentBuilder<Node, Payload = UnstablePayloadBuilder> = ComponentsBuilder<
     Node,
-    BasePoolBuilder,
+    UnstablePoolBuilder,
     BasicPayloadServiceBuilder<Payload>,
-    BaseNetworkBuilder,
-    BaseExecutorBuilder,
-    BaseConsensusBuilder,
+    UnstableNetworkBuilder,
+    UnstableExecutorBuilder,
+    UnstableConsensusBuilder,
 >;
 
-impl BaseNode {
-    /// Creates a new instance of the Base node type.
+impl UnstableNode {
+    /// Creates a new instance of the Unstable node type.
     pub fn new(args: RollupArgs) -> Self {
         Self {
             args,
-            da_config: BaseDAConfig::default(),
+            da_config: UnstableDAConfig::default(),
             gas_limit_config: GasLimitConfig::default(),
         }
     }
 
     /// Configure the data availability configuration for the payload builder.
-    pub fn with_da_config(mut self, da_config: BaseDAConfig) -> Self {
+    pub fn with_da_config(mut self, da_config: UnstableDAConfig) -> Self {
         self.da_config = da_config;
         self
     }
@@ -233,9 +233,9 @@ impl BaseNode {
     }
 
     /// Returns the components for the given [`RollupArgs`].
-    pub fn components<Node>(&self) -> BaseNodeComponentBuilder<Node>
+    pub fn components<Node>(&self) -> UnstableNodeComponentBuilder<Node>
     where
-        Node: FullNodeTypes<Types: BaseNodeTypes>,
+        Node: FullNodeTypes<Types: UnstableNodeTypes>,
     {
         let RollupArgs {
             disable_txpool_gossip,
@@ -247,29 +247,29 @@ impl BaseNode {
             ..
         } = self.args;
         let ordering = match txpool_ordering {
-            TxpoolOrdering::CoinbaseTip => BaseOrdering::coinbase_tip(),
-            TxpoolOrdering::Timestamp => BaseOrdering::timestamp(),
+            TxpoolOrdering::TheAlxLabsTip => UnstableOrdering::coinbase_tip(),
+            TxpoolOrdering::Timestamp => UnstableOrdering::timestamp(),
         };
         ComponentsBuilder::default()
             .node_types::<Node>()
-            .executor(BaseExecutorBuilder::default())
+            .executor(UnstableExecutorBuilder::default())
             .pool(
-                BasePoolBuilder::default()
+                UnstablePoolBuilder::default()
                     .with_ordering(ordering)
                     .with_max_inflight_delegated_slots(max_inflight_delegated_slots),
             )
             .payload(BasicPayloadServiceBuilder::new(
-                BasePayloadBuilder::new(compute_pending_block)
+                UnstablePayloadBuilder::new(compute_pending_block)
                     .with_da_config(self.da_config.clone())
                     .with_gas_limit_config(self.gas_limit_config.clone()),
             ))
-            .network(BaseNetworkBuilder::new(disable_txpool_gossip, !discovery_v4, base_protocol))
-            .consensus(BaseConsensusBuilder::default())
+            .network(UnstableNetworkBuilder::new(disable_txpool_gossip, !discovery_v4, base_protocol))
+            .consensus(UnstableConsensusBuilder::default())
     }
 
-    /// Returns [`BaseAddOnsBuilder`] with configured arguments.
-    pub fn add_ons_builder<NetworkT: RpcTypes>(&self) -> BaseAddOnsBuilder<NetworkT> {
-        BaseAddOnsBuilder::default()
+    /// Returns [`UnstableAddOnsBuilder`] with configured arguments.
+    pub fn add_ons_builder<NetworkT: RpcTypes>(&self) -> UnstableAddOnsBuilder<NetworkT> {
+        UnstableAddOnsBuilder::default()
             .with_sequencer(self.args.sequencer.clone())
             .with_sequencer_headers(self.args.sequencer_headers.clone())
             .with_da_config(self.da_config.clone())
@@ -277,7 +277,7 @@ impl BaseNode {
             .with_min_suggested_priority_fee(self.args.min_suggested_priority_fee)
     }
 
-    /// Instantiates the [`ProviderFactoryBuilder`] for a Base node.
+    /// Instantiates the [`ProviderFactoryBuilder`] for a Unstable node.
     ///
     /// # Open a `ProviderFactory` in read-only mode from a datadir
     ///
@@ -285,13 +285,13 @@ impl BaseNode {
     /// [`ReadOnlyConfig`](reth_provider::providers::ReadOnlyConfig).
     ///
     /// ```no_run
-    /// use base_execution_chainspec::BaseChainSpec;
-    /// use base_node_core::BaseNode;
+    /// use base_execution_chainspec::UnstableChainSpec;
+    /// use base_node_core::UnstableNode;
     /// use std::sync::Arc;
     ///
     /// fn demo(runtime: reth_tasks::Runtime) {
-    ///     let factory = BaseNode::provider_factory_builder()
-    ///         .open_read_only(Arc::new(BaseChainSpec::mainnet()), "datadir", runtime)
+    ///     let factory = UnstableNode::provider_factory_builder()
+    ///         .open_read_only(Arc::new(UnstableChainSpec::mainnet()), "datadir", runtime)
     ///         .unwrap();
     /// }
     /// ```
@@ -299,14 +299,14 @@ impl BaseNode {
     /// # Open a `ProviderFactory` with custom config
     ///
     /// ```no_run
-    /// use base_execution_chainspec::BaseChainSpecBuilder;
-    /// use base_node_core::BaseNode;
+    /// use base_execution_chainspec::UnstableChainSpecBuilder;
+    /// use base_node_core::UnstableNode;
     /// use reth_provider::providers::ReadOnlyConfig;
     ///
     /// fn demo(runtime: reth_tasks::Runtime) {
-    ///     let factory = BaseNode::provider_factory_builder()
+    ///     let factory = UnstableNode::provider_factory_builder()
     ///         .open_read_only(
-    ///             BaseChainSpecBuilder::base_mainnet().build().into(),
+    ///             UnstableChainSpecBuilder::base_mainnet().build().into(),
     ///             ReadOnlyConfig::from_datadir("datadir").no_watch(),
     ///             runtime,
     ///         )
@@ -318,25 +318,25 @@ impl BaseNode {
     }
 }
 
-impl<N> Node<N> for BaseNode
+impl<N> Node<N> for UnstableNode
 where
-    N: FullNodeTypes<Types: BaseFullNodeTypes + BaseNodeTypes>,
+    N: FullNodeTypes<Types: UnstableFullNodeTypes + UnstableNodeTypes>,
 {
     type ComponentsBuilder = ComponentsBuilder<
         N,
-        BasePoolBuilder,
-        BasicPayloadServiceBuilder<BasePayloadBuilder>,
-        BaseNetworkBuilder,
-        BaseExecutorBuilder,
-        BaseConsensusBuilder,
+        UnstablePoolBuilder,
+        BasicPayloadServiceBuilder<UnstablePayloadBuilder>,
+        UnstableNetworkBuilder,
+        UnstableExecutorBuilder,
+        UnstableConsensusBuilder,
     >;
 
-    type AddOns = BaseAddOns<
+    type AddOns = UnstableAddOns<
         NodeAdapter<N, <Self::ComponentsBuilder as NodeComponentsBuilder<N>>::Components>,
-        BaseEthApiBuilder,
-        BasePayloadValidatorBuilder,
-        BaseEngineApiBuilder<BasePayloadValidatorBuilder>,
-        BasicEngineValidatorBuilder<BasePayloadValidatorBuilder>,
+        UnstableEthApiBuilder,
+        UnstablePayloadValidatorBuilder,
+        UnstableEngineApiBuilder<UnstablePayloadValidatorBuilder>,
+        BasicEngineValidatorBuilder<UnstablePayloadValidatorBuilder>,
     >;
 
     fn components_builder(&self) -> Self::ComponentsBuilder {
@@ -348,11 +348,11 @@ where
     }
 }
 
-impl<N> DebugNode<N> for BaseNode
+impl<N> DebugNode<N> for UnstableNode
 where
     N: FullNodeComponents<Types = Self>,
 {
-    type RpcBlock = alloy_rpc_types_eth::Block<base_common_consensus::BaseTxEnvelope>;
+    type RpcBlock = alloy_rpc_types_eth::Block<base_common_consensus::UnstableTxEnvelope>;
 
     fn rpc_to_primitive_block(rpc_block: Self::RpcBlock) -> reth_node_api::BlockTy<Self> {
         rpc_block.into_consensus()
@@ -361,27 +361,27 @@ where
     fn local_payload_attributes_builder(
         chain_spec: &Self::ChainSpec,
     ) -> impl PayloadAttributesBuilder<<Self::Payload as PayloadTypes>::PayloadAttributes> {
-        BaseLocalPayloadAttributesBuilder::new(Arc::new(chain_spec.clone()))
+        UnstableLocalPayloadAttributesBuilder::new(Arc::new(chain_spec.clone()))
     }
 }
 
-impl NodeTypes for BaseNode {
-    type Primitives = BasePrimitives;
-    type ChainSpec = BaseChainSpec;
-    type Storage = BaseStorage;
-    type Payload = BaseEngineTypes;
+impl NodeTypes for UnstableNode {
+    type Primitives = UnstablePrimitives;
+    type ChainSpec = UnstableChainSpec;
+    type Storage = UnstableStorage;
+    type Payload = UnstableEngineTypes;
 }
 
-/// Add-ons w.r.t. Base.
+/// Add-ons w.r.t. Unstable.
 ///
-/// This type provides Base-specific addons to the node and exposes the RPC server and engine
+/// This type provides Unstable-specific addons to the node and exposes the RPC server and engine
 /// API.
 #[derive(Debug)]
-pub struct BaseAddOns<
+pub struct UnstableAddOns<
     N: FullNodeComponents,
     EthB: EthApiBuilder<N>,
     PVB,
-    EB = BaseEngineApiBuilder<PVB>,
+    EB = UnstableEngineApiBuilder<PVB>,
     EVB = BasicEngineValidatorBuilder<PVB>,
     RpcMiddleware = Identity,
 > {
@@ -389,18 +389,18 @@ pub struct BaseAddOns<
     /// and eth-api.
     pub rpc_add_ons: RpcAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>,
     /// Data availability configuration for the payload builder.
-    pub da_config: BaseDAConfig,
+    pub da_config: UnstableDAConfig,
     /// Gas limit configuration for the payload builder.
     pub gas_limit_config: GasLimitConfig,
     /// Sequencer client, configured to forward submitted transactions to sequencer of the given
-    /// Base network.
+    /// Unstable network.
     pub sequencer_url: Option<String>,
     /// Headers to use for the sequencer client requests.
     pub sequencer_headers: Vec<String>,
     min_suggested_priority_fee: u64,
 }
 
-impl<N, EthB, PVB, EB, EVB, RpcMiddleware> BaseAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
+impl<N, EthB, PVB, EB, EVB, RpcMiddleware> UnstableAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
 where
     N: FullNodeComponents,
     EthB: EthApiBuilder<N>,
@@ -409,7 +409,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub const fn new(
         rpc_add_ons: RpcAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>,
-        da_config: BaseDAConfig,
+        da_config: UnstableDAConfig,
         gas_limit_config: GasLimitConfig,
         sequencer_url: Option<String>,
         sequencer_headers: Vec<String>,
@@ -426,10 +426,10 @@ where
     }
 }
 
-impl<N> Default for BaseAddOns<N, BaseEthApiBuilder, BasePayloadValidatorBuilder>
+impl<N> Default for UnstableAddOns<N, UnstableEthApiBuilder, UnstablePayloadValidatorBuilder>
 where
-    N: FullNodeComponents<Types: BaseNodeTypes>,
-    BaseEthApiBuilder: EthApiBuilder<N>,
+    N: FullNodeComponents<Types: UnstableNodeTypes>,
+    UnstableEthApiBuilder: EthApiBuilder<N>,
 {
     fn default() -> Self {
         Self::builder().build()
@@ -437,24 +437,24 @@ where
 }
 
 impl<N, NetworkT, RpcMiddleware>
-    BaseAddOns<
+    UnstableAddOns<
         N,
-        BaseEthApiBuilder<NetworkT>,
-        BasePayloadValidatorBuilder,
-        BaseEngineApiBuilder<BasePayloadValidatorBuilder>,
+        UnstableEthApiBuilder<NetworkT>,
+        UnstablePayloadValidatorBuilder,
+        UnstableEngineApiBuilder<UnstablePayloadValidatorBuilder>,
         RpcMiddleware,
     >
 where
-    N: FullNodeComponents<Types: BaseNodeTypes>,
-    BaseEthApiBuilder<NetworkT>: EthApiBuilder<N>,
+    N: FullNodeComponents<Types: UnstableNodeTypes>,
+    UnstableEthApiBuilder<NetworkT>: EthApiBuilder<N>,
 {
-    /// Build a [`BaseAddOns`] using [`BaseAddOnsBuilder`].
-    pub fn builder() -> BaseAddOnsBuilder<NetworkT> {
-        BaseAddOnsBuilder::default()
+    /// Build a [`UnstableAddOns`] using [`UnstableAddOnsBuilder`].
+    pub fn builder() -> UnstableAddOnsBuilder<NetworkT> {
+        UnstableAddOnsBuilder::default()
     }
 }
 
-impl<N, EthB, PVB, EB, EVB, RpcMiddleware> BaseAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
+impl<N, EthB, PVB, EB, EVB, RpcMiddleware> UnstableAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
 where
     N: FullNodeComponents,
     EthB: EthApiBuilder<N>,
@@ -463,7 +463,7 @@ where
     pub fn with_engine_api<T>(
         self,
         engine_api_builder: T,
-    ) -> BaseAddOns<N, EthB, PVB, T, EVB, RpcMiddleware> {
+    ) -> UnstableAddOns<N, EthB, PVB, T, EVB, RpcMiddleware> {
         let Self {
             rpc_add_ons,
             da_config,
@@ -473,7 +473,7 @@ where
             min_suggested_priority_fee,
             ..
         } = self;
-        BaseAddOns::new(
+        UnstableAddOns::new(
             rpc_add_ons.with_engine_api(engine_api_builder),
             da_config,
             gas_limit_config,
@@ -487,7 +487,7 @@ where
     pub fn with_payload_validator<T>(
         self,
         payload_validator_builder: T,
-    ) -> BaseAddOns<N, EthB, T, EB, EVB, RpcMiddleware> {
+    ) -> UnstableAddOns<N, EthB, T, EB, EVB, RpcMiddleware> {
         let Self {
             rpc_add_ons,
             da_config,
@@ -497,7 +497,7 @@ where
             min_suggested_priority_fee,
             ..
         } = self;
-        BaseAddOns::new(
+        UnstableAddOns::new(
             rpc_add_ons.with_payload_validator(payload_validator_builder),
             da_config,
             gas_limit_config,
@@ -514,7 +514,7 @@ where
     /// layer, allowing you to intercept, modify, or enhance RPC request processing.
     ///
     /// See also [`RpcAddOns::with_rpc_middleware`].
-    pub fn with_rpc_middleware<T>(self, rpc_middleware: T) -> BaseAddOns<N, EthB, PVB, EB, EVB, T> {
+    pub fn with_rpc_middleware<T>(self, rpc_middleware: T) -> UnstableAddOns<N, EthB, PVB, EB, EVB, T> {
         let Self {
             rpc_add_ons,
             da_config,
@@ -524,7 +524,7 @@ where
             min_suggested_priority_fee,
             ..
         } = self;
-        BaseAddOns::new(
+        UnstableAddOns::new(
             rpc_add_ons.with_rpc_middleware(rpc_middleware),
             da_config,
             gas_limit_config,
@@ -556,15 +556,15 @@ where
 }
 
 impl<N, EthB, PVB, EB, EVB, Attrs, RpcMiddleware> NodeAddOns<N>
-    for BaseAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
+    for UnstableAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
 where
     N: FullNodeComponents<
-            Types: BaseNodeTypes
+            Types: UnstableNodeTypes
                        + NodeTypes<Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>>,
             Evm: ConfigureEvm<
-                NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, BaseChainSpec>,
+                NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, UnstableChainSpec>,
             >,
-            Pool: TransactionPool<Transaction: BasePooledTx>,
+            Pool: TransactionPool<Transaction: UnstablePooledTx>,
         >,
     EthB: EthApiBuilder<N>,
     PVB: Send,
@@ -582,20 +582,20 @@ where
     ) -> eyre::Result<Self::Handle> {
         let Self { rpc_add_ons, da_config, gas_limit_config, .. } = self;
         let eth_config =
-            BaseEthConfigHandler::new(ctx.node.provider().clone(), ctx.node.evm_config().clone());
+            UnstableEthConfigHandler::new(ctx.node.provider().clone(), ctx.node.evm_config().clone());
 
-        let builder = base_execution_payload_builder::BasePayloadBuilder::new(
+        let builder = base_execution_payload_builder::UnstablePayloadBuilder::new(
             ctx.node.pool().clone(),
             ctx.node.provider().clone(),
             ctx.node.evm_config().clone(),
         );
         // Install additional rollup-specific RPC methods.
-        let debug_ext = BaseDebugWitnessApi::<_, _, _, Attrs>::new(
+        let debug_ext = UnstableDebugWitnessApi::<_, _, _, Attrs>::new(
             ctx.node.provider().clone(),
             Box::new(ctx.node.task_executor().clone()),
             builder,
         );
-        let miner_ext = BaseMinerExtApi::new(da_config, gas_limit_config);
+        let miner_ext = UnstableMinerExtApi::new(da_config, gas_limit_config);
 
         rpc_add_ons
             .launch_add_ons_with(ctx, move |container| {
@@ -632,16 +632,16 @@ where
 }
 
 impl<N, EthB, PVB, EB, EVB, Attrs, RpcMiddleware> RethRpcAddOns<N>
-    for BaseAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
+    for UnstableAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
 where
     N: FullNodeComponents<
-            Types: BaseNodeTypes
+            Types: UnstableNodeTypes
                        + NodeTypes<Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>>,
             Evm: ConfigureEvm<
-                NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, BaseChainSpec>,
+                NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<N::Types>, UnstableChainSpec>,
             >,
         >,
-    <<N as FullNodeComponents>::Pool as TransactionPool>::Transaction: BasePooledTx,
+    <<N as FullNodeComponents>::Pool as TransactionPool>::Transaction: UnstablePooledTx,
     EthB: EthApiBuilder<N>,
     PVB: PayloadValidatorBuilder<N>,
     EB: EngineApiBuilder<N>,
@@ -658,7 +658,7 @@ where
 }
 
 impl<N, EthB, PVB, EB, EVB, RpcMiddleware> EngineValidatorAddOn<N>
-    for BaseAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
+    for UnstableAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
 where
     N: FullNodeComponents,
     EthB: EthApiBuilder<N>,
@@ -674,17 +674,17 @@ where
     }
 }
 
-/// A regular Base EVM and executor builder.
+/// A regular Unstable EVM and executor builder.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct BaseAddOnsBuilder<NetworkT, RpcMiddleware = Identity> {
+pub struct UnstableAddOnsBuilder<NetworkT, RpcMiddleware = Identity> {
     /// Sequencer client, configured to forward submitted transactions to sequencer of the given
-    /// Base network.
+    /// Unstable network.
     sequencer_url: Option<String>,
     /// Headers to use for the sequencer client requests.
     sequencer_headers: Vec<String>,
     /// Data availability configuration for the payload builder.
-    da_config: Option<BaseDAConfig>,
+    da_config: Option<UnstableDAConfig>,
     /// Gas limit configuration for the payload builder.
     gas_limit_config: Option<GasLimitConfig>,
     /// Marker for network types.
@@ -697,7 +697,7 @@ pub struct BaseAddOnsBuilder<NetworkT, RpcMiddleware = Identity> {
     tokio_runtime: Option<tokio::runtime::Handle>,
 }
 
-impl<NetworkT> Default for BaseAddOnsBuilder<NetworkT> {
+impl<NetworkT> Default for UnstableAddOnsBuilder<NetworkT> {
     fn default() -> Self {
         Self {
             sequencer_url: None,
@@ -712,7 +712,7 @@ impl<NetworkT> Default for BaseAddOnsBuilder<NetworkT> {
     }
 }
 
-impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
+impl<NetworkT, RpcMiddleware> UnstableAddOnsBuilder<NetworkT, RpcMiddleware> {
     /// With a [`SequencerClient`].
     pub fn with_sequencer(mut self, sequencer_client: Option<String>) -> Self {
         self.sequencer_url = sequencer_client;
@@ -725,13 +725,13 @@ impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
         self
     }
 
-    /// Configure the data availability configuration for the Base builder.
-    pub fn with_da_config(mut self, da_config: BaseDAConfig) -> Self {
+    /// Configure the data availability configuration for the Unstable builder.
+    pub fn with_da_config(mut self, da_config: UnstableDAConfig) -> Self {
         self.da_config = Some(da_config);
         self
     }
 
-    /// Configure the gas limit configuration for the Base payload builder.
+    /// Configure the gas limit configuration for the Unstable payload builder.
     pub fn with_gas_limit_config(mut self, gas_limit_config: GasLimitConfig) -> Self {
         self.gas_limit_config = Some(gas_limit_config);
         self
@@ -752,7 +752,7 @@ impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
     }
 
     /// Configure the RPC middleware to use
-    pub fn with_rpc_middleware<T>(self, rpc_middleware: T) -> BaseAddOnsBuilder<NetworkT, T> {
+    pub fn with_rpc_middleware<T>(self, rpc_middleware: T) -> UnstableAddOnsBuilder<NetworkT, T> {
         let Self {
             sequencer_url,
             sequencer_headers,
@@ -763,7 +763,7 @@ impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
             _nt,
             ..
         } = self;
-        BaseAddOnsBuilder {
+        UnstableAddOnsBuilder {
             sequencer_url,
             sequencer_headers,
             da_config,
@@ -776,14 +776,14 @@ impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
     }
 }
 
-impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
-    /// Builds an instance of [`BaseAddOns`].
+impl<NetworkT, RpcMiddleware> UnstableAddOnsBuilder<NetworkT, RpcMiddleware> {
+    /// Builds an instance of [`UnstableAddOns`].
     pub fn build<N, PVB, EB, EVB>(
         self,
-    ) -> BaseAddOns<N, BaseEthApiBuilder<NetworkT>, PVB, EB, EVB, RpcMiddleware>
+    ) -> UnstableAddOns<N, UnstableEthApiBuilder<NetworkT>, PVB, EB, EVB, RpcMiddleware>
     where
         N: FullNodeComponents<Types: NodeTypes>,
-        BaseEthApiBuilder<NetworkT>: EthApiBuilder<N>,
+        UnstableEthApiBuilder<NetworkT>: EthApiBuilder<N>,
         PVB: PayloadValidatorBuilder<N> + Default,
         EB: Default,
         EVB: Default,
@@ -799,9 +799,9 @@ impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
             ..
         } = self;
 
-        BaseAddOns::new(
+        UnstableAddOns::new(
             RpcAddOns::new(
-                BaseEthApiBuilder::default()
+                UnstableEthApiBuilder::default()
                     .with_sequencer(sequencer_url.clone())
                     .with_sequencer_headers(sequencer_headers.clone())
                     .with_min_suggested_priority_fee(min_suggested_priority_fee),
@@ -820,55 +820,55 @@ impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
     }
 }
 
-/// A regular Base EVM and executor builder.
+/// A regular Unstable EVM and executor builder.
 #[derive(Debug, Copy, Clone, Default)]
 #[non_exhaustive]
-pub struct BaseExecutorBuilder;
+pub struct UnstableExecutorBuilder;
 
-impl<Node> ExecutorBuilder<Node> for BaseExecutorBuilder
+impl<Node> ExecutorBuilder<Node> for UnstableExecutorBuilder
 where
-    Node: FullNodeTypes<Types: BaseNodeTypes>,
+    Node: FullNodeTypes<Types: UnstableNodeTypes>,
 {
-    type EVM = BaseEvmConfig<
+    type EVM = UnstableEvmConfig<
         <Node::Types as NodeTypes>::ChainSpec,
         <Node::Types as NodeTypes>::Primitives,
     >;
 
     async fn build_evm(self, ctx: &BuilderContext<Node>) -> eyre::Result<Self::EVM> {
-        let evm_config = BaseEvmConfig::new(ctx.chain_spec(), BaseRethReceiptBuilder::default());
+        let evm_config = UnstableEvmConfig::new(ctx.chain_spec(), UnstableRethReceiptBuilder::default());
 
         Ok(evm_config)
     }
 }
 
-/// A basic Base transaction pool.
+/// A basic Unstable transaction pool.
 ///
 /// This contains various settings that can be configured and take precedence over the node's
 /// config.
 #[derive(Debug)]
-pub struct BasePoolBuilder<T = BasePooledTransaction> {
+pub struct UnstablePoolBuilder<T = UnstablePooledTransaction> {
     /// Enforced overrides that are applied to the pool config.
     pub pool_config_overrides: PoolBuilderConfigOverrides,
     /// The ordering strategy for the transaction pool.
-    pub ordering: BaseOrdering<T>,
+    pub ordering: UnstableOrdering<T>,
     /// Maximum inflight EIP-7702 delegated account transactions per sender.
     pub max_inflight_delegated_slots: usize,
     /// Marker for the pooled transaction type.
     _pd: core::marker::PhantomData<T>,
 }
 
-impl<T> Default for BasePoolBuilder<T> {
+impl<T> Default for UnstablePoolBuilder<T> {
     fn default() -> Self {
         Self {
             pool_config_overrides: Default::default(),
-            ordering: BaseOrdering::default(),
+            ordering: UnstableOrdering::default(),
             max_inflight_delegated_slots: 1,
             _pd: Default::default(),
         }
     }
 }
 
-impl<T> Clone for BasePoolBuilder<T> {
+impl<T> Clone for UnstablePoolBuilder<T> {
     fn clone(&self) -> Self {
         Self {
             pool_config_overrides: self.pool_config_overrides.clone(),
@@ -879,7 +879,7 @@ impl<T> Clone for BasePoolBuilder<T> {
     }
 }
 
-impl<T> BasePoolBuilder<T> {
+impl<T> UnstablePoolBuilder<T> {
     /// Sets the [`PoolBuilderConfigOverrides`] on the pool builder.
     pub fn with_pool_config_overrides(
         mut self,
@@ -890,7 +890,7 @@ impl<T> BasePoolBuilder<T> {
     }
 
     /// Sets the ordering strategy for the transaction pool.
-    pub const fn with_ordering(mut self, ordering: BaseOrdering<T>) -> Self {
+    pub const fn with_ordering(mut self, ordering: UnstableOrdering<T>) -> Self {
         self.ordering = ordering;
         self
     }
@@ -902,13 +902,13 @@ impl<T> BasePoolBuilder<T> {
     }
 }
 
-impl<Node, T, Evm> PoolBuilder<Node, Evm> for BasePoolBuilder<T>
+impl<Node, T, Evm> PoolBuilder<Node, Evm> for UnstablePoolBuilder<T>
 where
-    Node: FullNodeTypes<Types: BaseNodeTypes>,
-    T: EthPoolTransaction<Consensus = TxTy<Node::Types>> + BasePooledTx + TimestampedTransaction,
+    Node: FullNodeTypes<Types: UnstableNodeTypes>,
+    T: EthPoolTransaction<Consensus = TxTy<Node::Types>> + UnstablePooledTx + TimestampedTransaction,
     Evm: ConfigureEvm<Primitives = PrimitivesTy<Node::Types>> + Clone + 'static,
 {
-    type Pool = BaseTransactionPool<Node::Provider, DiskFileBlobStore, Evm, T, BaseOrdering<T>>;
+    type Pool = UnstableTransactionPool<Node::Provider, DiskFileBlobStore, Evm, T, UnstableOrdering<T>>;
 
     async fn build_pool(
         self,
@@ -933,7 +933,7 @@ where
                 )
                 .build_with_tasks(ctx.task_executor().clone(), blob_store.clone())
                 .map(|validator| {
-                    BaseTransactionValidator::new(validator)
+                    UnstableTransactionValidator::new(validator)
                         // In --dev mode we can't require gas fees because we're unable to decode
                         // the L1 block info
                         .require_l1_data_gas_fee(!ctx.config().dev.dev)
@@ -957,9 +957,9 @@ where
     }
 }
 
-/// A basic Base payload service builder
+/// A basic Unstable payload service builder
 #[derive(Debug, Default, Clone)]
-pub struct BasePayloadBuilder<Txs = ()> {
+pub struct UnstablePayloadBuilder<Txs = ()> {
     /// By default the pending block equals the latest block
     /// to save resources and not leak txs from the tx-pool,
     /// this flag enables computing of the pending block
@@ -974,26 +974,26 @@ pub struct BasePayloadBuilder<Txs = ()> {
     pub best_transactions: Txs,
     /// This data availability configuration specifies constraints for the payload builder
     /// when assembling payloads
-    pub da_config: BaseDAConfig,
+    pub da_config: UnstableDAConfig,
     /// Gas limit configuration for the payload builder.
     /// This is used to configure gas limit related constraints for the payload builder.
     pub gas_limit_config: GasLimitConfig,
 }
 
-impl BasePayloadBuilder {
+impl UnstablePayloadBuilder {
     /// Create a new instance with the given `compute_pending_block` flag and data availability
     /// config.
     pub fn new(compute_pending_block: bool) -> Self {
         Self {
             compute_pending_block,
             best_transactions: (),
-            da_config: BaseDAConfig::default(),
+            da_config: UnstableDAConfig::default(),
             gas_limit_config: GasLimitConfig::default(),
         }
     }
 
     /// Configure the data availability configuration for the payload builder.
-    pub fn with_da_config(mut self, da_config: BaseDAConfig) -> Self {
+    pub fn with_da_config(mut self, da_config: UnstableDAConfig) -> Self {
         self.da_config = da_config;
         self
     }
@@ -1005,23 +1005,23 @@ impl BasePayloadBuilder {
     }
 }
 
-impl<Txs> BasePayloadBuilder<Txs> {
+impl<Txs> UnstablePayloadBuilder<Txs> {
     /// Configures the type responsible for yielding the transactions that should be included in the
     /// payload.
-    pub fn with_transactions<T>(self, best_transactions: T) -> BasePayloadBuilder<T> {
+    pub fn with_transactions<T>(self, best_transactions: T) -> UnstablePayloadBuilder<T> {
         let Self { compute_pending_block, da_config, gas_limit_config, .. } = self;
-        BasePayloadBuilder { compute_pending_block, best_transactions, da_config, gas_limit_config }
+        UnstablePayloadBuilder { compute_pending_block, best_transactions, da_config, gas_limit_config }
     }
 }
 
-impl<Node, Pool, Txs, Evm, Attrs> PayloadBuilderBuilder<Node, Pool, Evm> for BasePayloadBuilder<Txs>
+impl<Node, Pool, Txs, Evm, Attrs> PayloadBuilderBuilder<Node, Pool, Evm> for UnstablePayloadBuilder<Txs>
 where
     Node: FullNodeTypes<
             Provider: ChainSpecProvider<ChainSpec: Upgrades>,
             Types: NodeTypes<
                 Primitives: PayloadPrimitives,
                 Payload: PayloadTypes<
-                    BuiltPayload = BaseBuiltPayload<PrimitivesTy<Node::Types>>,
+                    BuiltPayload = UnstableBuiltPayload<PrimitivesTy<Node::Types>>,
                     PayloadBuilderAttributes = Attrs,
                 >,
             >,
@@ -1035,12 +1035,12 @@ where
             >,
         > + 'static,
     Pool:
-        TransactionPool<Transaction: BasePooledTx<Consensus = TxTy<Node::Types>>> + Unpin + 'static,
-    Txs: BasePayloadTransactions<Pool::Transaction>,
+        TransactionPool<Transaction: UnstablePooledTx<Consensus = TxTy<Node::Types>>> + Unpin + 'static,
+    Txs: UnstablePayloadTransactions<Pool::Transaction>,
     Attrs: Attributes<Transaction = TxTy<Node::Types>>,
 {
     type PayloadBuilder =
-        base_execution_payload_builder::BasePayloadBuilder<Pool, Node::Provider, Evm, Txs, Attrs>;
+        base_execution_payload_builder::UnstablePayloadBuilder<Pool, Node::Provider, Evm, Txs, Attrs>;
 
     async fn build_payload_builder(
         self,
@@ -1049,11 +1049,11 @@ where
         evm_config: Evm,
     ) -> eyre::Result<Self::PayloadBuilder> {
         let payload_builder =
-            base_execution_payload_builder::BasePayloadBuilder::with_builder_config(
+            base_execution_payload_builder::UnstablePayloadBuilder::with_builder_config(
                 pool,
                 ctx.provider().clone(),
                 evm_config,
-                BaseBuilderConfig {
+                UnstableBuilderConfig {
                     da_config: self.da_config.clone(),
                     gas_limit_config: self.gas_limit_config.clone(),
                 },
@@ -1064,25 +1064,25 @@ where
     }
 }
 
-/// A basic Base network builder.
+/// A basic Unstable network builder.
 #[derive(Debug, Clone)]
-pub struct BaseNetworkBuilder {
+pub struct UnstableNetworkBuilder {
     /// Disable transaction pool gossip
     pub disable_txpool_gossip: bool,
     /// Disable discovery v4
     pub disable_discovery_v4: bool,
-    /// Enable the Base discv5 protocol identity
+    /// Enable the Unstable discv5 protocol identity
     pub base_protocol: bool,
 }
 
-impl Default for BaseNetworkBuilder {
+impl Default for UnstableNetworkBuilder {
     fn default() -> Self {
         Self { disable_discovery_v4: false, disable_txpool_gossip: false, base_protocol: true }
     }
 }
 
-impl BaseNetworkBuilder {
-    /// Creates a new `BaseNetworkBuilder`.
+impl UnstableNetworkBuilder {
+    /// Creates a new `UnstableNetworkBuilder`.
     pub const fn new(
         disable_txpool_gossip: bool,
         disable_discovery_v4: bool,
@@ -1101,16 +1101,16 @@ impl BaseNetworkBuilder {
     }
 }
 
-/// Base-specific discovery configuration.
+/// Unstable-specific discovery configuration.
 #[derive(Debug, Clone)]
-pub struct BaseDiscoveryConfig {
+pub struct UnstableDiscoveryConfig {
     /// Disable discovery v4.
     pub disable_discovery_v4: bool,
-    /// Enable the Base discv5 protocol identity.
+    /// Enable the Unstable discv5 protocol identity.
     pub base_protocol: bool,
 }
 
-impl BaseDiscoveryConfig {
+impl UnstableDiscoveryConfig {
     /// Creates a new discovery config.
     pub const fn new(disable_discovery_v4: bool, base_protocol: bool) -> Self {
         Self { disable_discovery_v4, base_protocol }
@@ -1123,7 +1123,7 @@ impl BaseDiscoveryConfig {
             || discovery.disable_discv4_discovery
     }
 
-    /// Applies Base discovery settings to the reth network config builder.
+    /// Applies Unstable discovery settings to the reth network config builder.
     pub fn apply_to_network_builder<N>(
         &self,
         mut builder: NetworkConfigBuilder<N>,
@@ -1146,7 +1146,7 @@ impl BaseDiscoveryConfig {
         builder
     }
 
-    /// Creates the Base discv5 config builder from reth network arguments.
+    /// Creates the Unstable discv5 config builder from reth network arguments.
     pub fn discovery_v5_builder(
         &self,
         args: &RethNetworkArgs,
@@ -1166,7 +1166,7 @@ impl BaseDiscoveryConfig {
         builder
     }
 
-    /// Creates the inner discv5 config with Base protocol identity when enabled.
+    /// Creates the inner discv5 config with Unstable protocol identity when enabled.
     pub fn discv5_config(&self, args: &RethNetworkArgs) -> reth_discv5::discv5::Config {
         let mut builder = reth_discv5::discv5::ConfigBuilder::new(Self::discv5_listen_config(args));
 
@@ -1229,10 +1229,10 @@ impl BaseDiscoveryConfig {
     }
 }
 
-impl BaseNetworkBuilder {
+impl UnstableNetworkBuilder {
     /// Returns the [`NetworkConfig`] that contains the settings to launch the p2p network.
     ///
-    /// This applies the configured [`BaseNetworkBuilder`] settings.
+    /// This applies the configured [`UnstableNetworkBuilder`] settings.
     pub fn network_config<Node, NetworkP>(
         &self,
         ctx: &BuilderContext<Node>,
@@ -1243,7 +1243,7 @@ impl BaseNetworkBuilder {
     {
         let disable_txpool_gossip = self.disable_txpool_gossip;
         let discovery_config =
-            BaseDiscoveryConfig::new(self.disable_discovery_v4, self.base_protocol);
+            UnstableDiscoveryConfig::new(self.disable_discovery_v4, self.base_protocol);
         let args = &ctx.config().network;
         let network_builder = ctx
             .network_config_builder()?
@@ -1277,7 +1277,7 @@ impl BaseNetworkBuilder {
     }
 }
 
-impl<Node, Pool> NetworkBuilder<Node, Pool> for BaseNetworkBuilder
+impl<Node, Pool> NetworkBuilder<Node, Pool> for UnstableNetworkBuilder
 where
     Node: FullNodeTypes<Types: NodeTypes<ChainSpec: Hardforks>>,
     Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TxTy<Node::Types>>>
@@ -1301,49 +1301,49 @@ where
     }
 }
 
-/// A basic Base consensus builder.
+/// A basic Unstable consensus builder.
 #[derive(Debug, Default, Clone)]
 #[non_exhaustive]
-pub struct BaseConsensusBuilder;
+pub struct UnstableConsensusBuilder;
 
-impl<Node> ConsensusBuilder<Node> for BaseConsensusBuilder
+impl<Node> ConsensusBuilder<Node> for UnstableConsensusBuilder
 where
-    Node: FullNodeTypes<Types: BaseNodeTypes>,
+    Node: FullNodeTypes<Types: UnstableNodeTypes>,
 {
-    type Consensus = Arc<BaseBeaconConsensus>;
+    type Consensus = Arc<UnstableBeaconConsensus>;
 
     async fn build_consensus(self, ctx: &BuilderContext<Node>) -> eyre::Result<Self::Consensus> {
-        Ok(Arc::new(BaseBeaconConsensus::new(ctx.chain_spec())))
+        Ok(Arc::new(UnstableBeaconConsensus::new(ctx.chain_spec())))
     }
 }
 
-/// Builder for [`BaseEngineValidator`].
+/// Builder for [`UnstableEngineValidator`].
 #[derive(Debug, Default, Clone)]
 #[non_exhaustive]
-pub struct BasePayloadValidatorBuilder;
+pub struct UnstablePayloadValidatorBuilder;
 
-impl<Node> PayloadValidatorBuilder<Node> for BasePayloadValidatorBuilder
+impl<Node> PayloadValidatorBuilder<Node> for UnstablePayloadValidatorBuilder
 where
     Node: FullNodeComponents<
         Types: NodeTypes<ChainSpec: Upgrades, Payload: PayloadTypes<ExecutionData = ExecutionData>>,
     >,
 {
-    type Validator = BaseEngineValidator<
+    type Validator = UnstableEngineValidator<
         Node::Provider,
         <<Node::Types as NodeTypes>::Primitives as NodePrimitives>::SignedTx,
         <Node::Types as NodeTypes>::ChainSpec,
     >;
 
     async fn build(self, ctx: &AddOnsContext<'_, Node>) -> eyre::Result<Self::Validator> {
-        Ok(BaseEngineValidator::new::<KeccakKeyHasher>(
+        Ok(UnstableEngineValidator::new::<KeccakKeyHasher>(
             Arc::clone(&ctx.config.chain),
             ctx.node.provider().clone(),
         ))
     }
 }
 
-/// Network primitive types used by Base networks.
-pub type BaseNetworkPrimitives = BasicNetworkPrimitives<BasePrimitives, BasePooledTransaction>;
+/// Network primitive types used by Unstable networks.
+pub type UnstableNetworkPrimitives = BasicNetworkPrimitives<UnstablePrimitives, UnstablePooledTransaction>;
 
 #[cfg(test)]
 mod tests {
@@ -1378,7 +1378,7 @@ mod tests {
             disable_discv4_discovery: disable_by_reth,
             ..Default::default()
         };
-        let discovery_config = BaseDiscoveryConfig::new(disable_by_base, true);
+        let discovery_config = UnstableDiscoveryConfig::new(disable_by_base, true);
 
         assert_eq!(discovery_config.should_disable_discv4(&discovery_args), expected);
     }
@@ -1397,7 +1397,7 @@ mod tests {
         let mut args = RethNetworkArgs::default();
         args.discovery.disable_discovery = disable_all_discovery;
         args.discovery.disable_discv4_discovery = disable_by_reth;
-        let discovery_config = BaseDiscoveryConfig::new(disable_by_base, true);
+        let discovery_config = UnstableDiscoveryConfig::new(disable_by_base, true);
 
         let network_config = discovery_config
             .apply_to_network_builder(
@@ -1420,7 +1420,7 @@ mod tests {
     ) {
         let mut args = RethNetworkArgs::default();
         args.discovery.disable_discovery = disable_all_discovery;
-        let discovery_config = BaseDiscoveryConfig::new(false, true);
+        let discovery_config = UnstableDiscoveryConfig::new(false, true);
 
         let network_config = discovery_config
             .apply_to_network_builder(
@@ -1442,7 +1442,7 @@ mod tests {
         #[case] expected_protocol_id: [u8; 6],
     ) {
         let args = RethNetworkArgs::default();
-        let discovery_config = BaseDiscoveryConfig::new(false, base_protocol);
+        let discovery_config = UnstableDiscoveryConfig::new(false, base_protocol);
 
         let discv5_config = discovery_config.discv5_config(&args);
 
@@ -1500,7 +1500,7 @@ mod tests {
         args.discovery.discv5_addr_ipv6 = discv5_addr_ipv6;
         args.discovery.discv5_port = discv5_port;
         args.discovery.discv5_port_ipv6 = discv5_port_ipv6;
-        let discovery_config = BaseDiscoveryConfig::new(false, true);
+        let discovery_config = UnstableDiscoveryConfig::new(false, true);
 
         let reth_discv5_config =
             discovery_config.discovery_v5_builder(&args, Vec::<NodeRecord>::new(), None).build();
@@ -1518,7 +1518,7 @@ mod tests {
     fn discovery_v5_builder_advertises_external_ip(#[case] external_addr: IpAddr) {
         let args =
             RethNetworkArgs { addr: IpAddr::V4(Ipv4Addr::UNSPECIFIED), ..Default::default() };
-        let discovery_config = BaseDiscoveryConfig::new(false, true);
+        let discovery_config = UnstableDiscoveryConfig::new(false, true);
 
         let reth_discv5_config = discovery_config
             .discovery_v5_builder(&args, Vec::<NodeRecord>::new(), Some(external_addr))
@@ -1546,7 +1546,7 @@ mod tests {
         #[case] expected: ListenConfig,
     ) {
         let args = RethNetworkArgs { addr: rlpx_ip, port: 30303, ..Default::default() };
-        let discovery_config = BaseDiscoveryConfig::new(false, true);
+        let discovery_config = UnstableDiscoveryConfig::new(false, true);
 
         let discv5_config = discovery_config.discv5_config(&args);
 

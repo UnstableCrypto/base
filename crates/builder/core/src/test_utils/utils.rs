@@ -5,9 +5,9 @@ use alloy_eips::Encodable2718;
 use alloy_primitives::{Address, B256, BlockHash, TxHash, TxKind, U256, hex};
 use alloy_rpc_types_eth::{Block, BlockTransactionHashes};
 use alloy_sol_types::SolCall;
-use base_common_consensus::{BaseTypedTransaction, TxDeposit};
+use base_common_consensus::{UnstableTypedTransaction, TxDeposit};
 use base_common_rpc_types::Transaction;
-use base_execution_chainspec::BaseChainSpec;
+use base_execution_chainspec::UnstableChainSpec;
 use reth_db::{
     ClientVersion, DatabaseEnv, init_db,
     mdbx::{DatabaseArguments, KILOBYTE, MEGABYTE, MaxReadTransactionDuration},
@@ -139,7 +139,7 @@ impl<P: Protocol> ChainDriverExt for ChainDriver<P> {
             };
 
             let signer = PrivateKeySigner::random();
-            let signed_tx = sign_base_tx(&signer, BaseTypedTransaction::Deposit(deposit))?;
+            let signed_tx = sign_base_tx(&signer, UnstableTypedTransaction::Deposit(deposit))?;
             let signed_tx_rlp = signed_tx.encoded_2718();
             txs.push(signed_tx_rlp.into());
         }
@@ -160,7 +160,7 @@ impl<P: Protocol> ChainDriverExt for ChainDriver<P> {
         };
 
         let signer = PrivateKeySigner::random();
-        let signed_tx = sign_base_tx(&signer, BaseTypedTransaction::Deposit(deposit))?;
+        let signed_tx = sign_base_tx(&signer, UnstableTypedTransaction::Deposit(deposit))?;
         let signed_tx_rlp = signed_tx.encoded_2718();
         Ok(self.build_new_block_with_txs(vec![signed_tx_rlp.into()]).await?.header.hash)
     }
@@ -219,7 +219,7 @@ impl AsTxs for Vec<TxHash> {
 }
 
 /// Creates a temporary MDBX database suitable for tests.
-pub fn create_test_db(config: NodeConfig<BaseChainSpec>) -> Arc<TempDatabase<DatabaseEnv>> {
+pub fn create_test_db(config: NodeConfig<UnstableChainSpec>) -> Arc<TempDatabase<DatabaseEnv>> {
     let path = reth_node_core::dirs::MaybePlatformPath::<DataDirPath>::from(
         reth_db::test_utils::tempdir_path(),
     );

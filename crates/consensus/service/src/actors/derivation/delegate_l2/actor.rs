@@ -3,7 +3,7 @@ use std::sync::Arc;
 use alloy_eips::BlockNumberOrTag;
 use alloy_provider::{Provider, RootProvider};
 use async_trait::async_trait;
-use base_common_network::Base;
+use base_common_network::Unstable;
 use base_consensus_engine::DelegatedForkchoiceUpdate;
 use base_protocol::L2BlockInfo;
 use futures::future::OptionFuture;
@@ -42,7 +42,7 @@ where
     inbound_request_rx: mpsc::Receiver<DerivationActorRequest>,
     engine_client: Arc<DerivationEngineClient_>,
     engine_actor_request_tx: mpsc::Sender<EngineActorRequest>,
-    local_l2_provider: RootProvider<Base>,
+    local_l2_provider: RootProvider<Unstable>,
     l2_source: Arc<L2Source>,
     sent_head: u64,
     proofs_enabled: bool,
@@ -71,7 +71,7 @@ where
         engine_actor_request_tx: mpsc::Sender<EngineActorRequest>,
         cancellation_token: CancellationToken,
         inbound_request_rx: mpsc::Receiver<DerivationActorRequest>,
-        local_l2_provider: RootProvider<Base>,
+        local_l2_provider: RootProvider<Unstable>,
         l2_source: L2Source,
     ) -> Self {
         Self {
@@ -304,7 +304,7 @@ pub(super) struct SyncFromSourceTask<DerivationEngineClient_, L2Source> {
     engine_client: Arc<DerivationEngineClient_>,
     engine_actor_request_tx: mpsc::Sender<EngineActorRequest>,
     cancellation_token: CancellationToken,
-    local_l2_provider: RootProvider<Base>,
+    local_l2_provider: RootProvider<Unstable>,
     sent_head: u64,
     target_block: u64,
     l2_source: Arc<L2Source>,
@@ -319,7 +319,7 @@ where
         engine_client: Arc<DerivationEngineClient_>,
         engine_actor_request_tx: mpsc::Sender<EngineActorRequest>,
         cancellation_token: CancellationToken,
-        local_l2_provider: RootProvider<Base>,
+        local_l2_provider: RootProvider<Unstable>,
         sent_head: u64,
         target_block: u64,
         l2_source: Arc<L2Source>,
@@ -441,7 +441,7 @@ mod tests {
     use alloy_eips::BlockNumberOrTag;
     use alloy_primitives::B256;
     use alloy_rpc_types_engine::ExecutionPayloadV1;
-    use base_common_rpc_types_engine::{BaseExecutionPayload, BaseExecutionPayloadEnvelope};
+    use base_common_rpc_types_engine::{UnstableExecutionPayload, UnstableExecutionPayloadEnvelope};
     use base_protocol::{BlockInfo, L2BlockInfo};
     use mockall::{Sequence, predicate::*};
     use tokio::sync::mpsc;
@@ -464,7 +464,7 @@ mod tests {
         }
     }
 
-    fn dummy_payload_envelope(block_number: u64) -> BaseExecutionPayloadEnvelope {
+    fn dummy_payload_envelope(block_number: u64) -> UnstableExecutionPayloadEnvelope {
         let payload = ExecutionPayloadV1 {
             parent_hash: B256::ZERO,
             fee_recipient: alloy_primitives::Address::ZERO,
@@ -481,9 +481,9 @@ mod tests {
             block_hash: B256::from([block_number as u8; 32]),
             transactions: vec![],
         };
-        BaseExecutionPayloadEnvelope {
+        UnstableExecutionPayloadEnvelope {
             parent_beacon_block_root: None,
-            execution_payload: BaseExecutionPayload::V1(payload),
+            execution_payload: UnstableExecutionPayload::V1(payload),
         }
     }
 
@@ -501,7 +501,7 @@ mod tests {
         let (engine_tx, engine_rx) = mpsc::channel(16);
 
         let local_l2_provider =
-            RootProvider::<Base>::new_http("http://localhost:1234".parse().unwrap());
+            RootProvider::<Unstable>::new_http("http://localhost:1234".parse().unwrap());
 
         let actor = DelegateL2DerivationActor::new(
             engine_client,
@@ -529,7 +529,7 @@ mod tests {
         let (engine_tx, engine_rx) = mpsc::channel(16);
 
         let local_l2_provider =
-            RootProvider::<Base>::new_http("http://localhost:1234".parse().unwrap());
+            RootProvider::<Unstable>::new_http("http://localhost:1234".parse().unwrap());
 
         let task = SyncFromSourceTask::new(
             Arc::new(engine_client),

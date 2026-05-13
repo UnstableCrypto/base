@@ -1,40 +1,40 @@
-//! Additional configuration for the Base payload builder.
+//! Additional configuration for the Unstable payload builder.
 
 use std::sync::{Arc, atomic::AtomicU64};
 
-/// Settings for the Base payload builder.
+/// Settings for the Unstable payload builder.
 #[derive(Debug, Clone, Default)]
-pub struct BaseBuilderConfig {
-    /// Data availability configuration for the Base payload builder.
-    pub da_config: BaseDAConfig,
-    /// Gas limit configuration for the Base payload builder.
+pub struct UnstableBuilderConfig {
+    /// Data availability configuration for the Unstable payload builder.
+    pub da_config: UnstableDAConfig,
+    /// Gas limit configuration for the Unstable payload builder.
     pub gas_limit_config: GasLimitConfig,
 }
 
-impl BaseBuilderConfig {
-    /// Creates a new Base payload builder configuration with the given data availability configuration.
-    pub const fn new(da_config: BaseDAConfig, gas_limit_config: GasLimitConfig) -> Self {
+impl UnstableBuilderConfig {
+    /// Creates a new Unstable payload builder configuration with the given data availability configuration.
+    pub const fn new(da_config: UnstableDAConfig, gas_limit_config: GasLimitConfig) -> Self {
         Self { da_config, gas_limit_config }
     }
 
-    /// Returns the data availability configuration for the Base payload builder, if it has
+    /// Returns the data availability configuration for the Unstable payload builder, if it has
     /// configured
     /// constraints.
-    pub fn constrained_da_config(&self) -> Option<&BaseDAConfig> {
+    pub fn constrained_da_config(&self) -> Option<&UnstableDAConfig> {
         if self.da_config.is_empty() { None } else { Some(&self.da_config) }
     }
 }
 
-/// Contains the data availability configuration for the Base payload builder.
+/// Contains the data availability configuration for the Unstable payload builder.
 ///
-/// This type is shareable and can be used to update the DA configuration for the Base payload
+/// This type is shareable and can be used to update the DA configuration for the Unstable payload
 /// builder.
 #[derive(Debug, Clone, Default)]
-pub struct BaseDAConfig {
-    inner: Arc<BaseDAConfigInner>,
+pub struct UnstableDAConfig {
+    inner: Arc<UnstableDAConfigInner>,
 }
 
-impl BaseDAConfig {
+impl UnstableDAConfig {
     /// Creates a new Data Availability configuration with the given maximum sizes.
     pub fn new(max_da_tx_size: u64, max_da_block_size: u64) -> Self {
         let this = Self::default();
@@ -79,7 +79,7 @@ impl BaseDAConfig {
 }
 
 #[derive(Debug, Default)]
-struct BaseDAConfigInner {
+struct UnstableDAConfigInner {
     /// Don't include any transactions with data availability size larger than this in any built
     /// block
     ///
@@ -91,9 +91,9 @@ struct BaseDAConfigInner {
     max_da_block_size: AtomicU64,
 }
 
-/// Contains the gas-limit configuration for the Base payload builder.
+/// Contains the gas-limit configuration for the Unstable payload builder.
 ///
-/// This type is shareable and can be used to update the gas-limit configuration for the Base
+/// This type is shareable and can be used to update the gas-limit configuration for the Unstable
 /// payload
 /// builder.
 #[derive(Debug, Clone, Default)]
@@ -128,7 +128,7 @@ mod tests {
 
     #[test]
     fn test_da() {
-        let da = BaseDAConfig::default();
+        let da = UnstableDAConfig::default();
         assert_eq!(da.max_da_tx_size(), None);
         assert_eq!(da.max_da_block_size(), None);
         da.set_max_da_size(100, 200);
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn test_da_constrained() {
-        let config = BaseBuilderConfig::default();
+        let config = UnstableBuilderConfig::default();
         assert!(config.constrained_da_config().is_none());
     }
 

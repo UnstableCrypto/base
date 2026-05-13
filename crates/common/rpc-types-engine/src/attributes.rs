@@ -1,17 +1,17 @@
-//! Payload attributes for Base chains.
+//! Payload attributes for Unstable chains.
 
 use alloc::vec::Vec;
 
 use alloy_eips::{
     Decodable2718,
-    eip1559::BaseFeeParams,
+    eip1559::UnstableFeeParams,
     eip2718::{Eip2718Result, WithEncoded},
 };
 use alloy_primitives::{B64, B256, Bytes, keccak256};
 use alloy_rlp::{Encodable, Result};
 use alloy_rpc_types_engine::{PayloadAttributes, PayloadId};
 use base_common_consensus::{
-    BaseTxEnvelope, EIP1559ParamError, HoloceneExtraData, JovianExtraData,
+    UnstableTxEnvelope, EIP1559ParamError, HoloceneExtraData, JovianExtraData,
 };
 use sha2::Digest;
 
@@ -19,7 +19,7 @@ use sha2::Digest;
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct BasePayloadAttributes {
+pub struct UnstablePayloadAttributes {
     /// The payload attributes
     #[cfg_attr(feature = "serde", serde(flatten))]
     pub payload_attributes: PayloadAttributes,
@@ -52,12 +52,12 @@ pub struct BasePayloadAttributes {
     pub min_base_fee: Option<u64>,
 }
 
-impl BasePayloadAttributes {
-    /// Generates the payload id for the configured payload from the [`BasePayloadAttributes`].
+impl UnstablePayloadAttributes {
+    /// Generates the payload id for the configured payload from the [`UnstablePayloadAttributes`].
     ///
     /// Returns an 8-byte identifier by hashing the payload components with sha256 hash.
     ///
-    /// Note: This must be updated whenever the [`BasePayloadAttributes`] changes for a hardfork.
+    /// Note: This must be updated whenever the [`UnstablePayloadAttributes`] changes for a hardfork.
     /// See also <https://github.com/ethereum-optimism/op-geth/blob/d401af16f2dd94b010a72eaef10e07ac10b31931/miner/payload_building.go#L59-L59>
     pub fn payload_id(&self, parent: &B256, payload_version: u8) -> PayloadId {
         let mut hasher = sha2::Sha256::new();
@@ -111,10 +111,10 @@ impl BasePayloadAttributes {
     /// Encodes the `eip1559` parameters for the payload.
     pub fn get_holocene_extra_data(
         &self,
-        default_base_fee_params: BaseFeeParams,
+        default_base_fee_params: UnstableFeeParams,
     ) -> Result<Bytes, EIP1559ParamError> {
         if self.min_base_fee.is_some() {
-            return Err(EIP1559ParamError::MinBaseFeeMustBeNone);
+            return Err(EIP1559ParamError::MinUnstableFeeMustBeNone);
         }
         self.eip_1559_params
             .map(|params| HoloceneExtraData::encode(params, default_base_fee_params))
@@ -132,10 +132,10 @@ impl BasePayloadAttributes {
     /// Encodes the `eip1559` parameters for the payload along with the minimum base fee.
     pub fn get_jovian_extra_data(
         &self,
-        default_base_fee_params: BaseFeeParams,
+        default_base_fee_params: UnstableFeeParams,
     ) -> Result<Bytes, EIP1559ParamError> {
         if self.min_base_fee.is_none() {
-            return Err(EIP1559ParamError::MinBaseFeeNotSet);
+            return Err(EIP1559ParamError::MinUnstableFeeNotSet);
         }
         self.eip_1559_params
             .map(|params| {
@@ -144,14 +144,14 @@ impl BasePayloadAttributes {
             .ok_or(EIP1559ParamError::NoEIP1559Params)?
     }
 
-    /// Returns an iterator over the decoded [`BaseTxEnvelope`] in this attributes.
+    /// Returns an iterator over the decoded [`UnstableTxEnvelope`] in this attributes.
     ///
     /// This iterator will be empty if there are no transactions in the attributes.
-    pub fn decoded_transactions(&self) -> impl Iterator<Item = Eip2718Result<BaseTxEnvelope>> + '_ {
+    pub fn decoded_transactions(&self) -> impl Iterator<Item = Eip2718Result<UnstableTxEnvelope>> + '_ {
         self.transactions
             .iter()
             .flatten()
-            .map(|tx_bytes| BaseTxEnvelope::decode_2718_exact(tx_bytes.as_ref()))
+            .map(|tx_bytes| UnstableTxEnvelope::decode_2718_exact(tx_bytes.as_ref()))
     }
 
     /// Returns iterator over decoded transactions with their original encoded bytes.
@@ -159,7 +159,7 @@ impl BasePayloadAttributes {
     /// This iterator will be empty if there are no transactions in the attributes.
     pub fn decoded_transactions_with_encoded(
         &self,
-    ) -> impl Iterator<Item = Eip2718Result<WithEncoded<BaseTxEnvelope>>> + '_ {
+    ) -> impl Iterator<Item = Eip2718Result<WithEncoded<UnstableTxEnvelope>>> + '_ {
         self.transactions
             .iter()
             .flatten()
@@ -168,7 +168,7 @@ impl BasePayloadAttributes {
             .map(|(tx_bytes, result)| result.map(|base_tx| WithEncoded::new(tx_bytes, base_tx)))
     }
 
-    /// Returns an iterator over the recovered [`BaseTxEnvelope`] in this attributes.
+    /// Returns an iterator over the recovered [`UnstableTxEnvelope`] in this attributes.
     ///
     /// This iterator will be empty if there are no transactions in the attributes.
     #[cfg(feature = "k256")]
@@ -176,7 +176,7 @@ impl BasePayloadAttributes {
         &self,
     ) -> impl Iterator<
         Item = Result<
-            alloy_consensus::transaction::Recovered<BaseTxEnvelope>,
+            alloy_consensus::transaction::Recovered<UnstableTxEnvelope>,
             alloy_consensus::crypto::RecoveryError,
         >,
     > + '_ {
@@ -188,7 +188,7 @@ impl BasePayloadAttributes {
         })
     }
 
-    /// Returns an iterator over the recovered [`BaseTxEnvelope`] in this attributes with their
+    /// Returns an iterator over the recovered [`UnstableTxEnvelope`] in this attributes with their
     /// original encoded bytes.
     ///
     /// This iterator will be empty if there are no transactions in the attributes.
@@ -197,7 +197,7 @@ impl BasePayloadAttributes {
         &self,
     ) -> impl Iterator<
         Item = Result<
-            WithEncoded<alloy_consensus::transaction::Recovered<BaseTxEnvelope>>,
+            WithEncoded<alloy_consensus::transaction::Recovered<UnstableTxEnvelope>>,
             alloy_consensus::crypto::RecoveryError,
         >,
     > + '_ {
@@ -228,7 +228,7 @@ mod test {
         // payload_id_builder="0x6ef26ca02318dcf9" payload_id_l2="0x03d2dae446d2a86a"
         let expected =
             PayloadId::new(FixedBytes::<8>::from_str("0x03d2dae446d2a86a").unwrap().into());
-        let attrs = BasePayloadAttributes {
+        let attrs = UnstablePayloadAttributes {
             payload_attributes: PayloadAttributes {
                 timestamp: 1728933301,
                 prev_randao: b256!("0x9158595abbdab2c90635087619aa7042bbebe47642dfab3c9bfb934f6b082765"),
@@ -261,7 +261,7 @@ mod test {
 
         let expected =
             PayloadId::new(FixedBytes::<8>::from_str("0x046c65ffc4d659ec").unwrap().into());
-        let attrs = BasePayloadAttributes {
+        let attrs = UnstablePayloadAttributes {
             payload_attributes: PayloadAttributes {
                 timestamp: 1728933301,
                 prev_randao: b256!("0x9158595abbdab2c90635087619aa7042bbebe47642dfab3c9bfb934f6b082765"),
@@ -289,7 +289,7 @@ mod test {
 
     #[test]
     fn test_serde_roundtrip_attributes_pre_holocene() {
-        let attributes = BasePayloadAttributes {
+        let attributes = UnstablePayloadAttributes {
             payload_attributes: PayloadAttributes {
                 timestamp: 0x1337,
                 prev_randao: B256::ZERO,
@@ -305,14 +305,14 @@ mod test {
         };
 
         let ser = serde_json::to_string(&attributes).unwrap();
-        let de: BasePayloadAttributes = serde_json::from_str(&ser).unwrap();
+        let de: UnstablePayloadAttributes = serde_json::from_str(&ser).unwrap();
 
         assert_eq!(attributes, de);
     }
 
     #[test]
     fn test_serde_roundtrip_attributes_post_holocene() {
-        let attributes = BasePayloadAttributes {
+        let attributes = UnstablePayloadAttributes {
             payload_attributes: PayloadAttributes {
                 timestamp: 0x1337,
                 prev_randao: B256::ZERO,
@@ -328,32 +328,32 @@ mod test {
         };
 
         let ser = serde_json::to_string(&attributes).unwrap();
-        let de: BasePayloadAttributes = serde_json::from_str(&ser).unwrap();
+        let de: UnstablePayloadAttributes = serde_json::from_str(&ser).unwrap();
 
         assert_eq!(attributes, de);
     }
 
     #[test]
     fn test_get_extra_data_post_holocene() {
-        let attributes = BasePayloadAttributes {
+        let attributes = UnstablePayloadAttributes {
             eip_1559_params: Some(B64::from_str("0x0000000800000008").unwrap()),
             ..Default::default()
         };
-        let extra_data = attributes.get_holocene_extra_data(BaseFeeParams::new(80, 60));
+        let extra_data = attributes.get_holocene_extra_data(UnstableFeeParams::new(80, 60));
         assert_eq!(extra_data.unwrap(), Bytes::copy_from_slice(&[0, 0, 0, 0, 8, 0, 0, 0, 8]));
     }
 
     #[test]
     fn test_get_extra_data_post_holocene_default() {
         let attributes =
-            BasePayloadAttributes { eip_1559_params: Some(B64::ZERO), ..Default::default() };
-        let extra_data = attributes.get_holocene_extra_data(BaseFeeParams::new(80, 60));
+            UnstablePayloadAttributes { eip_1559_params: Some(B64::ZERO), ..Default::default() };
+        let extra_data = attributes.get_holocene_extra_data(UnstableFeeParams::new(80, 60));
         assert_eq!(extra_data.unwrap(), Bytes::copy_from_slice(&[0, 0, 0, 0, 80, 0, 0, 0, 60]));
     }
 
     #[test]
     fn test_serde_roundtrip_attributes_pre_jovian() {
-        let attributes = BasePayloadAttributes {
+        let attributes = UnstablePayloadAttributes {
             payload_attributes: PayloadAttributes {
                 timestamp: 0x1337,
                 prev_randao: B256::ZERO,
@@ -369,14 +369,14 @@ mod test {
         };
 
         let ser = serde_json::to_string(&attributes).unwrap();
-        let de: BasePayloadAttributes = serde_json::from_str(&ser).unwrap();
+        let de: UnstablePayloadAttributes = serde_json::from_str(&ser).unwrap();
 
         assert_eq!(attributes, de);
     }
 
     #[test]
     fn test_serde_roundtrip_attributes_post_jovian() {
-        let attributes = BasePayloadAttributes {
+        let attributes = UnstablePayloadAttributes {
             payload_attributes: PayloadAttributes {
                 timestamp: 0x1337,
                 prev_randao: B256::ZERO,
@@ -392,20 +392,20 @@ mod test {
         };
 
         let ser = serde_json::to_string(&attributes).unwrap();
-        let de: BasePayloadAttributes = serde_json::from_str(&ser).unwrap();
+        let de: UnstablePayloadAttributes = serde_json::from_str(&ser).unwrap();
 
         assert_eq!(attributes, de);
     }
 
     #[test]
     fn test_get_extra_data_post_jovian() {
-        let attributes = BasePayloadAttributes {
+        let attributes = UnstablePayloadAttributes {
             eip_1559_params: Some(B64::from_str("0x0000000800000008").unwrap()),
             min_base_fee: Some(257),
             ..Default::default()
         };
 
-        let extra_data = attributes.get_jovian_extra_data(BaseFeeParams::new(80, 60));
+        let extra_data = attributes.get_jovian_extra_data(UnstableFeeParams::new(80, 60));
         assert_eq!(
             extra_data.unwrap(),
             Bytes::copy_from_slice(&[1, 0, 0, 0, 8, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 1, 1])
@@ -414,13 +414,13 @@ mod test {
 
     #[test]
     fn test_get_extra_data_post_jovian_default() {
-        let attributes = BasePayloadAttributes {
+        let attributes = UnstablePayloadAttributes {
             eip_1559_params: Some(B64::ZERO),
             min_base_fee: Some(0),
             ..Default::default()
         };
 
-        let extra_data = attributes.get_jovian_extra_data(BaseFeeParams::new(80, 60));
+        let extra_data = attributes.get_jovian_extra_data(UnstableFeeParams::new(80, 60));
         assert_eq!(
             extra_data.unwrap(),
             Bytes::copy_from_slice(&[1, 0, 0, 0, 80, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0])
@@ -429,27 +429,27 @@ mod test {
 
     #[test]
     fn test_get_jovian_extra_data_fails_without_min_base_fee() {
-        let attributes = BasePayloadAttributes {
+        let attributes = UnstablePayloadAttributes {
             eip_1559_params: Some(B64::from_str("0x0000000800000008").unwrap()),
             min_base_fee: None,
             ..Default::default()
         };
 
-        let result = attributes.get_jovian_extra_data(BaseFeeParams::new(80, 60));
-        assert_eq!(result.unwrap_err(), EIP1559ParamError::MinBaseFeeNotSet);
+        let result = attributes.get_jovian_extra_data(UnstableFeeParams::new(80, 60));
+        assert_eq!(result.unwrap_err(), EIP1559ParamError::MinUnstableFeeNotSet);
     }
 
     #[test]
     fn test_min_base_fee_must_be_none_before_jovian() {
-        let attributes = BasePayloadAttributes {
+        let attributes = UnstablePayloadAttributes {
             eip_1559_params: Some(B64::from_str("0x0000000800000008").unwrap()),
             min_base_fee: Some(100),
             ..Default::default()
         };
 
         // Use Holocene function for pre-Jovian decoding of extra data
-        let result = attributes.get_holocene_extra_data(BaseFeeParams::new(80, 60));
-        assert_eq!(result.unwrap_err(), EIP1559ParamError::MinBaseFeeMustBeNone);
+        let result = attributes.get_holocene_extra_data(UnstableFeeParams::new(80, 60));
+        assert_eq!(result.unwrap_err(), EIP1559ParamError::MinUnstableFeeMustBeNone);
     }
 
     // <https://github.com/alloy-rs/op-alloy/issues/601>
@@ -457,9 +457,9 @@ mod test {
     fn test_serde_attributes() {
         let json = r#"{"timestamp":"0x68e8f68b","prevRandao":"0x0c00c066d51a9cd87d962de52da13e9dfd7f08d507601f916e116aacfe370de7","suggestedFeeRecipient":"0x4200000000000000000000000000000000000011","withdrawals":[],"parentBeaconBlockRoot":"0x6d9579b008332936037f0167d74af108db1fbe22d1bd6552f2d4453419afa4e2","transactions":["0x7ef8f8a058642a460a8c2fb85bae8237221cfa2f138777697c73052afe5adbd911ec9f5194deaddeaddeaddeaddeaddeaddeaddeaddead00019442000000000000000000000000000000000000158080830f424080b8a4440a5e2000000558000c5fc500000000000000010000000068e8f688000000000000000d000000000000000000000000000000000000000000000000000000000a9dd4be0000000000000000000000000000000000000000000000000000000000000001844ea1c8f674542957f8fd73f34545ed30d24ebfa80775b869ea8848a6f38259000000000000000000000000aff0ca253b97e54440965855cec0a8a2e2399896"],"eip1559Params":"0x000000fa00000006"}"#;
 
-        let attributes: BasePayloadAttributes = serde_json::from_str(json).unwrap();
+        let attributes: UnstablePayloadAttributes = serde_json::from_str(json).unwrap();
         let val = serde_json::to_value(&attributes).unwrap();
-        let round_trip: BasePayloadAttributes = serde_json::from_value(val).unwrap();
+        let round_trip: UnstablePayloadAttributes = serde_json::from_value(val).unwrap();
         assert_eq!(attributes, round_trip);
     }
 }

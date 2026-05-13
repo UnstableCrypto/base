@@ -5,9 +5,9 @@ use base_common_consensus::EIP1559ParamError;
 
 use crate::DecodeError;
 
-/// An error encountered during Base [`Block`](alloy_consensus::Block) conversion.
+/// An error encountered during Unstable [`Block`](alloy_consensus::Block) conversion.
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
-pub enum BaseBlockConversionError {
+pub enum UnstableBlockConversionError {
     /// Invalid genesis hash.
     #[error("Invalid genesis hash. Expected {0}, got {1}")]
     InvalidGenesisHash(B256, B256),

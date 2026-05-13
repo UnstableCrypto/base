@@ -7,10 +7,10 @@ use alloy_provider::{Provider, ProviderBuilder, network::TransactionResponse};
 use alloy_rpc_types_eth::BlockNumberOrTag;
 use alloy_sol_types::sol;
 use anyhow::Result;
-use base_common_consensus::BaseTxEnvelope;
+use base_common_consensus::UnstableTxEnvelope;
 use base_common_flashblocks::Flashblock;
-use base_common_network::Base;
-use base_consensus_rpc::{BaseP2PApiClient, ConductorApiClient, RollupNodeApiClient};
+use base_common_network::Unstable;
+use base_consensus_rpc::{UnstableP2PApiClient, ConductorApiClient, RollupNodeApiClient};
 use futures::{StreamExt, stream};
 use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
 use tokio::sync::{mpsc, watch};
@@ -49,7 +49,7 @@ struct RawBlockInfo {
     timestamp: u64,
 }
 
-async fn fetch_raw_block_info<P: Provider<Base>>(
+async fn fetch_raw_block_info<P: Provider<Unstable>>(
     provider: &P,
     block_num: u64,
 ) -> Option<RawBlockInfo> {
@@ -280,7 +280,7 @@ pub async fn fetch_initial_backlog_with_progress(
         let provider = Arc::new(
             ProviderBuilder::new()
                 .disable_recommended_fillers()
-                .network::<Base>()
+                .network::<Unstable>()
                 .connect(&l2_rpc)
                 .await?,
         );
@@ -360,7 +360,7 @@ pub async fn run_block_fetcher(
 ) {
     let provider = match ProviderBuilder::new()
         .disable_recommended_fillers()
-        .network::<Base>()
+        .network::<Unstable>()
         .connect(&l2_rpc)
         .await
     {
@@ -396,7 +396,7 @@ pub struct L1BlockInfo {
     pub timestamp: u64,
     /// Total number of blobs in this L1 block.
     pub total_blobs: u64,
-    /// Number of blobs from the Base batcher.
+    /// Number of blobs from the Unstable batcher.
     pub base_blobs: u64,
 }
 
@@ -597,7 +597,7 @@ pub fn decode_flashblock_transactions(
     raw_txs
         .iter()
         .filter_map(|tx_bytes| {
-            let envelope = BaseTxEnvelope::decode_2718_exact(tx_bytes.as_ref())
+            let envelope = UnstableTxEnvelope::decode_2718_exact(tx_bytes.as_ref())
                 .inspect_err(|e| warn!(error = %e, "failed to decode transaction"))
                 .ok()?;
             let hash = envelope.tx_hash();
@@ -632,7 +632,7 @@ pub async fn fetch_block_transactions(
         let provider = Arc::new(
             ProviderBuilder::new()
                 .disable_recommended_fillers()
-                .network::<Base>()
+                .network::<Unstable>()
                 .connect(&l2_rpc)
                 .await?,
         );
@@ -875,13 +875,13 @@ pub async fn pause_sequencer_node(
             .map_err(|e| anyhow::anyhow!("{e}"))?;
 
         // Snapshot connected CL peers before disconnecting so we can restore them.
-        let dump = BaseP2PApiClient::opp2p_peers(&cl_client, true)
+        let dump = UnstableP2PApiClient::opp2p_peers(&cl_client, true)
             .await
             .map_err(|e| anyhow::anyhow!("opp2p_peers: {e}"))?;
 
         let mut cl_addrs = Vec::new();
         for (peer_id, info) in dump.peers {
-            let _ = BaseP2PApiClient::opp2p_disconnect_peer(&cl_client, peer_id).await;
+            let _ = UnstableP2PApiClient::opp2p_disconnect_peer(&cl_client, peer_id).await;
             if let Some(addr) = info.addresses.into_iter().next() {
                 cl_addrs.push(addr);
             }
@@ -939,7 +939,7 @@ pub async fn unpause_sequencer_node(
 
         let mut cl_ok = 0usize;
         for addr in &peers.cl_addrs {
-            if BaseP2PApiClient::opp2p_connect_peer(&cl_client, addr.clone()).await.is_ok() {
+            if UnstableP2PApiClient::opp2p_connect_peer(&cl_client, addr.clone()).await.is_ok() {
                 cl_ok += 1;
             }
         }
@@ -1038,7 +1038,7 @@ pub async fn run_conductor_poller(
                     ConductorApiClient::conductor_leader(conductor_client),
                     ConductorApiClient::conductor_active(conductor_client),
                     RollupNodeApiClient::sync_status(cl_client),
-                    BaseP2PApiClient::opp2p_peer_stats(cl_client),
+                    UnstableP2PApiClient::opp2p_peer_stats(cl_client),
                     async {
                         if let Some(el) = el_client {
                             let r: Result<alloy_primitives::U64, _> =
@@ -1169,7 +1169,7 @@ pub async fn run_validator_poller(
             |(name, cl_client, el_client)| async move {
                 let (sync, cl_peer_stats, el_block_r, el_syncing_r, el_peers_r) = tokio::join!(
                     RollupNodeApiClient::sync_status(cl_client),
-                    BaseP2PApiClient::opp2p_peer_stats(cl_client),
+                    UnstableP2PApiClient::opp2p_peer_stats(cl_client),
                     async {
                         if let Some(el) = el_client {
                             let r: Result<alloy_primitives::U64, _> =

@@ -7,7 +7,7 @@ use alloy_eips::eip2718::Decodable2718;
 use alloy_primitives::{Address, B256, Bytes};
 use alloy_rlp::Decodable;
 use async_trait::async_trait;
-use base_common_consensus::{BaseBlock, BaseTxEnvelope};
+use base_common_consensus::{UnstableBlock, UnstableTxEnvelope};
 use base_common_genesis::{RollupConfig, SystemConfig};
 use base_consensus_derive::L2ChainProvider;
 use base_proof_driver::PipelineCursor;
@@ -112,7 +112,7 @@ impl<T: CommsClient + Send + Sync> BatchValidationProvider for OracleL2ChainProv
             .map_err(OracleProviderError::BlockInfo)
     }
 
-    async fn block_by_number(&mut self, number: u64) -> Result<BaseBlock, Self::Error> {
+    async fn block_by_number(&mut self, number: u64) -> Result<UnstableBlock, Self::Error> {
         // Fetch the header for the given block number.
         let header @ Header { transactions_root, timestamp, .. } =
             self.header_by_number(number).await?;
@@ -131,13 +131,13 @@ impl<T: CommsClient + Send + Sync> BatchValidationProvider for OracleL2ChainProv
         let transactions = trie_walker
             .into_iter()
             .map(|(_, rlp)| {
-                let res = BaseTxEnvelope::decode_2718_exact(rlp.as_ref())?;
+                let res = UnstableTxEnvelope::decode_2718_exact(rlp.as_ref())?;
                 Ok(res)
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(OracleProviderError::Rlp)?;
 
-        let block = BaseBlock {
+        let block = UnstableBlock {
             header,
             body: BlockBody {
                 transactions,
@@ -166,7 +166,7 @@ impl<T: CommsClient + Send + Sync> L2ChainProvider for OracleL2ChainProvider<T> 
 
         // Construct the system config from the payload.
         to_system_config(&block, rollup_config.as_ref())
-            .map_err(OracleProviderError::BaseBlockConversion)
+            .map_err(OracleProviderError::UnstableBlockConversion)
     }
 }
 
@@ -267,7 +267,7 @@ impl<T: CommsClient> TrieHinter for OracleL2ChainProvider<T> {
     fn hint_execution_witness(
         &self,
         parent_hash: B256,
-        base_payload_attributes: &base_common_rpc_types_engine::BasePayloadAttributes,
+        base_payload_attributes: &base_common_rpc_types_engine::UnstablePayloadAttributes,
     ) -> Result<(), Self::Error> {
         crate::block_on(async move {
             let encoded_attributes =

@@ -92,7 +92,7 @@ where
 
     /// Derives the next batch to apply on top of the current L2 safe head.
     /// Follows the validity rules imposed on consecutive batches.
-    /// Based on currently available buffered batch and L1 origin information.
+    /// Unstabled on currently available buffered batch and L1 origin information.
     /// A [`PipelineError::Eof`] is returned if no batch can be derived yet.
     pub async fn derive_next_batch(
         &mut self,
@@ -141,7 +141,7 @@ where
                 BatchValidity::Future => {
                     // Drop Future batches post-holocene.
                     //
-                    // See: <https://specs.base.org/upgrades/holocene/derivation#batch_queue>
+                    // See: <https://specs.unstable.org/upgrades/holocene/derivation#batch_queue>
                     if !self.cfg.is_holocene_active(origin.timestamp) {
                         remaining.push(batch.clone());
                     } else {
@@ -482,7 +482,7 @@ mod tests {
     use alloy_eips::{BlockNumHash, eip2718::Decodable2718};
     use alloy_primitives::{Address, B256, Bytes, TxKind, U256, address, b256};
     use alloy_rlp::{BytesMut, Encodable};
-    use base_common_consensus::{BaseBlock, BaseTxEnvelope, OpTxType, TxDeposit};
+    use base_common_consensus::{UnstableBlock, UnstableTxEnvelope, OpTxType, TxDeposit};
     use base_common_genesis::{ChainGenesis, HardForkConfig, RollupConfig, SystemConfig};
     use base_protocol::{BatchReader, L1BlockInfoBedrock, L1BlockInfoTx};
     use tracing::Level;
@@ -1083,13 +1083,13 @@ mod tests {
         };
         let batch_txs = batch_txs
             .into_iter()
-            .map(|tx| BaseTxEnvelope::decode_2718(&mut &tx[..]).unwrap())
+            .map(|tx| UnstableTxEnvelope::decode_2718(&mut &tx[..]).unwrap())
             .collect();
         let second_batch_txs = second_batch_txs
             .into_iter()
-            .map(|tx| BaseTxEnvelope::decode_2718(&mut &tx[..]).unwrap())
+            .map(|tx| UnstableTxEnvelope::decode_2718(&mut &tx[..]).unwrap())
             .collect();
-        let block = BaseBlock {
+        let block = UnstableBlock {
             header: Header { number: 8, ..Default::default() },
             body: alloy_consensus::BlockBody {
                 transactions: batch_txs,
@@ -1097,7 +1097,7 @@ mod tests {
                 withdrawals: None,
             },
         };
-        let second = BaseBlock {
+        let second = UnstableBlock {
             header: Header { number: 9, ..Default::default() },
             body: alloy_consensus::BlockBody {
                 transactions: second_batch_txs,

@@ -19,26 +19,26 @@ use reth_trie::{
 use reth_trie_common::{BranchNodeCompact, Nibbles};
 
 use crate::{
-    BaseProofsStorageResult, BaseProofsStore, BlockStateDiff,
-    api::{BaseProofsInitialStateStore, InitialStateAnchor, OperationDurations, WriteCounts},
+    UnstableProofsStorageResult, UnstableProofsStore, BlockStateDiff,
+    api::{UnstableProofsInitialStateStore, InitialStateAnchor, OperationDurations, WriteCounts},
     cursor,
 };
 
-/// Alias for [`BaseProofsStorageWithMetrics`].
-pub type BaseProofsStorage<S> = BaseProofsStorageWithMetrics<S>;
+/// Alias for [`UnstableProofsStorageWithMetrics`].
+pub type UnstableProofsStorage<S> = UnstableProofsStorageWithMetrics<S>;
 
-/// Alias for [`TrieCursor`](cursor::BaseProofsTrieCursor) with metrics layer.
-pub type BaseProofsTrieCursor<C> = cursor::BaseProofsTrieCursor<BaseProofsTrieCursorWithMetrics<C>>;
+/// Alias for [`TrieCursor`](cursor::UnstableProofsTrieCursor) with metrics layer.
+pub type UnstableProofsTrieCursor<C> = cursor::UnstableProofsTrieCursor<UnstableProofsTrieCursorWithMetrics<C>>;
 
-/// Alias for [`BaseProofsHashedAccountCursor`](cursor::BaseProofsHashedAccountCursor) with metrics
+/// Alias for [`UnstableProofsHashedAccountCursor`](cursor::UnstableProofsHashedAccountCursor) with metrics
 /// layer.
-pub type BaseProofsHashedAccountCursor<C> =
-    cursor::BaseProofsHashedAccountCursor<BaseProofsHashedCursorWithMetrics<C>>;
+pub type UnstableProofsHashedAccountCursor<C> =
+    cursor::UnstableProofsHashedAccountCursor<UnstableProofsHashedCursorWithMetrics<C>>;
 
-/// Alias for [`BaseProofsHashedStorageCursor`](cursor::BaseProofsHashedStorageCursor) with metrics
+/// Alias for [`UnstableProofsHashedStorageCursor`](cursor::UnstableProofsHashedStorageCursor) with metrics
 /// layer.
-pub type BaseProofsHashedStorageCursor<C> =
-    cursor::BaseProofsHashedStorageCursor<BaseProofsHashedCursorWithMetrics<C>>;
+pub type UnstableProofsHashedStorageCursor<C> =
+    cursor::UnstableProofsHashedStorageCursor<UnstableProofsHashedCursorWithMetrics<C>>;
 
 /// Types of storage operations that can be tracked.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
@@ -177,12 +177,12 @@ impl StorageMetrics {
 
 /// Wrapper for [`TrieCursor`] that records metrics.
 #[derive(Debug, Constructor, Clone)]
-pub struct BaseProofsTrieCursorWithMetrics<C> {
+pub struct UnstableProofsTrieCursorWithMetrics<C> {
     cursor: C,
     metrics: Arc<StorageMetrics>,
 }
 
-impl<C: TrieCursor> TrieCursor for BaseProofsTrieCursorWithMetrics<C> {
+impl<C: TrieCursor> TrieCursor for UnstableProofsTrieCursorWithMetrics<C> {
     #[inline]
     fn seek_exact(
         &mut self,
@@ -217,7 +217,7 @@ impl<C: TrieCursor> TrieCursor for BaseProofsTrieCursorWithMetrics<C> {
     }
 }
 
-impl<C: TrieStorageCursor> TrieStorageCursor for BaseProofsTrieCursorWithMetrics<C> {
+impl<C: TrieStorageCursor> TrieStorageCursor for UnstableProofsTrieCursorWithMetrics<C> {
     #[inline]
     fn set_hashed_address(&mut self, _hashed_address: B256) {
         self.cursor.set_hashed_address(_hashed_address)
@@ -226,12 +226,12 @@ impl<C: TrieStorageCursor> TrieStorageCursor for BaseProofsTrieCursorWithMetrics
 
 /// Wrapper for [`HashedCursor`] type that records metrics.
 #[derive(Debug, Constructor, Clone)]
-pub struct BaseProofsHashedCursorWithMetrics<C> {
+pub struct UnstableProofsHashedCursorWithMetrics<C> {
     cursor: C,
     metrics: Arc<StorageMetrics>,
 }
 
-impl<C: HashedCursor> HashedCursor for BaseProofsHashedCursorWithMetrics<C> {
+impl<C: HashedCursor> HashedCursor for UnstableProofsHashedCursorWithMetrics<C> {
     type Value = C::Value;
 
     #[inline]
@@ -250,7 +250,7 @@ impl<C: HashedCursor> HashedCursor for BaseProofsHashedCursorWithMetrics<C> {
     }
 }
 
-impl<C: HashedStorageCursor> HashedStorageCursor for BaseProofsHashedCursorWithMetrics<C> {
+impl<C: HashedStorageCursor> HashedStorageCursor for UnstableProofsHashedCursorWithMetrics<C> {
     #[inline]
     fn is_storage_empty(&mut self) -> Result<bool, DatabaseError> {
         self.cursor.is_storage_empty()
@@ -262,14 +262,14 @@ impl<C: HashedStorageCursor> HashedStorageCursor for BaseProofsHashedCursorWithM
     }
 }
 
-/// Wrapper around [`BaseProofsStore`] type that records metrics for all operations.
+/// Wrapper around [`UnstableProofsStore`] type that records metrics for all operations.
 #[derive(Debug, Clone)]
-pub struct BaseProofsStorageWithMetrics<S> {
+pub struct UnstableProofsStorageWithMetrics<S> {
     storage: S,
     metrics: Arc<StorageMetrics>,
 }
 
-impl<S> BaseProofsStorageWithMetrics<S> {
+impl<S> UnstableProofsStorageWithMetrics<S> {
     /// Initializes new [`StorageMetrics`] and wraps given storage instance.
     pub fn new(storage: S) -> Self {
         Self { storage, metrics: Arc::new(StorageMetrics) }
@@ -286,34 +286,34 @@ impl<S> BaseProofsStorageWithMetrics<S> {
     }
 }
 
-impl<S> BaseProofsStore for BaseProofsStorageWithMetrics<S>
+impl<S> UnstableProofsStore for UnstableProofsStorageWithMetrics<S>
 where
-    S: BaseProofsStore,
+    S: UnstableProofsStore,
 {
     type StorageTrieCursor<'tx>
-        = BaseProofsTrieCursorWithMetrics<S::StorageTrieCursor<'tx>>
+        = UnstableProofsTrieCursorWithMetrics<S::StorageTrieCursor<'tx>>
     where
         Self: 'tx;
     type AccountTrieCursor<'tx>
-        = BaseProofsTrieCursorWithMetrics<S::AccountTrieCursor<'tx>>
+        = UnstableProofsTrieCursorWithMetrics<S::AccountTrieCursor<'tx>>
     where
         Self: 'tx;
     type StorageCursor<'tx>
-        = BaseProofsHashedCursorWithMetrics<S::StorageCursor<'tx>>
+        = UnstableProofsHashedCursorWithMetrics<S::StorageCursor<'tx>>
     where
         Self: 'tx;
     type AccountHashedCursor<'tx>
-        = BaseProofsHashedCursorWithMetrics<S::AccountHashedCursor<'tx>>
+        = UnstableProofsHashedCursorWithMetrics<S::AccountHashedCursor<'tx>>
     where
         Self: 'tx;
 
     #[inline]
-    fn get_earliest_block_number(&self) -> BaseProofsStorageResult<Option<(u64, B256)>> {
+    fn get_earliest_block_number(&self) -> UnstableProofsStorageResult<Option<(u64, B256)>> {
         self.storage.get_earliest_block_number()
     }
 
     #[inline]
-    fn get_latest_block_number(&self) -> BaseProofsStorageResult<Option<(u64, B256)>> {
+    fn get_latest_block_number(&self) -> UnstableProofsStorageResult<Option<(u64, B256)>> {
         self.storage.get_latest_block_number()
     }
 
@@ -322,18 +322,18 @@ where
         &self,
         hashed_address: B256,
         max_block_number: u64,
-    ) -> BaseProofsStorageResult<Self::StorageTrieCursor<'tx>> {
+    ) -> UnstableProofsStorageResult<Self::StorageTrieCursor<'tx>> {
         let cursor = self.storage.storage_trie_cursor(hashed_address, max_block_number)?;
-        Ok(BaseProofsTrieCursorWithMetrics::new(cursor, Arc::clone(&self.metrics)))
+        Ok(UnstableProofsTrieCursorWithMetrics::new(cursor, Arc::clone(&self.metrics)))
     }
 
     #[inline]
     fn account_trie_cursor<'tx>(
         &self,
         max_block_number: u64,
-    ) -> BaseProofsStorageResult<Self::AccountTrieCursor<'tx>> {
+    ) -> UnstableProofsStorageResult<Self::AccountTrieCursor<'tx>> {
         let cursor = self.storage.account_trie_cursor(max_block_number)?;
-        Ok(BaseProofsTrieCursorWithMetrics::new(cursor, Arc::clone(&self.metrics)))
+        Ok(UnstableProofsTrieCursorWithMetrics::new(cursor, Arc::clone(&self.metrics)))
     }
 
     #[inline]
@@ -341,18 +341,18 @@ where
         &self,
         hashed_address: B256,
         max_block_number: u64,
-    ) -> BaseProofsStorageResult<Self::StorageCursor<'tx>> {
+    ) -> UnstableProofsStorageResult<Self::StorageCursor<'tx>> {
         let cursor = self.storage.storage_hashed_cursor(hashed_address, max_block_number)?;
-        Ok(BaseProofsHashedCursorWithMetrics::new(cursor, Arc::clone(&self.metrics)))
+        Ok(UnstableProofsHashedCursorWithMetrics::new(cursor, Arc::clone(&self.metrics)))
     }
 
     #[inline]
     fn account_hashed_cursor<'tx>(
         &self,
         max_block_number: u64,
-    ) -> BaseProofsStorageResult<Self::AccountHashedCursor<'tx>> {
+    ) -> UnstableProofsStorageResult<Self::AccountHashedCursor<'tx>> {
         let cursor = self.storage.account_hashed_cursor(max_block_number)?;
-        Ok(BaseProofsHashedCursorWithMetrics::new(cursor, Arc::clone(&self.metrics)))
+        Ok(UnstableProofsHashedCursorWithMetrics::new(cursor, Arc::clone(&self.metrics)))
     }
 
     #[inline]
@@ -360,27 +360,27 @@ where
         &self,
         block_ref: BlockWithParent,
         block_state_diff: BlockStateDiff,
-    ) -> BaseProofsStorageResult<WriteCounts> {
+    ) -> UnstableProofsStorageResult<WriteCounts> {
         let result = self.storage.store_trie_updates(block_ref, block_state_diff)?;
         BlockMetrics::latest_number().set(block_ref.block.number as f64);
         Ok(result)
     }
 
     #[inline]
-    fn fetch_trie_updates(&self, block_number: u64) -> BaseProofsStorageResult<BlockStateDiff> {
+    fn fetch_trie_updates(&self, block_number: u64) -> UnstableProofsStorageResult<BlockStateDiff> {
         self.storage.fetch_trie_updates(block_number)
     }
     #[inline]
     fn prune_earliest_state(
         &self,
         new_earliest_block_ref: BlockWithParent,
-    ) -> BaseProofsStorageResult<WriteCounts> {
+    ) -> UnstableProofsStorageResult<WriteCounts> {
         BlockMetrics::earliest_number().set(new_earliest_block_ref.block.number as f64);
         self.storage.prune_earliest_state(new_earliest_block_ref)
     }
 
     #[inline]
-    fn unwind_history(&self, to: BlockWithParent) -> BaseProofsStorageResult<()> {
+    fn unwind_history(&self, to: BlockWithParent) -> UnstableProofsStorageResult<()> {
         self.storage.unwind_history(to)
     }
 
@@ -389,7 +389,7 @@ where
         &self,
         latest_common_block: BlockNumHash,
         blocks_to_add: Vec<(BlockWithParent, BlockStateDiff)>,
-    ) -> BaseProofsStorageResult<()> {
+    ) -> UnstableProofsStorageResult<()> {
         self.storage.replace_updates(latest_common_block, blocks_to_add)
     }
 
@@ -398,23 +398,23 @@ where
         &self,
         block_number: u64,
         hash: B256,
-    ) -> BaseProofsStorageResult<()> {
+    ) -> UnstableProofsStorageResult<()> {
         BlockMetrics::earliest_number().set(block_number as f64);
         self.storage.set_earliest_block_number(block_number, hash)
     }
 }
 
-impl<S> BaseProofsInitialStateStore for BaseProofsStorageWithMetrics<S>
+impl<S> UnstableProofsInitialStateStore for UnstableProofsStorageWithMetrics<S>
 where
-    S: BaseProofsInitialStateStore,
+    S: UnstableProofsInitialStateStore,
 {
     #[inline]
-    fn initial_state_anchor(&self) -> BaseProofsStorageResult<InitialStateAnchor> {
+    fn initial_state_anchor(&self) -> UnstableProofsStorageResult<InitialStateAnchor> {
         self.storage.initial_state_anchor()
     }
 
     #[inline]
-    fn set_initial_state_anchor(&self, anchor: BlockNumHash) -> BaseProofsStorageResult<()> {
+    fn set_initial_state_anchor(&self, anchor: BlockNumHash) -> UnstableProofsStorageResult<()> {
         self.storage.set_initial_state_anchor(anchor)
     }
 
@@ -422,7 +422,7 @@ where
     fn store_account_branches(
         &self,
         account_nodes: Vec<(Nibbles, Option<BranchNodeCompact>)>,
-    ) -> BaseProofsStorageResult<()> {
+    ) -> UnstableProofsStorageResult<()> {
         let count = account_nodes.len();
         let start = Instant::now();
         let result = self.storage.store_account_branches(account_nodes);
@@ -444,7 +444,7 @@ where
         &self,
         hashed_address: B256,
         storage_nodes: Vec<(Nibbles, Option<BranchNodeCompact>)>,
-    ) -> BaseProofsStorageResult<()> {
+    ) -> UnstableProofsStorageResult<()> {
         let count = storage_nodes.len();
         let start = Instant::now();
         let result = self.storage.store_storage_branches(hashed_address, storage_nodes);
@@ -465,7 +465,7 @@ where
     fn store_hashed_accounts(
         &self,
         accounts: Vec<(B256, Option<Account>)>,
-    ) -> BaseProofsStorageResult<()> {
+    ) -> UnstableProofsStorageResult<()> {
         let count = accounts.len();
         let start = Instant::now();
         let result = self.storage.store_hashed_accounts(accounts);
@@ -487,7 +487,7 @@ where
         &self,
         hashed_address: B256,
         storages: Vec<(B256, U256)>,
-    ) -> BaseProofsStorageResult<()> {
+    ) -> UnstableProofsStorageResult<()> {
         let count = storages.len();
         let start = Instant::now();
         let result = self.storage.store_hashed_storages(hashed_address, storages);
@@ -505,16 +505,16 @@ where
     }
 
     #[inline]
-    fn commit_initial_state(&self) -> BaseProofsStorageResult<BlockNumHash> {
+    fn commit_initial_state(&self) -> UnstableProofsStorageResult<BlockNumHash> {
         let block = self.storage.commit_initial_state()?;
         BlockMetrics::earliest_number().set(block.number as f64);
         Ok(block)
     }
 }
 
-impl<S> From<S> for BaseProofsStorageWithMetrics<S>
+impl<S> From<S> for UnstableProofsStorageWithMetrics<S>
 where
-    S: BaseProofsStore + Clone + 'static,
+    S: UnstableProofsStore + Clone + 'static,
 {
     fn from(storage: S) -> Self {
         Self::new(storage)

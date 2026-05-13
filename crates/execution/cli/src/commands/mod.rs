@@ -2,7 +2,7 @@
 
 use std::{fmt, sync::Arc};
 
-use base_execution_chainspec::BaseChainSpec;
+use base_execution_chainspec::UnstableChainSpec;
 use clap::Subcommand;
 use reth_cli_commands::{
     config_cmd, db, dump_genesis, init_cmd,
@@ -10,7 +10,7 @@ use reth_cli_commands::{
     prune, re_execute, stage,
 };
 
-use crate::chainspec::BaseChainSpecParser;
+use crate::chainspec::UnstableChainSpecParser;
 
 pub mod base_proofs;
 pub mod init_state;
@@ -24,21 +24,21 @@ pub mod test_vectors;
 pub enum Commands<Ext: clap::Args + fmt::Debug = NoArgs> {
     /// Start the node
     #[command(name = "node")]
-    Node(Box<node::NodeCommand<BaseChainSpecParser, Ext>>),
+    Node(Box<node::NodeCommand<UnstableChainSpecParser, Ext>>),
     /// Initialize the database from a genesis file.
     #[command(name = "init")]
-    Init(init_cmd::InitCommand<BaseChainSpecParser>),
+    Init(init_cmd::InitCommand<UnstableChainSpecParser>),
     /// Initialize the database from a state dump file.
     #[command(name = "init-state")]
-    InitState(init_state::BaseInitStateCommand<BaseChainSpecParser>),
+    InitState(init_state::UnstableInitStateCommand<UnstableChainSpecParser>),
     /// Dumps genesis block JSON configuration to stdout.
-    DumpGenesis(dump_genesis::DumpGenesisCommand<BaseChainSpecParser>),
+    DumpGenesis(dump_genesis::DumpGenesisCommand<UnstableChainSpecParser>),
     /// Database debugging utilities
     #[command(name = "db")]
-    Db(db::Command<BaseChainSpecParser>),
+    Db(db::Command<UnstableChainSpecParser>),
     /// Manipulate individual stages.
     #[command(name = "stage")]
-    Stage(Box<stage::Command<BaseChainSpecParser>>),
+    Stage(Box<stage::Command<UnstableChainSpecParser>>),
     /// P2P Debugging utilities
     #[command(name = "p2p")]
     P2P(Box<p2p::Command>),
@@ -47,22 +47,22 @@ pub enum Commands<Ext: clap::Args + fmt::Debug = NoArgs> {
     Config(config_cmd::Command),
     /// Prune according to the configuration without any limits
     #[command(name = "prune")]
-    Prune(prune::PruneCommand<BaseChainSpecParser>),
+    Prune(prune::PruneCommand<UnstableChainSpecParser>),
     /// Generate Test Vectors
     #[cfg(feature = "dev")]
     #[command(name = "test-vectors")]
     TestVectors(test_vectors::Command),
     /// Re-execute blocks in parallel to verify historical sync correctness.
     #[command(name = "re-execute")]
-    ReExecute(re_execute::Command<BaseChainSpecParser>),
+    ReExecute(re_execute::Command<UnstableChainSpecParser>),
     /// Manage storage of historical proofs in expanded trie db in fault proof window.
     #[command(name = "proofs")]
-    BaseProofs(base_proofs::Command<BaseChainSpecParser>),
+    UnstableProofs(base_proofs::Command<UnstableChainSpecParser>),
 }
 
 impl<Ext: clap::Args + fmt::Debug> Commands<Ext> {
     /// Returns the underlying chain being used for commands
-    pub fn chain_spec(&self) -> Option<&Arc<BaseChainSpec>> {
+    pub fn chain_spec(&self) -> Option<&Arc<UnstableChainSpec>> {
         match self {
             Self::Node(cmd) => cmd.chain_spec(),
             Self::Init(cmd) => cmd.chain_spec(),
@@ -76,7 +76,7 @@ impl<Ext: clap::Args + fmt::Debug> Commands<Ext> {
             #[cfg(feature = "dev")]
             Self::TestVectors(_) => None,
             Self::ReExecute(cmd) => cmd.chain_spec(),
-            Self::BaseProofs(cmd) => cmd.chain_spec(),
+            Self::UnstableProofs(cmd) => cmd.chain_spec(),
         }
     }
 }

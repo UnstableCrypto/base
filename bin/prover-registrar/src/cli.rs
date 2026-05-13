@@ -26,7 +26,7 @@ use base_proof_tee_registrar::{
     NitroVerifierContractClient, ProverClient, ProvingConfig, RegistrarConfig, RegistrarError,
     RegistrarMetrics, RegistrationDriver, RegistryContractClient,
 };
-use base_tx_manager::{BaseTxMetrics, SignerConfig, SimpleTxManager, TxManagerConfig};
+use base_tx_manager::{UnstableTxMetrics, SignerConfig, SimpleTxManager, TxManagerConfig};
 use clap::{Args, Parser, ValueEnum};
 use eyre::WrapErr;
 use tokio_util::sync::CancellationToken;
@@ -473,7 +473,7 @@ impl Cli {
             config.signing,
             config.tx_manager,
             config.l1_chain_id,
-            Arc::new(BaseTxMetrics::new("registrar")),
+            Arc::new(UnstableTxMetrics::new("registrar")),
         )
         .await?;
 

@@ -1,4 +1,4 @@
-//! Based binary entry point.
+//! Unstabled binary entry point.
 
 use std::net::UdpSocket;
 

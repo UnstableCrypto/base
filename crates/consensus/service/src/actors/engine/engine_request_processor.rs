@@ -2,7 +2,7 @@ use std::{fmt, sync::Arc};
 
 use alloy_eips::BlockNumberOrTag;
 use base_common_genesis::RollupConfig;
-use base_common_rpc_types_engine::BaseExecutionPayloadEnvelope;
+use base_common_rpc_types_engine::UnstableExecutionPayloadEnvelope;
 use base_consensus_derive::{ResetSignal, Signal};
 use base_consensus_engine::{
     BuildTask, ConsolidateInput, ConsolidateTask, DelegatedForkchoiceTask,
@@ -46,9 +46,9 @@ pub enum EngineProcessingRequest {
     /// Request to process the finalized L2 block with the provided block number.
     ProcessFinalizedL2BlockNumber(Box<u64>),
     /// Request to process a received unsafe L2 block.
-    ProcessUnsafeL2Block(Box<BaseExecutionPayloadEnvelope>),
+    ProcessUnsafeL2Block(Box<UnstableExecutionPayloadEnvelope>),
     /// Request to process a locally produced sequencer unsafe L2 block.
-    ProcessLocalUnsafeL2Block(Box<BaseExecutionPayloadEnvelope>),
+    ProcessLocalUnsafeL2Block(Box<UnstableExecutionPayloadEnvelope>),
     /// Request to reset the forkchoice.
     Reset(Box<ResetRequest>),
     /// Request to seal a block.
@@ -243,7 +243,7 @@ where
         Ok(())
     }
 
-    fn enqueue_unsafe_payload_insert(&mut self, envelope: BaseExecutionPayloadEnvelope) {
+    fn enqueue_unsafe_payload_insert(&mut self, envelope: UnstableExecutionPayloadEnvelope) {
         self.log_follower_upgrade_activation(&envelope);
         let task = EngineTask::Insert(Box::new(InsertTask::unsafe_payload(
             Arc::clone(&self.client),
@@ -253,7 +253,7 @@ where
         self.engine.enqueue(task);
     }
 
-    fn handle_external_unsafe_l2_block(&mut self, envelope: BaseExecutionPayloadEnvelope) {
+    fn handle_external_unsafe_l2_block(&mut self, envelope: UnstableExecutionPayloadEnvelope) {
         let block_number = envelope.execution_payload.block_number();
         let sync_state = self.engine.state().sync_state;
         let unsafe_head = sync_state.unsafe_head();
@@ -300,7 +300,7 @@ where
         );
     }
 
-    fn handle_local_unsafe_l2_block(&mut self, envelope: BaseExecutionPayloadEnvelope) {
+    fn handle_local_unsafe_l2_block(&mut self, envelope: UnstableExecutionPayloadEnvelope) {
         debug!(
             target: "engine",
             block_number = envelope.execution_payload.block_number(),
@@ -357,7 +357,7 @@ where
         Ok(())
     }
 
-    fn log_follower_upgrade_activation(&self, envelope: &BaseExecutionPayloadEnvelope) {
+    fn log_follower_upgrade_activation(&self, envelope: &UnstableExecutionPayloadEnvelope) {
         if self.node_mode.is_sequencer() {
             return;
         }
@@ -766,8 +766,8 @@ mod tests {
     };
     use alloy_rpc_types_eth::Block as RpcBlock;
     use base_common_genesis::{ChainGenesis, RollupConfig, SystemConfig};
-    use base_common_rpc_types::Transaction as BaseTransaction;
-    use base_common_rpc_types_engine::{BaseExecutionPayload, BaseExecutionPayloadEnvelope};
+    use base_common_rpc_types::Transaction as UnstableTransaction;
+    use base_common_rpc_types_engine::{UnstableExecutionPayload, UnstableExecutionPayloadEnvelope};
     use base_consensus_derive::Signal;
     use base_consensus_engine::{
         Engine, EngineState,
@@ -790,8 +790,8 @@ mod tests {
     ///
     /// Use the returned hash as `genesis.l2.hash` in the test rollup config so that
     /// [`L2BlockInfo::from_block_and_genesis`] accepts the block via the genesis path.
-    fn make_genesis_block() -> (RpcBlock<BaseTransaction>, B256) {
-        let block = RpcBlock::<BaseTransaction>::default();
+    fn make_genesis_block() -> (RpcBlock<UnstableTransaction>, B256) {
+        let block = RpcBlock::<UnstableTransaction>::default();
         let hash = block.clone().into_consensus().hash_slow();
         (block, hash)
     }
@@ -827,10 +827,10 @@ mod tests {
         block_number: u64,
         parent_hash: B256,
         block_hash: B256,
-    ) -> BaseExecutionPayloadEnvelope {
-        BaseExecutionPayloadEnvelope {
+    ) -> UnstableExecutionPayloadEnvelope {
+        UnstableExecutionPayloadEnvelope {
             parent_beacon_block_root: None,
-            execution_payload: BaseExecutionPayload::V1(ExecutionPayloadV1 {
+            execution_payload: UnstableExecutionPayload::V1(ExecutionPayloadV1 {
                 parent_hash,
                 fee_recipient: Address::ZERO,
                 state_root: B256::ZERO,
@@ -1012,7 +1012,7 @@ mod tests {
         #[case] unsafe_head: L2BlockInfo,
         #[case] safe_head: Option<L2BlockInfo>,
         #[case] local_payload: bool,
-        #[case] envelope: BaseExecutionPayloadEnvelope,
+        #[case] envelope: UnstableExecutionPayloadEnvelope,
         #[case] expected_queue_len: usize,
     ) {
         let (mut processor, queue_rx) =

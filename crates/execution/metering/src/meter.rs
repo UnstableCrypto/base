@@ -9,8 +9,8 @@ use alloy_primitives::{
 };
 use base_bundles::{BundleExtensions, BundleTxs, OpcodeGas, ParsedBundle, TransactionResult};
 use base_common_evm::L1BlockInfo;
-use base_execution_chainspec::BaseChainSpec;
-use base_execution_evm::{BaseEvmConfig, BaseNextBlockEnvAttributes};
+use base_execution_chainspec::UnstableChainSpec;
+use base_execution_evm::{UnstableEvmConfig, UnstableNextBlockEnvAttributes};
 use eyre::{Result as EyreResult, eyre};
 use reth_evm::{ConfigureEvm, Evm as _, execute::BlockBuilder};
 use reth_primitives_traits::{Account, SealedHeader};
@@ -263,7 +263,7 @@ pub struct MeterBundleInput<SP> {
     /// State provider used to read pre-execution account and storage state.
     pub state_provider: SP,
     /// Chain spec used to construct the EVM environment.
-    pub chain_spec: Arc<BaseChainSpec>,
+    pub chain_spec: Arc<UnstableChainSpec>,
     /// The bundle to simulate.
     pub bundle: ParsedBundle,
     /// Header used as the parent block for simulation; the EVM env is derived from it.
@@ -393,7 +393,7 @@ where
     let timestamp = bundle.min_timestamp.unwrap_or_else(|| header.timestamp() + BLOCK_TIME);
     // Pending flashblock headers may omit parent_beacon_block_root; prefer the explicit value
     // provided by the caller (e.g., flashblock base payload) to keep EIP-4788 happy.
-    let attributes = BaseNextBlockEnvAttributes {
+    let attributes = UnstableNextBlockEnvAttributes {
         timestamp,
         suggested_fee_recipient: header.beneficiary(),
         prev_randao: header.mix_hash().unwrap_or_else(B256::random),
@@ -412,7 +412,7 @@ where
 
     let total_start = Instant::now();
     {
-        let evm_config = BaseEvmConfig::base(chain_spec);
+        let evm_config = UnstableEvmConfig::base(chain_spec);
         let evm_env = evm_config.next_evm_env(header, &attributes)?;
         let spec = evm_env.cfg_env.spec;
         let precompile_addrs = metered_opcodes.precompiles.keys().copied().collect();
@@ -580,7 +580,7 @@ mod tests {
     use alloy_primitives::{Address, Bytes, keccak256, utils::Unit};
     use alloy_sol_types::SolCall;
     use base_bundles::{Bundle, ParsedBundle};
-    use base_common_consensus::BaseTransactionSigned;
+    use base_common_consensus::UnstableTransactionSigned;
     use base_node_runner::test_utils::TestHarness;
     use base_test_utils::{Account, ContractFactory, SimpleStorage};
     use eyre::Context;
@@ -590,7 +590,7 @@ mod tests {
 
     use super::*;
 
-    fn create_parsed_bundle(txs: Vec<BaseTransactionSigned>) -> eyre::Result<ParsedBundle> {
+    fn create_parsed_bundle(txs: Vec<UnstableTransactionSigned>) -> eyre::Result<ParsedBundle> {
         let txs: Vec<Bytes> = txs.iter().map(|tx| Bytes::from(tx.encoded_2718())).collect();
 
         let bundle = Bundle {
@@ -665,7 +665,7 @@ mod tests {
             .max_priority_fee_per_gas(1)
             .into_eip1559();
 
-        let tx = BaseTransactionSigned::Eip1559(
+        let tx = UnstableTransactionSigned::Eip1559(
             signed_tx.as_eip1559().expect("eip1559 transaction").clone(),
         );
         let tx_hash = tx.tx_hash();
@@ -739,7 +739,7 @@ mod tests {
             .input(SimpleStorage::setValueCall { v: U256::from(42) }.abi_encode())
             .into_eip1559();
 
-        let tx = BaseTransactionSigned::Eip1559(
+        let tx = UnstableTransactionSigned::Eip1559(
             signed_tx.as_eip1559().expect("eip1559 transaction").clone(),
         );
 
@@ -795,7 +795,7 @@ mod tests {
             .input(SimpleStorage::setValueCall { v: U256::from(42) }.abi_encode())
             .into_eip1559();
 
-        let tx = BaseTransactionSigned::Eip1559(
+        let tx = UnstableTransactionSigned::Eip1559(
             signed_tx.as_eip1559().expect("eip1559 transaction").clone(),
         );
 
@@ -857,7 +857,7 @@ mod tests {
             )
             .into_eip1559();
 
-        let tx = BaseTransactionSigned::Eip1559(
+        let tx = UnstableTransactionSigned::Eip1559(
             signed_tx.as_eip1559().expect("eip1559 transaction").clone(),
         );
 
@@ -911,7 +911,7 @@ mod tests {
             .max_priority_fee_per_gas(1)
             .into_eip1559();
 
-        let tx = BaseTransactionSigned::Eip1559(
+        let tx = UnstableTransactionSigned::Eip1559(
             signed_tx.as_eip1559().expect("eip1559 transaction").clone(),
         );
 
@@ -963,7 +963,7 @@ mod tests {
             .input(SimpleStorage::setValueCall { v: U256::from(42) }.abi_encode())
             .into_eip1559();
 
-        let tx = BaseTransactionSigned::Eip1559(
+        let tx = UnstableTransactionSigned::Eip1559(
             signed_tx.as_eip1559().expect("eip1559 transaction").clone(),
         );
 
@@ -1112,7 +1112,7 @@ mod tests {
             .max_priority_fee_per_gas(1)
             .into_eip1559();
 
-        let tx_1 = BaseTransactionSigned::Eip1559(
+        let tx_1 = UnstableTransactionSigned::Eip1559(
             signed_tx_1.as_eip1559().expect("eip1559 transaction").clone(),
         );
 
@@ -1128,7 +1128,7 @@ mod tests {
             .max_priority_fee_per_gas(2)
             .into_eip1559();
 
-        let tx_2 = BaseTransactionSigned::Eip1559(
+        let tx_2 = UnstableTransactionSigned::Eip1559(
             signed_tx_2.as_eip1559().expect("eip1559 transaction").clone(),
         );
 
@@ -1212,7 +1212,7 @@ mod tests {
             .max_priority_fee_per_gas(1)
             .into_eip1559();
 
-        let tx = BaseTransactionSigned::Eip1559(
+        let tx = UnstableTransactionSigned::Eip1559(
             signed_tx.as_eip1559().expect("eip1559 transaction").clone(),
         );
 
@@ -1270,7 +1270,7 @@ mod tests {
             .max_priority_fee_per_gas(0)
             .into_eip1559();
 
-        let tx = BaseTransactionSigned::Eip1559(
+        let tx = UnstableTransactionSigned::Eip1559(
             signed_tx.as_eip1559().expect("eip1559 transaction").clone(),
         );
         let parsed_bundle = create_parsed_bundle(vec![tx])?;
@@ -1353,7 +1353,7 @@ mod tests {
             .max_priority_fee_per_gas(0)
             .into_eip1559();
 
-        let tx = BaseTransactionSigned::Eip1559(
+        let tx = UnstableTransactionSigned::Eip1559(
             signed_tx.as_eip1559().expect("eip1559 transaction").clone(),
         );
         let parsed_bundle = create_parsed_bundle(vec![tx])?;
@@ -1457,7 +1457,7 @@ mod tests {
             .max_priority_fee_per_gas(0)
             .into_eip1559();
 
-        let tx = BaseTransactionSigned::Eip1559(
+        let tx = UnstableTransactionSigned::Eip1559(
             signed_tx.as_eip1559().expect("eip1559 transaction").clone(),
         );
 
@@ -1511,7 +1511,7 @@ mod tests {
             .max_priority_fee_per_gas(0)
             .into_eip1559();
 
-        let tx = BaseTransactionSigned::Eip1559(
+        let tx = UnstableTransactionSigned::Eip1559(
             signed_tx.as_eip1559().expect("eip1559 transaction").clone(),
         );
 
@@ -1570,7 +1570,7 @@ mod tests {
             .max_priority_fee_per_gas(1)
             .into_eip1559();
 
-        let tx = BaseTransactionSigned::Eip1559(
+        let tx = UnstableTransactionSigned::Eip1559(
             signed_tx.as_eip1559().expect("eip1559 transaction").clone(),
         );
 
@@ -1661,7 +1661,7 @@ mod tests {
             .max_priority_fee_per_gas(0)
             .into_eip1559();
 
-        let tx = BaseTransactionSigned::Eip1559(
+        let tx = UnstableTransactionSigned::Eip1559(
             signed_tx.as_eip1559().expect("eip1559 transaction").clone(),
         );
         let parsed_bundle = create_parsed_bundle(vec![tx])?;

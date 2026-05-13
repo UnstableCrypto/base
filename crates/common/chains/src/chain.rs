@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::ops::Index;
 
-use BaseUpgrade::{
+use UnstableUpgrade::{
     Azul, Bedrock, Beryl, Canyon, Ecotone, Fjord, Granite, Holocene, Isthmus, Jovian, Regolith,
 };
 // Production imports for upgrade implementations
@@ -13,52 +13,52 @@ use EthereumHardfork::{
 use alloy_hardforks::{EthereumHardfork, EthereumHardforks, ForkCondition};
 use alloy_primitives::U256;
 
-use crate::{BaseUpgrade, Upgrades};
+use crate::{UnstableUpgrade, Upgrades};
 
 /// A type allowing to configure activation [`ForkCondition`]s for a given list of
-/// [`BaseUpgrade`]s.
+/// [`UnstableUpgrade`]s.
 ///
-/// Zips together [`EthereumHardfork`]s and [`BaseUpgrade`]s. Base hard forks whenever Ethereum
-/// hard forks. When Ethereum hard forks, a new [`BaseUpgrade`] piggybacks on top of the new
+/// Zips together [`EthereumHardfork`]s and [`UnstableUpgrade`]s. Unstable hard forks whenever Ethereum
+/// hard forks. When Ethereum hard forks, a new [`UnstableUpgrade`] piggybacks on top of the new
 /// [`EthereumHardfork`] to include (or to noop) the L1 changes on L2.
 ///
-/// Base can also hard fork independently of Ethereum. The relation between Ethereum and Base
-/// hard forks is described by predicate [`EthereumHardfork`] `=>` [`BaseUpgrade`], since a Base
-/// chain can undergo a [`BaseUpgrade`] without an [`EthereumHardfork`], but not the other way
+/// Unstable can also hard fork independently of Ethereum. The relation between Ethereum and Unstable
+/// hard forks is described by predicate [`EthereumHardfork`] `=>` [`UnstableUpgrade`], since a Unstable
+/// chain can undergo a [`UnstableUpgrade`] without an [`EthereumHardfork`], but not the other way
 /// around.
 #[derive(Debug, Clone)]
 pub struct ChainUpgrades {
     /// Ordered list of upgrade activations.
-    forks: Vec<(BaseUpgrade, ForkCondition)>,
+    forks: Vec<(UnstableUpgrade, ForkCondition)>,
 }
 
 impl ChainUpgrades {
     /// Creates a new [`ChainUpgrades`] with the given list of forks. The input list is sorted
-    /// w.r.t. the hardcoded canonicity of [`BaseUpgrade`]s.
-    pub fn new(forks: impl IntoIterator<Item = (BaseUpgrade, ForkCondition)>) -> Self {
+    /// w.r.t. the hardcoded canonicity of [`UnstableUpgrade`]s.
+    pub fn new(forks: impl IntoIterator<Item = (UnstableUpgrade, ForkCondition)>) -> Self {
         let mut forks = forks.into_iter().collect::<Vec<_>>();
         forks.sort();
         Self { forks }
     }
 
-    /// Creates a new [`ChainUpgrades`] with Base mainnet configuration.
+    /// Creates a new [`ChainUpgrades`] with Unstable mainnet configuration.
     pub fn mainnet() -> Self {
-        Self::new(BaseUpgrade::mainnet())
+        Self::new(UnstableUpgrade::mainnet())
     }
 
-    /// Creates a new [`ChainUpgrades`] with Base Sepolia configuration.
+    /// Creates a new [`ChainUpgrades`] with Unstable Sepolia configuration.
     pub fn sepolia() -> Self {
-        Self::new(BaseUpgrade::sepolia())
+        Self::new(UnstableUpgrade::sepolia())
     }
 
     /// Creates a new [`ChainUpgrades`] with devnet configuration.
     pub fn devnet() -> Self {
-        Self::new(BaseUpgrade::devnet())
+        Self::new(UnstableUpgrade::devnet())
     }
 
-    /// Creates a new [`ChainUpgrades`] with Base Zeronet configuration.
+    /// Creates a new [`ChainUpgrades`] with Unstable Zeronet configuration.
     pub fn zeronet() -> Self {
-        Self::new(BaseUpgrade::zeronet())
+        Self::new(UnstableUpgrade::zeronet())
     }
 }
 
@@ -81,7 +81,7 @@ impl EthereumHardforks for ChainUpgrades {
 }
 
 impl Upgrades for ChainUpgrades {
-    fn upgrade_activation(&self, fork: BaseUpgrade) -> ForkCondition {
+    fn upgrade_activation(&self, fork: UnstableUpgrade) -> ForkCondition {
         // check index out of bounds
         if self.forks.len() <= fork.idx() {
             return ForkCondition::Never;
@@ -90,10 +90,10 @@ impl Upgrades for ChainUpgrades {
     }
 }
 
-impl Index<BaseUpgrade> for ChainUpgrades {
+impl Index<UnstableUpgrade> for ChainUpgrades {
     type Output = ForkCondition;
 
-    fn index(&self, hf: BaseUpgrade) -> &Self::Output {
+    fn index(&self, hf: UnstableUpgrade) -> &Self::Output {
         match hf {
             Bedrock => &self.forks[Bedrock.idx()].1,
             Regolith => &self.forks[Regolith.idx()].1,
@@ -136,7 +136,7 @@ impl Index<EthereumHardfork> for ChainUpgrades {
 
 #[cfg(test)]
 mod tests {
-    use BaseUpgrade::{
+    use UnstableUpgrade::{
         Azul, Bedrock, Beryl, Canyon, Ecotone, Fjord, Granite, Holocene, Isthmus, Jovian, Regolith,
     };
     use alloy_hardforks::EthereumHardfork;
@@ -341,7 +341,7 @@ mod tests {
         for ethereum_hardfork in EthereumHardfork::VARIANTS {
             let _ = base_mainnet_forks.ethereum_fork_activation(*ethereum_hardfork);
         }
-        for base_hardfork in BaseUpgrade::VARIANTS {
+        for base_hardfork in UnstableUpgrade::VARIANTS {
             let _ = base_mainnet_forks.upgrade_activation(*base_hardfork);
         }
     }

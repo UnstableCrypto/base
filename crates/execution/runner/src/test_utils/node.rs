@@ -1,11 +1,11 @@
-//! Local node setup with Base Sepolia chainspec
+//! Local node setup with Unstable Sepolia chainspec
 
 use std::{any::Any, fmt, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use alloy_provider::RootProvider;
 use alloy_rpc_client::RpcClient;
-use base_common_network::Base;
-use base_execution_chainspec::BaseChainSpec;
+use base_common_network::Unstable;
+use base_execution_chainspec::UnstableChainSpec;
 use base_node_core::args::RollupArgs;
 use eyre::Result;
 use reth_db::{
@@ -21,11 +21,11 @@ use reth_provider::providers::BlockchainProvider;
 use reth_tasks::Runtime;
 
 use crate::{
-    BaseNodeExtension, BaseProvider, NodeHooks, node::BaseNode, test_utils::engine::EngineApi,
+    UnstableNodeExtension, UnstableProvider, NodeHooks, node::UnstableNode, test_utils::engine::EngineApi,
 };
 
 /// Convenience alias for the local blockchain provider type.
-pub type LocalNodeProvider = BaseProvider;
+pub type LocalNodeProvider = UnstableProvider;
 
 /// Handle to a launched local node along with the resources required to keep it alive.
 pub struct LocalNode {
@@ -61,8 +61,8 @@ impl fmt::Debug for LocalNode {
 impl LocalNode {
     /// Launch a new local node with the provided extensions and chain spec.
     pub async fn new(
-        extensions: Vec<Box<dyn BaseNodeExtension>>,
-        chain_spec: Arc<BaseChainSpec>,
+        extensions: Vec<Box<dyn UnstableNodeExtension>>,
+        chain_spec: Arc<UnstableChainSpec>,
     ) -> Result<Self> {
         let exec = Runtime::test();
 
@@ -82,7 +82,7 @@ impl LocalNode {
             RpcServerArgs::default().with_unused_ports().with_http().with_auth_ipc().with_ws();
         rpc_args.auth_ipc_path = unique_ipc_path;
 
-        let base_node = BaseNode::new(RollupArgs::default());
+        let base_node = UnstableNode::new(RollupArgs::default());
 
         let (db, db_path) = Self::create_test_database()?;
 
@@ -98,7 +98,7 @@ impl LocalNode {
         let builder = NodeBuilder::new(node_config.clone())
             .with_database(db)
             .with_launch_context(exec.clone())
-            .with_types_and_provider::<BaseNode, BlockchainProvider<_>>()
+            .with_types_and_provider::<UnstableNode, BlockchainProvider<_>>()
             .with_components(base_node.components())
             .with_add_ons(base_node.add_ons())
             .on_component_initialized(move |_ctx| Ok(()));
@@ -145,10 +145,10 @@ impl LocalNode {
     }
 
     /// Create an HTTP provider pointed at the node's public RPC endpoint.
-    pub fn provider(&self) -> Result<RootProvider<Base>> {
+    pub fn provider(&self) -> Result<RootProvider<Unstable>> {
         let url = format!("http://{}", self.http_api_addr);
         let client = RpcClient::builder().http(url.parse()?);
-        Ok(RootProvider::<Base>::new(client))
+        Ok(RootProvider::<Unstable>::new(client))
     }
 
     /// HTTP RPC address for the local node.

@@ -15,7 +15,7 @@ use base_proof_contracts::{
 };
 use base_proof_rpc::{L1Client, L1ClientConfig, L2Client, L2ClientConfig};
 use base_runtime::TokioRuntime;
-use base_tx_manager::{BaseTxMetrics, SimpleTxManager};
+use base_tx_manager::{UnstableTxMetrics, SimpleTxManager};
 use base_zk_client::{ZkProofClient, ZkProofClientConfig};
 use eyre::Result;
 use tokio_util::sync::CancellationToken;
@@ -92,7 +92,7 @@ impl ChallengerService {
             signer_config,
             config.tx_manager,
             chain_id,
-            Arc::new(BaseTxMetrics::new("challenger")),
+            Arc::new(UnstableTxMetrics::new("challenger")),
         )
         .await
         .map_err(|e| eyre::eyre!("failed to construct tx manager: {e}"))?;

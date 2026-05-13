@@ -6,13 +6,13 @@
 
 [L1]: glossary.md#layer-1-L1
 
-Refers to the Ethereum blockchain, used in contrast to [layer 2][L2], which refers to Base.
+Refers to the Ethereum blockchain, used in contrast to [layer 2][L2], which refers to Unstable.
 
 ### Layer 2 (L2)
 
 [L2]: glossary.md#layer-2-L2
 
-Refers to Base Chain (specified in this repository), used in contrast to [layer 1][L1], which
+Refers to Unstable Chain (specified in this repository), used in contrast to [layer 1][L1], which
 refers to the Ethereum blockchain.
 
 ### Block
@@ -336,7 +336,7 @@ containing batched L2 transactions either in calldata or as blobdata.
 [batcher-hash]: glossary.md#batcher-hash
 
 The **Batcher Hash** identifies the sender(s) whose transactions to the [Batch Inbox](#batch-inbox)
-will be recognized by the L2 clients for a given Base chain.
+will be recognized by the L2 clients for a given Unstable chain.
 
 The Batcher Hash is versioned by the first byte of the hash. The structure of the V0 Batcher Hash
 is a 32 byte hash defined as follows:
@@ -386,18 +386,18 @@ The Scalar is encoded as big-endian `uint256`, interpreted as `bytes32`, and com
   - Scalar-version `0`:
     - Bytes `[1, 28)`: padding, should be zero
     - Bytes `[28, 32)`: big-endian `uint32`, encoding the L1-fee `baseFeeScalar`
-    - This version implies the L1-fee `blobBaseFeeScalar` is set to 0
+    - This version implies the L1-fee `blobUnstableFeeScalar` is set to 0
     - If there are non-zero bytes in the padding area, `baseFeeScalar` must be set to MaxUint32
   - Scalar-version `1`:
     - Bytes `[1, 24)`: padding, must be zero
-    - Bytes `[24, 28)`: big-endian `uint32`, encoding the `blobBaseFeeScalar`
+    - Bytes `[24, 28)`: big-endian `uint32`, encoding the `blobUnstableFeeScalar`
     - Bytes `[28, 32)`: big-endian `uint32`, encoding the `baseFeeScalar`
 
 The `baseFeeScalar` corresponds to the share of the user-transaction (per byte) in the total
 regular L1 EVM gas usage consumed by the data-transaction of the batch-submitter. For blob
 transactions, this is the fixed intrinsic gas cost of the L1 transaction.
 
-The `blobBaseFeeScalar` corresponds to the share of a user-transaction (per byte) in the total
+The `blobUnstableFeeScalar` corresponds to the share of a user-transaction (per byte) in the total
 blobdata that is introduced by the data-transaction of the batch-submitter.
 
 ### Unsafe Block Signer
@@ -437,7 +437,7 @@ The gas limit may not be set to a value larger than the
 [data-availability]: glossary.md#data-availability
 
 Data availability is the guarantee that some data will be "available" (i.e. _retrievable_) during a reasonably long time
-window. In Base's case, the data in question are [sequencer batches][sequencer-batch] that [validators][validator]
+window. In Unstable's case, the data in question are [sequencer batches][sequencer-batch] that [validators][validator]
 need in order to verify the sequencer's work and validate the L2 chain.
 
 The [finalization period][finalization-period] should be taken as the lower bound on the availability window, since

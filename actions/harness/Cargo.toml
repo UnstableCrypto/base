@@ -1,6 +1,6 @@
 [package]
 name = "base-action-harness"
-description = "Action test harness for Base — simulated L1/L2 actors for protocol integration testing"
+description = "Action test harness for Unstable — simulated L1/L2 actors for protocol integration testing"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

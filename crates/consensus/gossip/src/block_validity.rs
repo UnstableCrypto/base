@@ -4,10 +4,10 @@ use alloy_consensus::Block;
 use alloy_eips::eip7685::EMPTY_REQUESTS_HASH;
 use alloy_primitives::{Address, B256};
 use alloy_rpc_types_engine::{ExecutionPayloadV3, PayloadError};
-use base_common_consensus::BaseTxEnvelope;
+use base_common_consensus::UnstableTxEnvelope;
 use base_common_genesis::RollupConfig;
 use base_common_rpc_types_engine::{
-    BaseExecutionPayload, BaseExecutionPayloadV4, BasePayloadError, NetworkPayloadEnvelope,
+    UnstableExecutionPayload, UnstableExecutionPayloadV4, UnstablePayloadError, NetworkPayloadEnvelope,
 };
 use libp2p::gossipsub::MessageAcceptance;
 
@@ -26,8 +26,8 @@ pub enum BlockInvalidError {
         received: u64,
     },
     /// The block has an invalid base fee per gas.
-    #[error("Base fee per gas overflow")]
-    BaseFeePerGasOverflow(#[from] PayloadError),
+    #[error("Unstable fee per gas overflow")]
+    UnstableFeePerGasOverflow(#[from] PayloadError),
     /// The block has an invalid hash.
     #[error("Invalid block hash. Expected: {expected}, Received: {received}")]
     BlockHash {
@@ -49,7 +49,7 @@ pub enum BlockInvalidError {
     },
     /// Invalid block.
     #[error(transparent)]
-    InvalidBlock(#[from] BasePayloadError),
+    InvalidBlock(#[from] UnstablePayloadError),
     /// The block has an invalid parent beacon block root.
     #[error("Payload is on v3+ topic, but has empty parent beacon root")]
     ParentBeaconRoot,
@@ -98,14 +98,14 @@ impl BlockHandler {
     pub const SEEN_HASH_CACHE_SIZE: usize = 1_000;
 
     /// The maximum number of blocks to keep per height.
-    /// This value is chosen according to the Base specs:
-    /// <https://specs.base.org/protocol/consensus/p2p#block-validation>
+    /// This value is chosen according to the Unstable specs:
+    /// <https://specs.unstable.org/protocol/consensus/p2p#block-validation>
     const MAX_BLOCKS_TO_KEEP: usize = 5;
 
     /// Determines if a block is valid.
     ///
     /// We validate the block according to the rules defined here:
-    /// <https://specs.base.org/protocol/consensus/p2p#block-validation>
+    /// <https://specs.unstable.org/protocol/consensus/p2p#block-validation>
     ///
     /// The block encoding/compression are assumed to be valid at this point (they are first checked
     /// in the handle).
@@ -118,10 +118,10 @@ impl BlockHandler {
 
         // Record block version distribution
         let version = match &envelope.payload {
-            BaseExecutionPayload::V1(_) => "v1",
-            BaseExecutionPayload::V2(_) => "v2",
-            BaseExecutionPayload::V3(_) => "v3",
-            BaseExecutionPayload::V4(_) => "v4",
+            UnstableExecutionPayload::V1(_) => "v1",
+            UnstableExecutionPayload::V2(_) => "v2",
+            UnstableExecutionPayload::V3(_) => "v3",
+            UnstableExecutionPayload::V4(_) => "v4",
         };
         Metrics::block_version(version).increment(1);
 
@@ -146,7 +146,7 @@ impl BlockHandler {
                     BlockInvalidError::TooManyBlocks { .. } => "too_many_blocks",
                     BlockInvalidError::BlockSeen { .. } => "block_seen",
                     BlockInvalidError::InvalidBlock(_)
-                    | BlockInvalidError::BaseFeePerGasOverflow(_) => "invalid_block",
+                    | BlockInvalidError::UnstableFeePerGasOverflow(_) => "invalid_block",
                     BlockInvalidError::ParentBeaconRoot => "parent_beacon_root",
                     BlockInvalidError::BlobGasUsed => "blob_gas_used",
                     BlockInvalidError::ExcessBlobGas => "excess_blob_gas",
@@ -196,7 +196,7 @@ impl BlockHandler {
 
         // CHECK: Ensure the block hash is valid.
         let expected = envelope.payload.block_hash();
-        let mut block: Block<BaseTxEnvelope> = envelope.payload.clone().try_into_block()?;
+        let mut block: Block<UnstableTxEnvelope> = envelope.payload.clone().try_into_block()?;
         block.header.parent_beacon_block_root = envelope.parent_beacon_block_root;
         // If isthmus is active, set the requests hash to the empty hash.
         if self.rollup_config.is_isthmus_active(envelope.payload.timestamp()) {
@@ -259,7 +259,7 @@ impl BlockHandler {
 
         // Same as v1, except:
         // 1. The block should have an empty withdrawals list. This is checked during the call to
-        //    [`BaseExecutionPayload::try_into_block`].
+        //    [`UnstableExecutionPayload::try_into_block`].
 
         // Same as v2, except:
         // 1. The block should have a zero blob gas used
@@ -290,18 +290,18 @@ impl BlockHandler {
         // 1. The block should have an non-empty withdrawals root (checked by type-safety)
         fn validate_v4(
             rollup_config: &RollupConfig,
-            block: &BaseExecutionPayloadV4,
+            block: &UnstableExecutionPayloadV4,
             parent_beacon_block_root: Option<B256>,
         ) -> Result<(), BlockInvalidError> {
             validate_v3(rollup_config, &block.payload_inner, parent_beacon_block_root)
         }
 
         match &envelope.payload {
-            BaseExecutionPayload::V1(_) | BaseExecutionPayload::V2(_) => Ok(()),
-            BaseExecutionPayload::V3(payload) => {
+            UnstableExecutionPayload::V1(_) | UnstableExecutionPayload::V2(_) => Ok(()),
+            UnstableExecutionPayload::V3(payload) => {
                 validate_v3(&self.rollup_config, payload, envelope.parent_beacon_block_root)
             }
-            BaseExecutionPayload::V4(payload) => {
+            UnstableExecutionPayload::V4(payload) => {
                 validate_v4(&self.rollup_config, payload, envelope.parent_beacon_block_root)
             }
         }
@@ -318,13 +318,13 @@ pub(crate) mod tests {
     use alloy_rlp::BufMut;
     use alloy_rpc_types_engine::{ExecutionPayloadV1, ExecutionPayloadV2, ExecutionPayloadV3};
     use arbitrary::{Arbitrary, Unstructured};
-    use base_common_consensus::BaseTxEnvelope;
+    use base_common_consensus::UnstableTxEnvelope;
     use base_common_genesis::RollupConfig;
-    use base_common_rpc_types_engine::{BaseExecutionPayload, BaseExecutionPayloadV4, PayloadHash};
+    use base_common_rpc_types_engine::{UnstableExecutionPayload, UnstableExecutionPayloadV4, PayloadHash};
 
     use super::*;
 
-    fn valid_block() -> Block<BaseTxEnvelope> {
+    fn valid_block() -> Block<UnstableTxEnvelope> {
         // Simulate some random data
         let mut data = vec![0; 1024 * 1024];
         let mut rng = rand::rng();
@@ -334,7 +334,7 @@ pub(crate) mod tests {
         let u = Unstructured::new(&data);
 
         // Generate a random instance of MyStruct
-        let mut block: Block<BaseTxEnvelope> = Block::arbitrary_take_rest(u).unwrap();
+        let mut block: Block<UnstableTxEnvelope> = Block::arbitrary_take_rest(u).unwrap();
 
         let transactions: Vec<Bytes> =
             block.body.transactions().map(|tx| tx.encoded_2718().into()).collect();
@@ -359,7 +359,7 @@ pub(crate) mod tests {
     }
 
     /// Make the block v1 compatible
-    fn v1_valid_block() -> Block<BaseTxEnvelope> {
+    fn v1_valid_block() -> Block<UnstableTxEnvelope> {
         let mut block = valid_block();
         block.header.withdrawals_root = None;
         block.header.blob_gas_used = None;
@@ -374,7 +374,7 @@ pub(crate) mod tests {
     }
 
     /// Make the block v2 compatible
-    pub fn v2_valid_block() -> Block<BaseTxEnvelope> {
+    pub fn v2_valid_block() -> Block<UnstableTxEnvelope> {
         let mut block = v1_valid_block();
 
         block.body.withdrawals = Some(vec![].into());
@@ -388,7 +388,7 @@ pub(crate) mod tests {
     }
 
     /// Make the block v3 compatible
-    pub fn v3_valid_block() -> Block<BaseTxEnvelope> {
+    pub fn v3_valid_block() -> Block<UnstableTxEnvelope> {
         let mut block = valid_block();
 
         block.body.withdrawals = Some(vec![].into());
@@ -411,7 +411,7 @@ pub(crate) mod tests {
     }
 
     /// Make the block v4 compatible
-    pub fn v4_valid_block() -> Block<BaseTxEnvelope> {
+    pub fn v4_valid_block() -> Block<UnstableTxEnvelope> {
         v3_valid_block()
     }
 
@@ -422,7 +422,7 @@ pub(crate) mod tests {
 
         let v1 = ExecutionPayloadV1::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V1(v1);
+        let payload = UnstableExecutionPayload::V1(v1);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -450,7 +450,7 @@ pub(crate) mod tests {
 
         let v1 = ExecutionPayloadV1::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V1(v1);
+        let payload = UnstableExecutionPayload::V1(v1);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -478,7 +478,7 @@ pub(crate) mod tests {
 
         let v1 = ExecutionPayloadV1::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V1(v1);
+        let payload = UnstableExecutionPayload::V1(v1);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -506,7 +506,7 @@ pub(crate) mod tests {
 
         v1.block_hash = B256::ZERO;
 
-        let payload = BaseExecutionPayload::V1(v1);
+        let payload = UnstableExecutionPayload::V1(v1);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -531,7 +531,7 @@ pub(crate) mod tests {
 
         let v1 = ExecutionPayloadV1::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V1(v1);
+        let payload = UnstableExecutionPayload::V1(v1);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -559,7 +559,7 @@ pub(crate) mod tests {
 
         let v1 = ExecutionPayloadV1::from_block_slow(&first_block);
 
-        let payload = BaseExecutionPayload::V1(v1);
+        let payload = UnstableExecutionPayload::V1(v1);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -585,7 +585,7 @@ pub(crate) mod tests {
 
                 let v1 = ExecutionPayloadV1::from_block_slow(&block);
 
-                let payload = BaseExecutionPayload::V1(v1);
+                let payload = UnstableExecutionPayload::V1(v1);
                 NetworkPayloadEnvelope {
                     payload,
                     signature: Signature::test_signature(),
@@ -613,7 +613,7 @@ pub(crate) mod tests {
 
         let v1 = ExecutionPayloadV1::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V1(v1);
+        let payload = UnstableExecutionPayload::V1(v1);
         let mut envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -645,7 +645,7 @@ pub(crate) mod tests {
         let mut v1 = ExecutionPayloadV1::from_block_slow(&block);
         v1.block_hash = B256::ZERO;
 
-        let payload = BaseExecutionPayload::V1(v1);
+        let payload = UnstableExecutionPayload::V1(v1);
         let mut envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -676,7 +676,7 @@ pub(crate) mod tests {
 
         let v1 = ExecutionPayloadV1::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V1(v1);
+        let payload = UnstableExecutionPayload::V1(v1);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -702,7 +702,7 @@ pub(crate) mod tests {
 
         let v1 = ExecutionPayloadV1::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V1(v1);
+        let payload = UnstableExecutionPayload::V1(v1);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -724,7 +724,7 @@ pub(crate) mod tests {
 
         let v2 = ExecutionPayloadV2::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V2(v2);
+        let payload = UnstableExecutionPayload::V2(v2);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -749,7 +749,7 @@ pub(crate) mod tests {
 
         let v2 = ExecutionPayloadV2::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V2(v2);
+        let payload = UnstableExecutionPayload::V2(v2);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -779,7 +779,7 @@ pub(crate) mod tests {
 
         let v2 = ExecutionPayloadV2::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V2(v2);
+        let payload = UnstableExecutionPayload::V2(v2);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -797,7 +797,7 @@ pub(crate) mod tests {
 
         assert!(matches!(
             handler.block_valid(&envelope),
-            Err(BlockInvalidError::InvalidBlock(BasePayloadError::NonEmptyL1Withdrawals))
+            Err(BlockInvalidError::InvalidBlock(UnstablePayloadError::NonEmptyL1Withdrawals))
         ));
     }
 
@@ -807,7 +807,7 @@ pub(crate) mod tests {
 
         let v3 = ExecutionPayloadV3::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V3(v3);
+        let payload = UnstableExecutionPayload::V3(v3);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -839,7 +839,7 @@ pub(crate) mod tests {
 
         let v3 = ExecutionPayloadV3::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V3(v3);
+        let payload = UnstableExecutionPayload::V3(v3);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -859,7 +859,7 @@ pub(crate) mod tests {
 
         assert!(matches!(
             handler.block_valid(&envelope),
-            Err(BlockInvalidError::InvalidBlock(BasePayloadError::NonEmptyL1Withdrawals))
+            Err(BlockInvalidError::InvalidBlock(UnstablePayloadError::NonEmptyL1Withdrawals))
         ));
     }
 
@@ -870,7 +870,7 @@ pub(crate) mod tests {
 
         let v3 = ExecutionPayloadV3::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V3(v3);
+        let payload = UnstableExecutionPayload::V3(v3);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -895,7 +895,7 @@ pub(crate) mod tests {
 
         let v3 = ExecutionPayloadV3::from_block_slow(&block);
 
-        let payload = BaseExecutionPayload::V3(v3);
+        let payload = UnstableExecutionPayload::V3(v3);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -913,12 +913,12 @@ pub(crate) mod tests {
         let block = v4_valid_block();
 
         let v3 = ExecutionPayloadV3::from_block_slow(&block);
-        let v4 = BaseExecutionPayloadV4::from_v3_with_withdrawals_root(
+        let v4 = UnstableExecutionPayloadV4::from_v3_with_withdrawals_root(
             v3,
             block.withdrawals_root.unwrap(),
         );
 
-        let payload = BaseExecutionPayload::V4(v4);
+        let payload = UnstableExecutionPayload::V4(v4);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -948,7 +948,7 @@ pub(crate) mod tests {
 
         let block = v1_valid_block();
         let v1 = ExecutionPayloadV1::from_block_slow(&block);
-        let payload = BaseExecutionPayload::V1(v1);
+        let payload = UnstableExecutionPayload::V1(v1);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),
@@ -972,7 +972,7 @@ pub(crate) mod tests {
         invalid_block.header.timestamp = 0; // Invalid timestamp
 
         let v1_invalid = ExecutionPayloadV1::from_block_slow(&invalid_block);
-        let payload_invalid = BaseExecutionPayload::V1(v1_invalid);
+        let payload_invalid = UnstableExecutionPayload::V1(v1_invalid);
         let envelope_invalid = NetworkPayloadEnvelope {
             payload: payload_invalid,
             signature: Signature::test_signature(),
@@ -989,7 +989,7 @@ pub(crate) mod tests {
         // Verify the code compiles and runs without panics even when metrics feature is disabled
         let block = v1_valid_block();
         let v1 = ExecutionPayloadV1::from_block_slow(&block);
-        let payload = BaseExecutionPayload::V1(v1);
+        let payload = UnstableExecutionPayload::V1(v1);
         let envelope = NetworkPayloadEnvelope {
             payload,
             signature: Signature::test_signature(),

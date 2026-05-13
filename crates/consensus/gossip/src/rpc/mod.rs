@@ -33,7 +33,7 @@
 //!
 //! ## Usage
 //!
-//! The RPC interface is designed to be compatible with existing Base tooling
+//! The RPC interface is designed to be compatible with existing Unstable tooling
 //! and monitoring systems, providing the same API surface as the reference `base-node`
 //! implementation where applicable.
 //!

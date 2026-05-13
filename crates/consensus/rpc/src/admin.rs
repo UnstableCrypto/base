@@ -4,7 +4,7 @@ use core::fmt::Debug;
 
 use alloy_primitives::B256;
 use async_trait::async_trait;
-use base_common_rpc_types_engine::BaseExecutionPayloadEnvelope;
+use base_common_rpc_types_engine::UnstableExecutionPayloadEnvelope;
 use base_consensus_gossip::Metrics;
 use jsonrpsee::{
     core::RpcResult,
@@ -19,7 +19,7 @@ pub enum NetworkAdminQuery {
     /// An admin rpc request to post an unsafe payload.
     PostUnsafePayload {
         /// The payload to post.
-        payload: BaseExecutionPayloadEnvelope,
+        payload: UnstableExecutionPayloadEnvelope,
     },
 }
 
@@ -69,7 +69,7 @@ where
 {
     async fn admin_post_unsafe_payload(
         &self,
-        payload: BaseExecutionPayloadEnvelope,
+        payload: UnstableExecutionPayloadEnvelope,
     ) -> RpcResult<()> {
         // Note: intentionally no sequencer guard here. Posting an unsafe payload is a P2P/gossip
         // operation that is valid on both sequencer and validator nodes.

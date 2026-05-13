@@ -1,6 +1,6 @@
 [package]
 name = "base-proof-rpc"
-description = "Shared RPC client abstractions for Base L1, L2, and rollup node interactions"
+description = "Shared RPC client abstractions for Unstable L1, L2, and rollup node interactions"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -22,7 +22,7 @@ alloy-primitives.workspace = true
 alloy-rpc-types-eth.workspace = true
 alloy-transport-http.workspace = true
 
-# Base Alloy
+# Unstable Alloy
 base-common-network.workspace = true
 base-common-rpc-types.workspace = true
 

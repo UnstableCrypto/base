@@ -9,7 +9,7 @@ use alloy_evm::block::BlockExecutorFactory;
 use alloy_primitives::logs_bloom;
 use base_common_chains::Upgrades;
 use base_common_consensus::DepositReceiptExt;
-use base_common_evm::BaseBlockExecutionCtx;
+use base_common_evm::UnstableBlockExecutionCtx;
 use base_execution_consensus::{calculate_receipt_root_no_memo, isthmus};
 use reth_evm::execute::{BlockAssembler, BlockAssemblerInput};
 use reth_execution_errors::BlockExecutionError;
@@ -17,24 +17,24 @@ use reth_execution_types::BlockExecutionResult;
 use reth_primitives_traits::{Receipt, SignedTransaction};
 use revm::context::Block as _;
 
-/// Block builder for Base.
+/// Block builder for Unstable.
 #[derive(Debug)]
-pub struct BaseBlockAssembler<ChainSpec> {
+pub struct UnstableBlockAssembler<ChainSpec> {
     chain_spec: Arc<ChainSpec>,
 }
 
-impl<ChainSpec> BaseBlockAssembler<ChainSpec> {
-    /// Creates a new [`BaseBlockAssembler`].
+impl<ChainSpec> UnstableBlockAssembler<ChainSpec> {
+    /// Creates a new [`UnstableBlockAssembler`].
     pub const fn new(chain_spec: Arc<ChainSpec>) -> Self {
         Self { chain_spec }
     }
 }
 
-impl<ChainSpec: Upgrades> BaseBlockAssembler<ChainSpec> {
+impl<ChainSpec: Upgrades> UnstableBlockAssembler<ChainSpec> {
     /// Builds a block for `input` without any bounds on header `H`.
     pub fn assemble_block<
         F: for<'a> BlockExecutorFactory<
-                ExecutionCtx<'a>: Into<BaseBlockExecutionCtx>,
+                ExecutionCtx<'a>: Into<UnstableBlockExecutionCtx>,
                 Transaction: SignedTransaction,
                 Receipt: Receipt + DepositReceiptExt,
             >,
@@ -127,17 +127,17 @@ impl<ChainSpec: Upgrades> BaseBlockAssembler<ChainSpec> {
     }
 }
 
-impl<ChainSpec> Clone for BaseBlockAssembler<ChainSpec> {
+impl<ChainSpec> Clone for UnstableBlockAssembler<ChainSpec> {
     fn clone(&self) -> Self {
         Self { chain_spec: Arc::clone(&self.chain_spec) }
     }
 }
 
-impl<F, ChainSpec> BlockAssembler<F> for BaseBlockAssembler<ChainSpec>
+impl<F, ChainSpec> BlockAssembler<F> for UnstableBlockAssembler<ChainSpec>
 where
     ChainSpec: Upgrades,
     F: for<'a> BlockExecutorFactory<
-            ExecutionCtx<'a> = BaseBlockExecutionCtx,
+            ExecutionCtx<'a> = UnstableBlockExecutionCtx,
             Transaction: SignedTransaction,
             Receipt: Receipt + DepositReceiptExt,
         >,

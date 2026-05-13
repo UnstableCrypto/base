@@ -38,7 +38,7 @@ impl<'de> serde::Deserialize<'de> for BlockNumberOrTagExt {
             }
 
             fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
-                // Remap the Base "unsafe" tag to "latest". Our EL surfaces the unsafe
+                // Remap the Unstable "unsafe" tag to "latest". Our EL surfaces the unsafe
                 // head as "latest" (the most recently sealed block via engine_forkchoiceUpdated).
                 if v == "unsafe" {
                     return Ok(BlockNumberOrTagExt(BlockNumberOrTag::Latest));
@@ -60,8 +60,8 @@ use alloy_rpc_types::{
     state::{EvmOverrides, StateOverride, StateOverridesBuilder},
 };
 use alloy_rpc_types_eth::{Filter, Log};
-use base_common_network::Base;
-use base_common_rpc_types::BaseTransactionRequest;
+use base_common_network::Unstable;
+use base_common_rpc_types::UnstableTransactionRequest;
 use jsonrpsee::{
     core::{RpcResult, async_trait},
     proc_macros::rpc,
@@ -93,12 +93,12 @@ pub trait EthApiOverride {
         &self,
         number: BlockNumberOrTagExt,
         full: bool,
-    ) -> RpcResult<Option<RpcBlock<Base>>>;
+    ) -> RpcResult<Option<RpcBlock<Unstable>>>;
 
     /// Returns transaction receipt, checking flashblocks first.
     #[method(name = "getTransactionReceipt")]
     async fn get_transaction_receipt(&self, tx_hash: TxHash)
-    -> RpcResult<Option<RpcReceipt<Base>>>;
+    -> RpcResult<Option<RpcReceipt<Unstable>>>;
 
     /// Returns account balance, with flashblock support for pending state.
     #[method(name = "getBalance")]
@@ -116,7 +116,7 @@ pub trait EthApiOverride {
     /// Returns transaction by hash, checking flashblocks first.
     #[method(name = "getTransactionByHash")]
     async fn transaction_by_hash(&self, tx_hash: TxHash)
-    -> RpcResult<Option<RpcTransaction<Base>>>;
+    -> RpcResult<Option<RpcTransaction<Unstable>>>;
 
     /// Sends a raw transaction and waits for inclusion in a flashblock.
     #[method(name = "sendRawTransactionSync")]
@@ -124,13 +124,13 @@ pub trait EthApiOverride {
         &self,
         transaction: alloy_primitives::Bytes,
         timeout_ms: Option<u64>,
-    ) -> RpcResult<RpcReceipt<Base>>;
+    ) -> RpcResult<RpcReceipt<Unstable>>;
 
     /// Executes a call with flashblock state support.
     #[method(name = "call")]
     async fn call(
         &self,
-        transaction: BaseTransactionRequest,
+        transaction: UnstableTransactionRequest,
         block_number: Option<BlockId>,
         state_overrides: Option<StateOverride>,
         block_overrides: Option<Box<BlockOverrides>>,
@@ -140,7 +140,7 @@ pub trait EthApiOverride {
     #[method(name = "estimateGas")]
     async fn estimate_gas(
         &self,
-        transaction: BaseTransactionRequest,
+        transaction: UnstableTransactionRequest,
         block_number: Option<BlockId>,
         overrides: Option<StateOverride>,
     ) -> RpcResult<U256>;
@@ -149,9 +149,9 @@ pub trait EthApiOverride {
     #[method(name = "simulateV1")]
     async fn simulate_v1(
         &self,
-        opts: SimulatePayload<BaseTransactionRequest>,
+        opts: SimulatePayload<UnstableTransactionRequest>,
         block_number: Option<BlockId>,
-    ) -> RpcResult<Vec<SimulatedBlock<RpcBlock<Base>>>>;
+    ) -> RpcResult<Vec<SimulatedBlock<RpcBlock<Unstable>>>>;
 
     /// Returns logs matching the filter, including pending flashblock logs.
     #[method(name = "getLogs")]
@@ -183,7 +183,7 @@ impl<Eth: EthApiTypes, FB> EthApiExt<Eth, FB> {
 #[async_trait]
 impl<Eth, FB> EthApiOverrideServer for EthApiExt<Eth, FB>
 where
-    Eth: FullEthApi<NetworkTypes = Base> + Send + Sync + 'static,
+    Eth: FullEthApi<NetworkTypes = Unstable> + Send + Sync + 'static,
     FB: FlashblocksAPI + Send + Sync + 'static,
     jsonrpsee_types::error::ErrorObject<'static>: From<Eth::Error>,
 {
@@ -191,7 +191,7 @@ where
         &self,
         number: BlockNumberOrTagExt,
         full: bool,
-    ) -> RpcResult<Option<RpcBlock<Base>>> {
+    ) -> RpcResult<Option<RpcBlock<Unstable>>> {
         debug!(
             message = "rpc::block_by_number",
             block_number = ?number
@@ -215,7 +215,7 @@ where
     async fn get_transaction_receipt(
         &self,
         tx_hash: TxHash,
-    ) -> RpcResult<Option<RpcReceipt<Base>>> {
+    ) -> RpcResult<Option<RpcReceipt<Unstable>>> {
         debug!(
             message = "rpc::get_transaction_receipt",
             tx_hash = %tx_hash
@@ -291,7 +291,7 @@ where
     async fn transaction_by_hash(
         &self,
         tx_hash: TxHash,
-    ) -> RpcResult<Option<RpcTransaction<Base>>> {
+    ) -> RpcResult<Option<RpcTransaction<Unstable>>> {
         debug!(
             message = "rpc::transaction_by_hash",
             tx_hash = %tx_hash
@@ -322,7 +322,7 @@ where
         &self,
         transaction: alloy_primitives::Bytes,
         timeout_ms: Option<u64>,
-    ) -> RpcResult<RpcReceipt<Base>> {
+    ) -> RpcResult<RpcReceipt<Unstable>> {
         debug!(message = "rpc::send_raw_transaction_sync");
 
         let timeout_ms = match timeout_ms {
@@ -376,7 +376,7 @@ where
 
     async fn call(
         &self,
-        transaction: BaseTransactionRequest,
+        transaction: UnstableTransactionRequest,
         block_number: Option<BlockId>,
         state_overrides: Option<StateOverride>,
         block_overrides: Option<Box<BlockOverrides>>,
@@ -419,7 +419,7 @@ where
 
     async fn estimate_gas(
         &self,
-        transaction: BaseTransactionRequest,
+        transaction: UnstableTransactionRequest,
         block_number: Option<BlockId>,
         overrides: Option<StateOverride>,
     ) -> RpcResult<U256> {
@@ -452,7 +452,7 @@ where
 
     async fn simulate_v1(
         &self,
-        opts: SimulatePayload<BaseTransactionRequest>,
+        opts: SimulatePayload<UnstableTransactionRequest>,
         block_number: Option<BlockId>,
     ) -> RpcResult<Vec<SimulatedBlock<RpcBlock<Eth::NetworkTypes>>>> {
         debug!(
@@ -472,7 +472,7 @@ where
         }
 
         // Prepend flashblocks pending overrides to the block state calls
-        let mut block_state_calls: Vec<SimBlock<BaseTransactionRequest>> = Vec::new();
+        let mut block_state_calls: Vec<SimBlock<UnstableTransactionRequest>> = Vec::new();
         for sim_block in opts.block_state_calls {
             let mut state_overrides_builder =
                 StateOverridesBuilder::new(pending_overrides.state.clone().unwrap_or_default());
@@ -583,10 +583,10 @@ where
 
 impl<Eth, FB> EthApiExt<Eth, FB>
 where
-    Eth: FullEthApi<NetworkTypes = Base> + Send + Sync + 'static,
+    Eth: FullEthApi<NetworkTypes = Unstable> + Send + Sync + 'static,
     FB: FlashblocksAPI + Send + Sync + 'static,
 {
-    async fn wait_for_flashblocks_receipt(&self, tx_hash: TxHash) -> Option<RpcReceipt<Base>> {
+    async fn wait_for_flashblocks_receipt(&self, tx_hash: TxHash) -> Option<RpcReceipt<Unstable>> {
         let mut receiver = self.flashblocks_state.subscribe_to_flashblocks();
 
         loop {
@@ -609,7 +609,7 @@ where
         }
     }
 
-    async fn wait_for_canonical_receipt(&self, tx_hash: TxHash) -> Option<RpcReceipt<Base>> {
+    async fn wait_for_canonical_receipt(&self, tx_hash: TxHash) -> Option<RpcReceipt<Unstable>> {
         let mut stream =
             BroadcastStream::new(self.eth_api.provider().subscribe_to_canonical_state());
 

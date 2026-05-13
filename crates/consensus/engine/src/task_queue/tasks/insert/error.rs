@@ -4,7 +4,7 @@
 
 use alloy_rpc_types_engine::PayloadStatusEnum;
 use alloy_transport::{RpcError, TransportErrorKind};
-use base_common_rpc_types_engine::BasePayloadError;
+use base_common_rpc_types_engine::UnstablePayloadError;
 use base_protocol::FromBlockError;
 
 use crate::{
@@ -18,7 +18,7 @@ use crate::{
 pub enum InsertTaskError {
     /// Error converting a payload into a block.
     #[error(transparent)]
-    FromBlockError(#[from] BasePayloadError),
+    FromBlockError(#[from] UnstablePayloadError),
     /// Failed to insert new payload.
     #[error("Failed to insert new payload: {0}")]
     InsertFailed(RpcError<TransportErrorKind>),

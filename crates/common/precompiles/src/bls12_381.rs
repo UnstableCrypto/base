@@ -25,7 +25,7 @@ pub(crate) const ISTHMUS_G1_MSM: Precompile = Precompile::new(
     |input, gas_limit| {
         if input.len() > ISTHMUS_G1_MSM_MAX_INPUT_SIZE {
             return Err(PrecompileError::Other(
-                "G1MSM input length too long for Base input size limitation after the Isthmus Hardfork"
+                "G1MSM input length too long for Unstable input size limitation after the Isthmus Hardfork"
                     .into(),
             ));
         }
@@ -37,7 +37,7 @@ pub(crate) const ISTHMUS_G2_MSM: Precompile =
     Precompile::new(PrecompileId::Bls12G2Msm, G2_MSM_ADDRESS, |input, gas_limit| {
         if input.len() > ISTHMUS_G2_MSM_MAX_INPUT_SIZE {
             return Err(PrecompileError::Other(
-                "G2MSM input length too long for Base input size limitation".into(),
+                "G2MSM input length too long for Unstable input size limitation".into(),
             ));
         }
         precompile::bls12_381::g2_msm::g2_msm(input, gas_limit)
@@ -47,7 +47,7 @@ pub(crate) const ISTHMUS_PAIRING: Precompile =
     Precompile::new(PrecompileId::Bls12Pairing, PAIRING_ADDRESS, |input, gas_limit| {
         if input.len() > ISTHMUS_PAIRING_MAX_INPUT_SIZE {
             return Err(PrecompileError::Other(
-                "Pairing input length too long for Base input size limitation".into(),
+                "Pairing input length too long for Unstable input size limitation".into(),
             ));
         }
         precompile::bls12_381::pairing::pairing(input, gas_limit)
@@ -60,7 +60,7 @@ pub(crate) const JOVIAN_G1_MSM: Precompile = Precompile::new(
     |input, gas_limit| {
         if input.len() > JOVIAN_G1_MSM_MAX_INPUT_SIZE {
             return Err(PrecompileError::Other(
-                "G1MSM input length too long for Base input size limitation after the Jovian Hardfork"
+                "G1MSM input length too long for Unstable input size limitation after the Jovian Hardfork"
                     .into(),
             ));
         }
@@ -74,7 +74,7 @@ pub(crate) const JOVIAN_G2_MSM: Precompile = Precompile::new(
     |input, gas_limit| {
         if input.len() > JOVIAN_G2_MSM_MAX_INPUT_SIZE {
             return Err(PrecompileError::Other(
-                "G2MSM input length too long for Base input size limitation after the Jovian Hardfork"
+                "G2MSM input length too long for Unstable input size limitation after the Jovian Hardfork"
                     .into(),
             ));
         }
@@ -88,7 +88,7 @@ pub(crate) const JOVIAN_PAIRING: Precompile = Precompile::new(
     |input, gas_limit| {
         if input.len() > JOVIAN_PAIRING_MAX_INPUT_SIZE {
             return Err(PrecompileError::Other(
-                "Pairing input length too long for Base input size limitation after the Jovian Hardfork"
+                "Pairing input length too long for Unstable input size limitation after the Jovian Hardfork"
                     .into(),
             ));
         }

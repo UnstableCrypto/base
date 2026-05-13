@@ -1,6 +1,6 @@
 [package]
 name = "base"
-description = "Unified Base node binary"
+description = "Unified Unstable node binary"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -6,7 +6,7 @@ use url::Url;
 
 use crate::{
     config::OsakaTarget,
-    utils::{BaselineError, Result},
+    utils::{UnstablelineError, Result},
 };
 
 /// Configuration for a single transaction type with its weight.
@@ -48,7 +48,7 @@ pub enum TxType {
         /// Looper contract address (required when iterations > 1).
         looper_contract: Option<Address>,
     },
-    /// Osaka (Base Azul) opcode or precompile transaction.
+    /// Osaka (Unstable Azul) opcode or precompile transaction.
     Osaka {
         /// Target Osaka feature.
         target: OsakaTarget,
@@ -160,46 +160,46 @@ impl LoadConfig {
     /// Validates the configuration, returning an error if invalid.
     pub fn validate(&self) -> Result<()> {
         if self.account_count == 0 {
-            return Err(BaselineError::Config("account_count must be > 0".into()));
+            return Err(UnstablelineError::Config("account_count must be > 0".into()));
         }
         if self.target_gps == 0 {
-            return Err(BaselineError::Config("target_gps must be > 0".into()));
+            return Err(UnstablelineError::Config("target_gps must be > 0".into()));
         }
         if self.duration == Some(Duration::ZERO) {
-            return Err(BaselineError::Config(
+            return Err(UnstablelineError::Config(
                 "duration must be > 0 (or omit for continuous)".into(),
             ));
         }
         if self.batch_size == 0 {
-            return Err(BaselineError::Config("batch_size must be > 0".into()));
+            return Err(UnstablelineError::Config("batch_size must be > 0".into()));
         }
         if self.transactions.is_empty() {
-            return Err(BaselineError::Config("transactions must not be empty".into()));
+            return Err(UnstablelineError::Config("transactions must not be empty".into()));
         }
         if self.transaction_submission_rpcs.is_empty() {
-            return Err(BaselineError::Config(
+            return Err(UnstablelineError::Config(
                 "transaction_submission_rpcs must not be empty".into(),
             ));
         }
         for url in &self.transaction_submission_rpcs {
             if !matches!(url.scheme(), "http" | "https") {
-                return Err(BaselineError::Config(
+                return Err(UnstablelineError::Config(
                     "transaction_submission_rpcs must use http:// or https://".into(),
                 ));
             }
         }
         if !matches!(self.query_rpc.scheme(), "http" | "https") {
-            return Err(BaselineError::Config("query_rpc must use http:// or https://".into()));
+            return Err(UnstablelineError::Config("query_rpc must use http:// or https://".into()));
         }
         for url in &self.txpool_nodes {
             if !matches!(url.scheme(), "http" | "https") {
-                return Err(BaselineError::Config(
+                return Err(UnstablelineError::Config(
                     "txpool_nodes must use http:// or https://".into(),
                 ));
             }
         }
         if !matches!(self.flashblocks_ws.scheme(), "ws" | "wss") {
-            return Err(BaselineError::Config("flashblocks_ws must use ws:// or wss://".into()));
+            return Err(UnstablelineError::Config("flashblocks_ws must use ws:// or wss://".into()));
         }
         Ok(())
     }

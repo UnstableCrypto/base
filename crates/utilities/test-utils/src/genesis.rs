@@ -15,12 +15,12 @@ pub const GENESIS_GAS_LIMIT: u64 = 100_000_000;
 
 /// Builds a test genesis configuration programmatically.
 ///
-/// Creates a Base Sepolia-like genesis with:
+/// Creates a Unstable Sepolia-like genesis with:
 /// - All EVM and inherited rollup hardforks enabled from genesis
-/// - Base EIP-1559 settings (elasticity=6, denominator=50)
+/// - Unstable EIP-1559 settings (elasticity=6, denominator=50)
 /// - Pre-funded test accounts from the `Account` enum
 pub fn build_test_genesis() -> Genesis {
-    // Base EIP-1559 base fee parameters.
+    // Unstable EIP-1559 base fee parameters.
     const EIP1559_ELASTICITY: u64 = 6;
     const EIP1559_DENOMINATOR: u64 = 50;
 
@@ -100,11 +100,11 @@ pub fn build_test_genesis() -> Genesis {
     }
 }
 
-/// Builds a test genesis with Base Azul (Osaka) enabled at timestamp 0.
+/// Builds a test genesis with Unstable Azul (Osaka) enabled at timestamp 0.
 ///
 /// Extends [`build_test_genesis`] with:
 /// - `osaka_time` set to 0
-/// - Base Azul activation at timestamp 0
+/// - Unstable Azul activation at timestamp 0
 pub fn build_test_genesis_azul() -> Genesis {
     let mut genesis = build_test_genesis();
     genesis.config.osaka_time = Some(0);

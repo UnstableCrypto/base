@@ -1,6 +1,6 @@
 [package]
 name = "base-proposer-bin"
-description = "Base Proposer Binary"
+description = "Unstable Proposer Binary"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

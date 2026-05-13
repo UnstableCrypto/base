@@ -1,11 +1,11 @@
-//! The Base RPC API using `jsonrpsee`
+//! The Unstable RPC API using `jsonrpsee`
 
 use core::net::IpAddr;
 
 use alloy_eips::BlockNumberOrTag;
 use alloy_primitives::B256;
 use base_common_genesis::RollupConfig;
-use base_common_rpc_types_engine::BaseExecutionPayloadEnvelope;
+use base_common_rpc_types_engine::UnstableExecutionPayloadEnvelope;
 use base_consensus_gossip::{PeerCount, PeerDump, PeerInfo, PeerStats};
 use base_consensus_safedb::SafeHeadResponse;
 use base_protocol::SyncStatus;
@@ -19,7 +19,7 @@ use jsonrpsee::{
 
 use crate::{OutputResponse, health::HealthzResponse};
 
-/// Base rollup node RPC interface.
+/// Unstable rollup node RPC interface.
 ///
 /// https://docs.optimism.io/builders/node-operators/json-rpc
 /// https://github.com/ethereum-optimism/optimism/blob/8dd17a7b114a7c25505cd2e15ce4e3d0f7e3f7c1/op-node/node/api.go#L114
@@ -53,7 +53,7 @@ pub trait RollupNodeApi {
 /// The opp2p namespace handles peer interactions.
 #[cfg_attr(not(feature = "client"), rpc(server, namespace = "opp2p"))]
 #[cfg_attr(feature = "client", rpc(server, client, namespace = "opp2p"))]
-pub trait BaseP2PApi {
+pub trait UnstableP2PApi {
     /// Returns information of node
     #[method(name = "self")]
     async fn opp2p_self(&self) -> RpcResult<PeerInfo>;
@@ -168,7 +168,7 @@ pub trait AdminApi {
     #[method(name = "postUnsafePayload")]
     async fn admin_post_unsafe_payload(
         &self,
-        payload: BaseExecutionPayloadEnvelope,
+        payload: UnstableExecutionPayloadEnvelope,
     ) -> RpcResult<()>;
 
     /// Checks if the sequencer is active.
@@ -232,7 +232,7 @@ pub trait ConductorApi {
     #[method(name = "commitUnsafePayload")]
     async fn conductor_commit_unsafe_payload(
         &self,
-        payload: BaseExecutionPayloadEnvelope,
+        payload: UnstableExecutionPayloadEnvelope,
     ) -> RpcResult<()>;
 
     /// Overrides the leader of the conductor.
@@ -260,7 +260,7 @@ mod tests {
     use alloy_primitives::B256;
     use async_trait::async_trait;
     use base_common_genesis::RollupConfig;
-    use base_common_rpc_types_engine::BaseExecutionPayloadEnvelope;
+    use base_common_rpc_types_engine::UnstableExecutionPayloadEnvelope;
     use base_consensus_gossip::{PeerCount, PeerDump, PeerInfo, PeerStats};
     use base_consensus_safedb::SafeHeadResponse;
     use base_protocol::SyncStatus;
@@ -272,7 +272,7 @@ mod tests {
     use rstest::rstest;
 
     use super::{
-        AdminApiServer, BaseP2PApiServer, ConductorApiServer, DevEngineApiServer, HealthzApiServer,
+        AdminApiServer, UnstableP2PApiServer, ConductorApiServer, DevEngineApiServer, HealthzApiServer,
         RollupNodeApiServer, WsServer,
     };
     use crate::{OutputResponse, health::HealthzResponse};
@@ -314,10 +314,10 @@ mod tests {
         assert!(names.contains(&expected), "missing method {expected}, got: {names:?}");
     }
 
-    struct StubBaseP2PApi;
+    struct StubUnstableP2PApi;
 
     #[async_trait]
-    impl BaseP2PApiServer for StubBaseP2PApi {
+    impl UnstableP2PApiServer for StubUnstableP2PApi {
         async fn opp2p_self(&self) -> RpcResult<PeerInfo> {
             unimplemented!()
         }
@@ -411,7 +411,7 @@ mod tests {
     #[case("opp2p_connectPeer")]
     #[case("opp2p_disconnectPeer")]
     fn p2p_api_wire_names(#[case] expected: &str) {
-        let module = StubBaseP2PApi.into_rpc();
+        let module = StubUnstableP2PApi.into_rpc();
         let names: Vec<&str> = module.method_names().collect();
         assert!(names.contains(&expected), "missing method {expected}, got: {names:?}");
     }
@@ -484,7 +484,7 @@ mod tests {
     impl AdminApiServer for StubAdminApi {
         async fn admin_post_unsafe_payload(
             &self,
-            _: BaseExecutionPayloadEnvelope,
+            _: UnstableExecutionPayloadEnvelope,
         ) -> RpcResult<()> {
             unimplemented!()
         }
@@ -569,7 +569,7 @@ mod tests {
 
         async fn conductor_commit_unsafe_payload(
             &self,
-            _: BaseExecutionPayloadEnvelope,
+            _: UnstableExecutionPayloadEnvelope,
         ) -> RpcResult<()> {
             unimplemented!()
         }

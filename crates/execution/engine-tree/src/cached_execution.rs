@@ -2,10 +2,10 @@
 
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
-use base_common_consensus::{BaseReceipt, BaseTxEnvelope, OpTxType};
-use base_common_evm::{BaseBlockExecutor, BaseHaltReason, BaseTransaction, BaseTxResult};
-use base_execution_chainspec::BaseChainSpec;
-use base_execution_evm::BaseRethReceiptBuilder;
+use base_common_consensus::{UnstableReceipt, UnstableTxEnvelope, OpTxType};
+use base_common_evm::{UnstableBlockExecutor, UnstableHaltReason, UnstableTransaction, UnstableTxResult};
+use base_execution_chainspec::UnstableChainSpec;
+use base_execution_evm::UnstableRethReceiptBuilder;
 use base_flashblocks::{FlashblocksAPI, FlashblocksState};
 use reth_errors::BlockExecutionError;
 use reth_evm::{
@@ -31,7 +31,7 @@ impl FlashblocksCachedExecutionProvider {
     }
 }
 
-impl CachedExecutionProvider<BaseTxResult<BaseHaltReason, OpTxType>>
+impl CachedExecutionProvider<UnstableTxResult<UnstableHaltReason, OpTxType>>
     for FlashblocksCachedExecutionProvider
 {
     #[instrument(level = "debug", skip_all, fields(tx_hash = ?tx_hash))]
@@ -40,7 +40,7 @@ impl CachedExecutionProvider<BaseTxResult<BaseHaltReason, OpTxType>>
         parent_block_hash: &B256,
         prev_cached_hash: Option<&B256>,
         tx_hash: &B256,
-    ) -> Option<BaseTxResult<BaseHaltReason, OpTxType>> {
+    ) -> Option<UnstableTxResult<UnstableHaltReason, OpTxType>> {
         let flashblocks_state = self.flashblocks_state.as_ref()?;
         let pending_blocks = flashblocks_state.get_pending_blocks().clone()?;
 
@@ -122,7 +122,7 @@ impl<TxResult> CachedExecutionProvider<TxResult> for NoopCachedExecutionProvider
 /// Executor that fetches cached execution results for transactions.
 #[derive(Debug)]
 pub struct CachedExecutor<E, C> {
-    executor: BaseBlockExecutor<E, BaseRethReceiptBuilder, Arc<BaseChainSpec>>,
+    executor: UnstableBlockExecutor<E, UnstableRethReceiptBuilder, Arc<UnstableChainSpec>>,
     cached_execution_provider: C,
     txs: Vec<B256>,
     position_by_hash: HashMap<B256, usize>,
@@ -133,7 +133,7 @@ pub struct CachedExecutor<E, C> {
 impl<E, C> CachedExecutor<E, C> {
     /// Creates a new [`CachedExecutor`].
     pub fn new(
-        executor: BaseBlockExecutor<E, BaseRethReceiptBuilder, Arc<BaseChainSpec>>,
+        executor: UnstableBlockExecutor<E, UnstableRethReceiptBuilder, Arc<UnstableChainSpec>>,
         cached_execution_provider: C,
         txs: Vec<B256>,
         parent_block_hash: B256,
@@ -154,13 +154,13 @@ impl<E, C> CachedExecutor<E, C> {
 impl<'a, DB, E, C> BlockExecutor for CachedExecutor<E, C>
 where
     DB: Database + alloy_evm::Database + 'a,
-    E: Evm<DB = &'a mut State<DB>, Tx = BaseTransaction<TxEnv>>,
-    C: CachedExecutionProvider<BaseTxResult<E::HaltReason, OpTxType>>,
+    E: Evm<DB = &'a mut State<DB>, Tx = UnstableTransaction<TxEnv>>,
+    C: CachedExecutionProvider<UnstableTxResult<E::HaltReason, OpTxType>>,
 {
-    type Transaction = BaseTxEnvelope;
-    type Receipt = BaseReceipt;
+    type Transaction = UnstableTxEnvelope;
+    type Receipt = UnstableReceipt;
     type Evm = E;
-    type Result = BaseTxResult<E::HaltReason, OpTxType>;
+    type Result = UnstableTxResult<E::HaltReason, OpTxType>;
 
     fn receipts(&self) -> &[Self::Receipt] {
         self.executor.receipts()
@@ -253,14 +253,14 @@ mod tests {
     use alloy_rpc_types_engine::PayloadId;
     use alloy_rpc_types_eth::TransactionReceipt;
     use base_common_flashblocks::{
-        ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
+        ExecutionPayloadUnstableV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
     };
-    use base_common_rpc_types::{BaseTransactionReceipt, L1BlockInfo, Transaction};
+    use base_common_rpc_types::{UnstableTransactionReceipt, L1BlockInfo, Transaction};
     use base_flashblocks::{FlashblocksState, PendingBlocks, PendingBlocksBuilder};
     use revm::context::result::ExecutionResult;
 
     use super::{
-        BaseHaltReason, BaseReceipt, BaseTxEnvelope, CachedExecutionProvider,
+        UnstableHaltReason, UnstableReceipt, UnstableTxEnvelope, CachedExecutionProvider,
         FlashblocksCachedExecutionProvider,
     };
 
@@ -303,7 +303,7 @@ mod tests {
         builder.build().expect("test pending blocks should build")
     }
 
-    const fn stub_execution_result() -> ExecutionResult<BaseHaltReason> {
+    const fn stub_execution_result() -> ExecutionResult<UnstableHaltReason> {
         ExecutionResult::Success {
             reason: revm::context::result::SuccessReason::Stop,
             gas_used: 21_000,
@@ -317,7 +317,7 @@ mod tests {
         Flashblock {
             payload_id: PayloadId::default(),
             index: 0,
-            base: Some(ExecutionPayloadBaseV1 {
+            base: Some(ExecutionPayloadUnstableV1 {
                 parent_beacon_block_root: B256::ZERO,
                 parent_hash,
                 fee_recipient: Address::ZERO,
@@ -353,7 +353,7 @@ mod tests {
             value: U256::ZERO,
             input: Bytes::new(),
         };
-        let envelope = BaseTxEnvelope::Legacy(Signed::new_unchecked(
+        let envelope = UnstableTxEnvelope::Legacy(Signed::new_unchecked(
             legacy,
             Signature::test_signature(),
             hash,
@@ -371,11 +371,11 @@ mod tests {
         }
     }
 
-    fn stub_receipt(tx_hash: B256, block_number: BlockNumber) -> BaseTransactionReceipt {
-        BaseTransactionReceipt {
+    fn stub_receipt(tx_hash: B256, block_number: BlockNumber) -> UnstableTransactionReceipt {
+        UnstableTransactionReceipt {
             inner: TransactionReceipt {
                 inner: ReceiptWithBloom {
-                    receipt: BaseReceipt::Legacy(Receipt {
+                    receipt: UnstableReceipt::Legacy(Receipt {
                         status: alloy_consensus::Eip658Value::Eip658(true),
                         cumulative_gas_used: 21_000,
                         logs: vec![],

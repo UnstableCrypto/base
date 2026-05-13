@@ -1,4 +1,4 @@
-//! CLI argument parsing for the Base Batcher binary.
+//! CLI argument parsing for the Unstable Batcher binary.
 
 use std::{
     net::{IpAddr, SocketAddr},
@@ -17,12 +17,12 @@ use url::Url;
 base_cli_utils::define_log_args!("BATCHER");
 base_cli_utils::define_metrics_args!("BATCHER", 7300);
 
-/// The Base Batcher CLI.
+/// The Unstable Batcher CLI.
 #[derive(Parser, Clone, Debug)]
 #[command(
     author,
     version = env!("CARGO_PKG_VERSION"),
-    about = "Base Batcher — submits L2 batch data to L1",
+    about = "Unstable Batcher — submits L2 batch data to L1",
     long_about = None
 )]
 pub(crate) struct Cli {

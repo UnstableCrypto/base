@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use alloy_eips::eip7910::{EthConfig, EthForkConfig, SystemContract};
 use alloy_provider::Provider;
-use base_execution_chainspec::BaseChainSpec;
+use base_execution_chainspec::UnstableChainSpec;
 use base_node_runner::test_utils::TestHarnessBuilder;
 use base_test_utils::build_test_genesis_azul;
 use eyre::Result;
@@ -15,7 +15,7 @@ fn assert_zero_blob_schedule(config: &EthConfig) {
     assert_eq!(current.max_blob_count, 0);
     assert_eq!(current.target_blob_count, 0);
     // `min_blob_fee` is omitted from the EIP-7840 wire format, so deserialization falls back to
-    // the protocol default of `1` even though Base zeroes the advertised blob capacity fields.
+    // the protocol default of `1` even though Unstable zeroes the advertised blob capacity fields.
     assert_eq!(current.min_blob_fee, 1);
     assert_eq!(current.max_blobs_per_tx, 0);
     assert_eq!(current.blob_base_cost, 0);
@@ -90,7 +90,7 @@ fn assert_sanitized_system_contracts(config: &EthConfig) {
 #[tokio::test]
 async fn eth_config_available_on_base_azul_node() -> Result<()> {
     let harness = TestHarnessBuilder::new()
-        .with_chain_spec(Arc::new(BaseChainSpec::from_genesis(build_test_genesis_azul())))
+        .with_chain_spec(Arc::new(UnstableChainSpec::from_genesis(build_test_genesis_azul())))
         .build()
         .await?;
     let provider = harness.provider();

@@ -1,6 +1,6 @@
 [package]
 name = "base-bundle-extension"
-description = "Bundle Extension for Base node"
+description = "Bundle Extension for Unstable node"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

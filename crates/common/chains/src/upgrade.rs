@@ -4,13 +4,13 @@ use revm::primitives::hardfork::SpecId;
 use crate::{ChainConfig, Upgrades};
 
 hardfork!(
-    /// The name of a Base network upgrade.
+    /// The name of a Unstable network upgrade.
     ///
     /// When building a list of upgrades for a chain, it's still expected to zip with
     /// [`EthereumHardfork`](alloy_hardforks::EthereumHardfork).
     #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
     #[derive(Default)]
-    BaseUpgrade {
+    UnstableUpgrade {
         /// Bedrock: <https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/superchain-upgrades.md#bedrock>.
         Bedrock,
         /// Regolith: <https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/superchain-upgrades.md#regolith>.
@@ -27,34 +27,34 @@ hardfork!(
         Holocene,
         /// Isthmus: <https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/isthmus/overview.md>
         Isthmus,
-        /// Jovian: Base network upgrade.
+        /// Jovian: Unstable network upgrade.
         Jovian,
-        /// Azul: First Base-specific network upgrade.
+        /// Azul: First Unstable-specific network upgrade.
         #[default]
         Azul,
-        /// Beryl: Second Base-specific network upgrade.
+        /// Beryl: Second Unstable-specific network upgrade.
         Beryl,
     }
 );
 
-impl BaseUpgrade {
-    /// Latest Base upgrade used by default.
+impl UnstableUpgrade {
+    /// Latest Unstable upgrade used by default.
     pub const LATEST: Self = Self::Azul;
 
-    /// Converts the Base upgrade into its matching Ethereum execution spec.
+    /// Converts the Unstable upgrade into its matching Ethereum execution spec.
     pub const fn into_eth_spec(self) -> SpecId {
         match self {
             Self::Bedrock | Self::Regolith => SpecId::MERGE,
             Self::Canyon => SpecId::SHANGHAI,
             Self::Ecotone | Self::Fjord | Self::Granite | Self::Holocene => SpecId::CANCUN,
             Self::Isthmus | Self::Jovian => SpecId::PRAGUE,
-            // Azul, Beryl, and newer Base upgrades inherit the latest known Ethereum spec until
+            // Azul, Beryl, and newer Unstable upgrades inherit the latest known Ethereum spec until
             // explicitly mapped.
             _ => SpecId::OSAKA,
         }
     }
 
-    /// Returns the active Base upgrade at the given timestamp.
+    /// Returns the active Unstable upgrade at the given timestamp.
     ///
     /// This is intended for post-Bedrock timestamp-based fork resolution.
     pub fn from_timestamp(chain_spec: impl Upgrades, timestamp: u64) -> Self {
@@ -108,12 +108,12 @@ impl BaseUpgrade {
         ]
     }
 
-    /// Base mainnet list of upgrades.
+    /// Unstable mainnet list of upgrades.
     pub const fn mainnet() -> [(Self, ForkCondition); 11] {
         Self::forks_for(ChainConfig::mainnet())
     }
 
-    /// Base Sepolia list of upgrades.
+    /// Unstable Sepolia list of upgrades.
     pub const fn sepolia() -> [(Self, ForkCondition); 11] {
         Self::forks_for(ChainConfig::sepolia())
     }
@@ -123,7 +123,7 @@ impl BaseUpgrade {
         Self::forks_for(ChainConfig::devnet())
     }
 
-    /// Base Zeronet list of upgrades.
+    /// Unstable Zeronet list of upgrades.
     pub const fn zeronet() -> [(Self, ForkCondition); 11] {
         Self::forks_for(ChainConfig::zeronet())
     }
@@ -151,50 +151,50 @@ mod tests {
             "jOvIaN", "aZuL", "bErYl",
         ];
         let expected_upgrades = [
-            BaseUpgrade::Bedrock,
-            BaseUpgrade::Regolith,
-            BaseUpgrade::Canyon,
-            BaseUpgrade::Ecotone,
-            BaseUpgrade::Fjord,
-            BaseUpgrade::Granite,
-            BaseUpgrade::Holocene,
-            BaseUpgrade::Isthmus,
-            BaseUpgrade::Jovian,
-            BaseUpgrade::Azul,
-            BaseUpgrade::Beryl,
+            UnstableUpgrade::Bedrock,
+            UnstableUpgrade::Regolith,
+            UnstableUpgrade::Canyon,
+            UnstableUpgrade::Ecotone,
+            UnstableUpgrade::Fjord,
+            UnstableUpgrade::Granite,
+            UnstableUpgrade::Holocene,
+            UnstableUpgrade::Isthmus,
+            UnstableUpgrade::Jovian,
+            UnstableUpgrade::Azul,
+            UnstableUpgrade::Beryl,
         ];
 
-        let upgrades: alloc::vec::Vec<BaseUpgrade> =
-            upgrade_str.iter().map(|h| BaseUpgrade::from_str(h).unwrap()).collect();
+        let upgrades: alloc::vec::Vec<UnstableUpgrade> =
+            upgrade_str.iter().map(|h| UnstableUpgrade::from_str(h).unwrap()).collect();
 
         assert_eq!(upgrades, expected_upgrades);
     }
 
     #[test]
     fn check_nonexistent_upgrade_from_str() {
-        assert!(BaseUpgrade::from_str("not an upgrade").is_err());
+        assert!(UnstableUpgrade::from_str("not an upgrade").is_err());
     }
 
     #[test]
     fn latest_base_upgrade_matches_default() {
-        assert_eq!(BaseUpgrade::default(), BaseUpgrade::LATEST);
-        assert_eq!(BaseUpgrade::LATEST, BaseUpgrade::Azul);
+        assert_eq!(UnstableUpgrade::default(), UnstableUpgrade::LATEST);
+        assert_eq!(UnstableUpgrade::LATEST, UnstableUpgrade::Azul);
     }
 
     #[test]
     fn check_base_upgrade_eth_spec_mapping() {
         let test_cases = [
-            (BaseUpgrade::Bedrock, SpecId::MERGE),
-            (BaseUpgrade::Regolith, SpecId::MERGE),
-            (BaseUpgrade::Canyon, SpecId::SHANGHAI),
-            (BaseUpgrade::Ecotone, SpecId::CANCUN),
-            (BaseUpgrade::Fjord, SpecId::CANCUN),
-            (BaseUpgrade::Granite, SpecId::CANCUN),
-            (BaseUpgrade::Holocene, SpecId::CANCUN),
-            (BaseUpgrade::Isthmus, SpecId::PRAGUE),
-            (BaseUpgrade::Jovian, SpecId::PRAGUE),
-            (BaseUpgrade::Azul, SpecId::OSAKA),
-            (BaseUpgrade::Beryl, SpecId::OSAKA),
+            (UnstableUpgrade::Bedrock, SpecId::MERGE),
+            (UnstableUpgrade::Regolith, SpecId::MERGE),
+            (UnstableUpgrade::Canyon, SpecId::SHANGHAI),
+            (UnstableUpgrade::Ecotone, SpecId::CANCUN),
+            (UnstableUpgrade::Fjord, SpecId::CANCUN),
+            (UnstableUpgrade::Granite, SpecId::CANCUN),
+            (UnstableUpgrade::Holocene, SpecId::CANCUN),
+            (UnstableUpgrade::Isthmus, SpecId::PRAGUE),
+            (UnstableUpgrade::Jovian, SpecId::PRAGUE),
+            (UnstableUpgrade::Azul, SpecId::OSAKA),
+            (UnstableUpgrade::Beryl, SpecId::OSAKA),
         ];
 
         for (base_upgrade, eth_spec) in test_cases {
@@ -203,15 +203,15 @@ mod tests {
     }
 
     /// Reverse lookup to find the upgrade given a chain ID and block timestamp.
-    /// Returns the active upgrade at the given timestamp for the specified Base chain.
-    fn upgrade_from_chain_and_timestamp(chain: Chain, timestamp: u64) -> Option<BaseUpgrade> {
+    /// Returns the active upgrade at the given timestamp for the specified Unstable chain.
+    fn upgrade_from_chain_and_timestamp(chain: Chain, timestamp: u64) -> Option<UnstableUpgrade> {
         let cfg = ChainConfig::by_chain_id(chain.id())?;
         Some(upgrade_from_config_and_timestamp(cfg, timestamp))
     }
 
-    fn upgrade_from_config_and_timestamp(cfg: &ChainConfig, timestamp: u64) -> BaseUpgrade {
-        BaseUpgrade::from_timestamp(
-            crate::ChainUpgrades::new(BaseUpgrade::forks_for(cfg)),
+    fn upgrade_from_config_and_timestamp(cfg: &ChainConfig, timestamp: u64) -> UnstableUpgrade {
+        UnstableUpgrade::from_timestamp(
+            crate::ChainUpgrades::new(UnstableUpgrade::forks_for(cfg)),
             timestamp,
         )
     }
@@ -219,16 +219,16 @@ mod tests {
     #[test]
     fn test_reverse_lookup_base_chains() {
         let test_cases = [
-            (Chain::base_mainnet(), ChainConfig::mainnet().canyon_timestamp, BaseUpgrade::Canyon),
-            (Chain::base_mainnet(), ChainConfig::mainnet().ecotone_timestamp, BaseUpgrade::Ecotone),
-            (Chain::base_mainnet(), ChainConfig::mainnet().jovian_timestamp, BaseUpgrade::Jovian),
-            (Chain::base_sepolia(), ChainConfig::sepolia().canyon_timestamp, BaseUpgrade::Canyon),
-            (Chain::base_sepolia(), ChainConfig::sepolia().ecotone_timestamp, BaseUpgrade::Ecotone),
-            (Chain::base_sepolia(), ChainConfig::sepolia().jovian_timestamp, BaseUpgrade::Jovian),
+            (Chain::base_mainnet(), ChainConfig::mainnet().canyon_timestamp, UnstableUpgrade::Canyon),
+            (Chain::base_mainnet(), ChainConfig::mainnet().ecotone_timestamp, UnstableUpgrade::Ecotone),
+            (Chain::base_mainnet(), ChainConfig::mainnet().jovian_timestamp, UnstableUpgrade::Jovian),
+            (Chain::base_sepolia(), ChainConfig::sepolia().canyon_timestamp, UnstableUpgrade::Canyon),
+            (Chain::base_sepolia(), ChainConfig::sepolia().ecotone_timestamp, UnstableUpgrade::Ecotone),
+            (Chain::base_sepolia(), ChainConfig::sepolia().jovian_timestamp, UnstableUpgrade::Jovian),
             (
                 Chain::base_sepolia(),
                 ChainConfig::sepolia().azul_timestamp.unwrap(),
-                BaseUpgrade::Azul,
+                UnstableUpgrade::Azul,
             ),
         ];
 
@@ -251,23 +251,23 @@ mod tests {
 
         assert_eq!(
             upgrade_from_config_and_timestamp(&cfg, cfg.jovian_timestamp + 9),
-            BaseUpgrade::Jovian
+            UnstableUpgrade::Jovian
         );
         assert_eq!(
             upgrade_from_config_and_timestamp(&cfg, cfg.jovian_timestamp + 10),
-            BaseUpgrade::Azul
+            UnstableUpgrade::Azul
         );
         assert_eq!(
             upgrade_from_config_and_timestamp(&cfg, cfg.jovian_timestamp + 19),
-            BaseUpgrade::Azul
+            UnstableUpgrade::Azul
         );
         assert_eq!(
             upgrade_from_config_and_timestamp(&cfg, cfg.jovian_timestamp + 20),
-            BaseUpgrade::Beryl
+            UnstableUpgrade::Beryl
         );
         assert_eq!(
             upgrade_from_config_and_timestamp(&cfg, cfg.jovian_timestamp + 50),
-            BaseUpgrade::Beryl
+            UnstableUpgrade::Beryl
         );
     }
 
@@ -279,22 +279,22 @@ mod tests {
 
         assert_eq!(
             upgrade_from_config_and_timestamp(&cfg, cfg.jovian_timestamp + 9),
-            BaseUpgrade::Jovian
+            UnstableUpgrade::Jovian
         );
         assert_eq!(
             upgrade_from_config_and_timestamp(&cfg, cfg.jovian_timestamp + 10),
-            BaseUpgrade::Azul
+            UnstableUpgrade::Azul
         );
         assert_eq!(
             upgrade_from_config_and_timestamp(&cfg, cfg.jovian_timestamp + 20),
-            BaseUpgrade::Azul
+            UnstableUpgrade::Azul
         );
 
         cfg.azul_timestamp = None;
 
         assert_eq!(
             upgrade_from_config_and_timestamp(&cfg, cfg.jovian_timestamp),
-            BaseUpgrade::Jovian
+            UnstableUpgrade::Jovian
         );
     }
 }

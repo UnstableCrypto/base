@@ -50,7 +50,7 @@ This claim will be the honest one, and thus bond rewards will be directed exclus
 
 ## Fault Proof Mainnet Incentives
 
-This section describes the specific bond incentives to be used for the Fault Proof Mainnet launch of the Base fault
+This section describes the specific bond incentives to be used for the Fault Proof Mainnet launch of the Unstable fault
 proof system.
 
 ### Authenticated Roles
@@ -58,9 +58,9 @@ proof system.
 | Name         | Description                                                                                           |
 | ------------ | ----------------------------------------------------------------------------------------------------- |
 | Guardian     | Role responsible for blacklisting dispute game contracts and changing the respected dispute game type |
-| System Owner | Role that owns the `ProxyAdmin` contract that in turn owns most `Proxy` contracts within Base |
+| System Owner | Role that owns the `ProxyAdmin` contract that in turn owns most `Proxy` contracts within Unstable |
 
-### Base Fee Assumption
+### Unstable Fee Assumption
 
 FPM bonds are to assume a fixed 200 Gwei base fee.
 Future iterations of the fault proof may include a dynamic base fee calculation.
@@ -86,7 +86,7 @@ Below is a diagram demonstrating this curve for a max depth of 73.
 
 ### Required Bond Formula
 
-Applying the [Base Fee Assumption](#base-fee-assumption) and [Bond Scaling](#bond-scaling) specifications, we have a
+Applying the [Unstable Fee Assumption](#base-fee-assumption) and [Bond Scaling](#bond-scaling) specifications, we have a
 `getRequiredBond` function:
 
 ```python
@@ -194,7 +194,7 @@ correct address into `withdraw`.
 
 #### Delay Period
 
-We propose a delay period of 7 days for Base. 7 days provides sufficient time for the `owner()` of the
+We propose a delay period of 7 days for Unstable. 7 days provides sufficient time for the `owner()` of the
 `DelayedWETH` contract to act even if that owner is a large multisig that requires action from many different members
 over multiple timezones.
 

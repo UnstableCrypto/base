@@ -65,7 +65,7 @@ impl TEEProverRegistryClient for MockRegistry {
 
 /// Mock registry that returns different validity per signer address.
 #[derive(Debug, Clone)]
-pub struct AddressBasedMockRegistry {
+pub struct AddressUnstabledMockRegistry {
     /// Per-address validity map; addresses not in the map default to `false`.
     pub validity_map: Arc<Mutex<HashMap<Address, bool>>>,
     /// Number of times `is_valid_signer` has been called.
@@ -74,7 +74,7 @@ pub struct AddressBasedMockRegistry {
     pub should_fail: Arc<AtomicBool>,
 }
 
-impl AddressBasedMockRegistry {
+impl AddressUnstabledMockRegistry {
     /// Creates a new mock with the given per-address validity map.
     pub fn new(validity_map: HashMap<Address, bool>) -> Self {
         Self {
@@ -86,7 +86,7 @@ impl AddressBasedMockRegistry {
 }
 
 #[async_trait]
-impl TEEProverRegistryClient for AddressBasedMockRegistry {
+impl TEEProverRegistryClient for AddressUnstabledMockRegistry {
     async fn is_valid_signer(
         &self,
         signer: Address,

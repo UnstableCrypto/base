@@ -10,11 +10,11 @@ use alloy_rpc_types_engine::{
     CancunPayloadFields, ExecutionPayloadV1, ExecutionPayloadV2, ExecutionPayloadV3,
     PraguePayloadFields,
 };
-use base_common_consensus::BaseBlock;
+use base_common_consensus::UnstableBlock;
 use base_common_evm::L1BlockInfo;
-use base_common_flashblocks::{ExecutionPayloadBaseV1, Flashblock};
+use base_common_flashblocks::{ExecutionPayloadUnstableV1, Flashblock};
 use base_common_rpc_types_engine::{
-    BaseExecutionPayload, BaseExecutionPayloadSidecar, BaseExecutionPayloadV4,
+    UnstableExecutionPayload, UnstableExecutionPayloadSidecar, UnstableExecutionPayloadV4,
 };
 
 use crate::{ExecutionError, ProtocolError, Result};
@@ -22,10 +22,10 @@ use crate::{ExecutionError, ProtocolError, Result};
 /// Result of assembling a block from flashblocks.
 #[derive(Debug, Clone)]
 pub struct AssembledBlock {
-    /// The reconstructed Base block.
-    pub block: BaseBlock,
+    /// The reconstructed Unstable block.
+    pub block: UnstableBlock,
     /// The base payload data from the first flashblock.
-    pub base: ExecutionPayloadBaseV1,
+    pub base: ExecutionPayloadUnstableV1,
     /// The flashblocks used to assemble this block.
     pub flashblocks: Vec<Flashblock>,
     /// The sealed header for this block.
@@ -72,7 +72,7 @@ impl BlockAssembler {
     /// - Block conversion fails
     pub fn assemble(flashblocks: &[Flashblock]) -> Result<AssembledBlock> {
         let first = flashblocks.first().ok_or(ProtocolError::EmptyFlashblocks)?;
-        let base = first.base.clone().ok_or(ProtocolError::MissingBase)?;
+        let base = first.base.clone().ok_or(ProtocolError::MissingUnstable)?;
         let latest_flashblock = flashblocks.last().ok_or(ProtocolError::EmptyFlashblocks)?;
 
         let transactions: Vec<Bytes> = flashblocks
@@ -83,8 +83,8 @@ impl BlockAssembler {
         let withdrawals: Vec<Withdrawal> =
             flashblocks.iter().flat_map(|flashblock| flashblock.diff.withdrawals.clone()).collect();
 
-        // BaseExecutionPayloadV4 sets withdrawals_root directly instead of computing from list.
-        let execution_payload = BaseExecutionPayloadV4 {
+        // UnstableExecutionPayloadV4 sets withdrawals_root directly instead of computing from list.
+        let execution_payload = UnstableExecutionPayloadV4 {
             payload_inner: ExecutionPayloadV3 {
                 blob_gas_used: latest_flashblock.diff.blob_gas_used.unwrap_or_default(),
                 excess_blob_gas: 0,
@@ -112,7 +112,7 @@ impl BlockAssembler {
         };
 
         // Create sidecar with fields passed separately to Engine API
-        let sidecar = BaseExecutionPayloadSidecar::v4(
+        let sidecar = UnstableExecutionPayloadSidecar::v4(
             CancunPayloadFields {
                 parent_beacon_block_root: base.parent_beacon_block_root,
                 versioned_hashes: vec![],
@@ -120,7 +120,7 @@ impl BlockAssembler {
             PraguePayloadFields::new(EMPTY_REQUESTS_HASH),
         );
 
-        let block: BaseBlock = BaseExecutionPayload::V4(execution_payload)
+        let block: UnstableBlock = UnstableExecutionPayload::V4(execution_payload)
             .try_into_block_with_sidecar(&sidecar)
             .map_err(|e| ExecutionError::BlockConversion(e.to_string()))?;
 
@@ -136,7 +136,7 @@ mod tests {
     use alloy_primitives::{Address, Bloom, U256};
     use alloy_rpc_types_engine::PayloadId;
     use base_common_flashblocks::{
-        ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, Metadata,
+        ExecutionPayloadUnstableV1, ExecutionPayloadFlashblockDeltaV1, Metadata,
     };
 
     use super::*;
@@ -147,7 +147,7 @@ mod tests {
             payload_id: PayloadId::default(),
             index,
             base: if with_base {
-                Some(ExecutionPayloadBaseV1 {
+                Some(ExecutionPayloadUnstableV1 {
                     parent_beacon_block_root: B256::ZERO,
                     parent_hash: B256::ZERO,
                     fee_recipient: Address::ZERO,
@@ -232,7 +232,7 @@ mod tests {
         let result = BlockAssembler::assemble(&flashblocks);
         assert!(matches!(
             result,
-            Err(crate::StateProcessorError::Protocol(ProtocolError::MissingBase))
+            Err(crate::StateProcessorError::Protocol(ProtocolError::MissingUnstable))
         ));
     }
 }

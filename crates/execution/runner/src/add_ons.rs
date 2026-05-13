@@ -2,17 +2,17 @@ use std::marker::PhantomData;
 
 use base_execution_payload_builder::{
     Attributes, PayloadPrimitives,
-    config::{BaseDAConfig, GasLimitConfig},
+    config::{UnstableDAConfig, GasLimitConfig},
 };
 use base_execution_rpc::{
     MinerApiExtServer,
-    config::{BaseEthConfigApiServer, BaseEthConfigHandler},
-    eth::BaseEthApiBuilder,
-    miner::BaseMinerExtApi,
-    witness::BaseDebugWitnessApi,
+    config::{UnstableEthConfigApiServer, UnstableEthConfigHandler},
+    eth::UnstableEthApiBuilder,
+    miner::UnstableMinerExtApi,
+    witness::UnstableDebugWitnessApi,
 };
-use base_execution_txpool::BasePooledTx;
-use base_node_core::{BaseEngineApiBuilder, BaseNodeTypes, BasePayloadValidatorBuilder};
+use base_execution_txpool::UnstablePooledTx;
+use base_node_core::{UnstableEngineApiBuilder, UnstableNodeTypes, UnstablePayloadValidatorBuilder};
 use reth_evm::ConfigureEvm;
 use reth_node_api::{BuildNextEnv, FullNodeComponents, HeaderTy, NodeAddOns, PayloadTypes, TxTy};
 use reth_node_builder::{
@@ -30,16 +30,16 @@ use reth_tracing::tracing::debug;
 use reth_transaction_pool::TransactionPool;
 use serde::de::DeserializeOwned;
 
-/// Add-ons w.r.t. Base.
+/// Add-ons w.r.t. Unstable.
 ///
-/// This type provides Base-specific addons to the node and exposes the RPC server and engine
+/// This type provides Unstable-specific addons to the node and exposes the RPC server and engine
 /// API.
 #[derive(Debug)]
-pub struct BaseAddOns<
+pub struct UnstableAddOns<
     N: FullNodeComponents,
     EthB: EthApiBuilder<N>,
     PVB,
-    EB = BaseEngineApiBuilder<PVB>,
+    EB = UnstableEngineApiBuilder<PVB>,
     EVB = BasicEngineValidatorBuilder<PVB>,
     RpcMiddleware = Identity,
 > {
@@ -47,12 +47,12 @@ pub struct BaseAddOns<
     /// and eth-api.
     pub rpc_add_ons: RpcAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>,
     /// Data availability configuration for the payload builder.
-    pub da_config: BaseDAConfig,
+    pub da_config: UnstableDAConfig,
     /// Gas limit configuration for the payload builder.
     pub gas_limit_config: GasLimitConfig,
 }
 
-impl<N, EthB, PVB, EB, EVB, RpcMiddleware> BaseAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
+impl<N, EthB, PVB, EB, EVB, RpcMiddleware> UnstableAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
 where
     N: FullNodeComponents,
     EthB: EthApiBuilder<N>,
@@ -61,17 +61,17 @@ where
     #[allow(clippy::too_many_arguments)]
     pub const fn new(
         rpc_add_ons: RpcAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>,
-        da_config: BaseDAConfig,
+        da_config: UnstableDAConfig,
         gas_limit_config: GasLimitConfig,
     ) -> Self {
         Self { rpc_add_ons, da_config, gas_limit_config }
     }
 }
 
-impl<N> Default for BaseAddOns<N, BaseEthApiBuilder, BasePayloadValidatorBuilder>
+impl<N> Default for UnstableAddOns<N, UnstableEthApiBuilder, UnstablePayloadValidatorBuilder>
 where
-    N: FullNodeComponents<Types: BaseNodeTypes>,
-    BaseEthApiBuilder: EthApiBuilder<N>,
+    N: FullNodeComponents<Types: UnstableNodeTypes>,
+    UnstableEthApiBuilder: EthApiBuilder<N>,
 {
     fn default() -> Self {
         Self::builder().build()
@@ -79,24 +79,24 @@ where
 }
 
 impl<N, NetworkT, RpcMiddleware>
-    BaseAddOns<
+    UnstableAddOns<
         N,
-        BaseEthApiBuilder<NetworkT>,
-        BasePayloadValidatorBuilder,
-        BaseEngineApiBuilder<BasePayloadValidatorBuilder>,
+        UnstableEthApiBuilder<NetworkT>,
+        UnstablePayloadValidatorBuilder,
+        UnstableEngineApiBuilder<UnstablePayloadValidatorBuilder>,
         RpcMiddleware,
     >
 where
-    N: FullNodeComponents<Types: BaseNodeTypes>,
-    BaseEthApiBuilder<NetworkT>: EthApiBuilder<N>,
+    N: FullNodeComponents<Types: UnstableNodeTypes>,
+    UnstableEthApiBuilder<NetworkT>: EthApiBuilder<N>,
 {
-    /// Build a [`BaseAddOns`] using [`BaseAddOnsBuilder`].
-    pub fn builder() -> BaseAddOnsBuilder<NetworkT> {
-        BaseAddOnsBuilder::default()
+    /// Build a [`UnstableAddOns`] using [`UnstableAddOnsBuilder`].
+    pub fn builder() -> UnstableAddOnsBuilder<NetworkT> {
+        UnstableAddOnsBuilder::default()
     }
 }
 
-impl<N, EthB, PVB, EB, EVB, RpcMiddleware> BaseAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
+impl<N, EthB, PVB, EB, EVB, RpcMiddleware> UnstableAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
 where
     N: FullNodeComponents,
     EthB: EthApiBuilder<N>,
@@ -105,9 +105,9 @@ where
     pub fn with_engine_api<T>(
         self,
         engine_api_builder: T,
-    ) -> BaseAddOns<N, EthB, PVB, T, EVB, RpcMiddleware> {
+    ) -> UnstableAddOns<N, EthB, PVB, T, EVB, RpcMiddleware> {
         let Self { rpc_add_ons, da_config, gas_limit_config, .. } = self;
-        BaseAddOns::new(
+        UnstableAddOns::new(
             rpc_add_ons.with_engine_api(engine_api_builder),
             da_config,
             gas_limit_config,
@@ -118,9 +118,9 @@ where
     pub fn with_payload_validator<T>(
         self,
         payload_validator_builder: T,
-    ) -> BaseAddOns<N, EthB, T, EB, EVB, RpcMiddleware> {
+    ) -> UnstableAddOns<N, EthB, T, EB, EVB, RpcMiddleware> {
         let Self { rpc_add_ons, da_config, gas_limit_config, .. } = self;
-        BaseAddOns::new(
+        UnstableAddOns::new(
             rpc_add_ons.with_payload_validator(payload_validator_builder),
             da_config,
             gas_limit_config,
@@ -131,9 +131,9 @@ where
     pub fn with_engine_validator<T>(
         self,
         engine_validator_builder: T,
-    ) -> BaseAddOns<N, EthB, PVB, EB, T, RpcMiddleware> {
+    ) -> UnstableAddOns<N, EthB, PVB, EB, T, RpcMiddleware> {
         let Self { rpc_add_ons, da_config, gas_limit_config, .. } = self;
-        BaseAddOns::new(
+        UnstableAddOns::new(
             rpc_add_ons.with_engine_validator(engine_validator_builder),
             da_config,
             gas_limit_config,
@@ -147,9 +147,9 @@ where
     /// layer, allowing you to intercept, modify, or enhance RPC request processing.
     ///
     /// See also [`RpcAddOns::with_rpc_middleware`].
-    pub fn with_rpc_middleware<T>(self, rpc_middleware: T) -> BaseAddOns<N, EthB, PVB, EB, EVB, T> {
+    pub fn with_rpc_middleware<T>(self, rpc_middleware: T) -> UnstableAddOns<N, EthB, PVB, EB, EVB, T> {
         let Self { rpc_add_ons, da_config, gas_limit_config, .. } = self;
-        BaseAddOns::new(
+        UnstableAddOns::new(
             rpc_add_ons.with_rpc_middleware(rpc_middleware),
             da_config,
             gas_limit_config,
@@ -178,19 +178,19 @@ where
 }
 
 impl<N, EthB, PVB, EB, EVB, Attrs, RpcMiddleware> NodeAddOns<N>
-    for BaseAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
+    for UnstableAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
 where
     N: FullNodeComponents<
-            Types: BaseNodeTypes
+            Types: UnstableNodeTypes
                        + NodeTypes<Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>>,
             Evm: ConfigureEvm<
                 NextBlockEnvCtx: BuildNextEnv<
                     Attrs,
                     HeaderTy<N::Types>,
-                    base_execution_chainspec::BaseChainSpec,
+                    base_execution_chainspec::UnstableChainSpec,
                 >,
             >,
-            Pool: TransactionPool<Transaction: BasePooledTx>,
+            Pool: TransactionPool<Transaction: UnstablePooledTx>,
         >,
     EthB: EthApiBuilder<N>,
     PVB: Send,
@@ -208,20 +208,20 @@ where
     ) -> eyre::Result<Self::Handle> {
         let Self { rpc_add_ons, da_config, gas_limit_config, .. } = self;
         let eth_config =
-            BaseEthConfigHandler::new(ctx.node.provider().clone(), ctx.node.evm_config().clone());
+            UnstableEthConfigHandler::new(ctx.node.provider().clone(), ctx.node.evm_config().clone());
 
-        let builder = base_execution_payload_builder::BasePayloadBuilder::new(
+        let builder = base_execution_payload_builder::UnstablePayloadBuilder::new(
             ctx.node.pool().clone(),
             ctx.node.provider().clone(),
             ctx.node.evm_config().clone(),
         );
         // Install additional rollup-specific RPC methods.
-        let debug_ext = BaseDebugWitnessApi::<_, _, _, Attrs>::new(
+        let debug_ext = UnstableDebugWitnessApi::<_, _, _, Attrs>::new(
             ctx.node.provider().clone(),
             Box::new(ctx.node.task_executor().clone()),
             builder,
         );
-        let miner_ext = BaseMinerExtApi::new(da_config, gas_limit_config);
+        let miner_ext = UnstableMinerExtApi::new(da_config, gas_limit_config);
 
         rpc_add_ons
             .launch_add_ons_with(ctx, move |container| {
@@ -258,20 +258,20 @@ where
 }
 
 impl<N, EthB, PVB, EB, EVB, Attrs, RpcMiddleware> RethRpcAddOns<N>
-    for BaseAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
+    for UnstableAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
 where
     N: FullNodeComponents<
-            Types: BaseNodeTypes
+            Types: UnstableNodeTypes
                        + NodeTypes<Payload: PayloadTypes<PayloadBuilderAttributes = Attrs>>,
             Evm: ConfigureEvm<
                 NextBlockEnvCtx: BuildNextEnv<
                     Attrs,
                     HeaderTy<N::Types>,
-                    base_execution_chainspec::BaseChainSpec,
+                    base_execution_chainspec::UnstableChainSpec,
                 >,
             >,
         >,
-    <<N as FullNodeComponents>::Pool as TransactionPool>::Transaction: BasePooledTx,
+    <<N as FullNodeComponents>::Pool as TransactionPool>::Transaction: UnstablePooledTx,
     EthB: EthApiBuilder<N>,
     PVB: PayloadValidatorBuilder<N>,
     EB: EngineApiBuilder<N>,
@@ -288,7 +288,7 @@ where
 }
 
 impl<N, EthB, PVB, EB, EVB, RpcMiddleware> EngineValidatorAddOn<N>
-    for BaseAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
+    for UnstableAddOns<N, EthB, PVB, EB, EVB, RpcMiddleware>
 where
     N: FullNodeComponents,
     EthB: EthApiBuilder<N>,
@@ -304,17 +304,17 @@ where
     }
 }
 
-/// A regular Base EVM and executor builder.
+/// A regular Unstable EVM and executor builder.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct BaseAddOnsBuilder<NetworkT, RpcMiddleware = Identity> {
+pub struct UnstableAddOnsBuilder<NetworkT, RpcMiddleware = Identity> {
     /// Sequencer client, configured to forward submitted transactions to sequencer of the given
-    /// Base network.
+    /// Unstable network.
     sequencer_url: Option<String>,
     /// Headers to use for the sequencer client requests.
     sequencer_headers: Vec<String>,
     /// Data availability configuration for the payload builder.
-    da_config: Option<BaseDAConfig>,
+    da_config: Option<UnstableDAConfig>,
     /// Gas limit configuration for the payload builder.
     gas_limit_config: Option<GasLimitConfig>,
     /// Marker for network types.
@@ -327,7 +327,7 @@ pub struct BaseAddOnsBuilder<NetworkT, RpcMiddleware = Identity> {
     tokio_runtime: Option<tokio::runtime::Handle>,
 }
 
-impl<NetworkT> Default for BaseAddOnsBuilder<NetworkT> {
+impl<NetworkT> Default for UnstableAddOnsBuilder<NetworkT> {
     fn default() -> Self {
         Self {
             sequencer_url: None,
@@ -342,7 +342,7 @@ impl<NetworkT> Default for BaseAddOnsBuilder<NetworkT> {
     }
 }
 
-impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
+impl<NetworkT, RpcMiddleware> UnstableAddOnsBuilder<NetworkT, RpcMiddleware> {
     /// With a [`SequencerClient`].
     pub fn with_sequencer(mut self, sequencer_client: Option<String>) -> Self {
         self.sequencer_url = sequencer_client;
@@ -355,13 +355,13 @@ impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
         self
     }
 
-    /// Configure the data availability configuration for the Base builder.
-    pub fn with_da_config(mut self, da_config: BaseDAConfig) -> Self {
+    /// Configure the data availability configuration for the Unstable builder.
+    pub fn with_da_config(mut self, da_config: UnstableDAConfig) -> Self {
         self.da_config = Some(da_config);
         self
     }
 
-    /// Configure the gas limit configuration for the Base payload builder.
+    /// Configure the gas limit configuration for the Unstable payload builder.
     pub fn with_gas_limit_config(mut self, gas_limit_config: GasLimitConfig) -> Self {
         self.gas_limit_config = Some(gas_limit_config);
         self
@@ -382,7 +382,7 @@ impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
     }
 
     /// Configure the RPC middleware to use
-    pub fn with_rpc_middleware<T>(self, rpc_middleware: T) -> BaseAddOnsBuilder<NetworkT, T> {
+    pub fn with_rpc_middleware<T>(self, rpc_middleware: T) -> UnstableAddOnsBuilder<NetworkT, T> {
         let Self {
             sequencer_url,
             sequencer_headers,
@@ -393,7 +393,7 @@ impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
             _nt,
             ..
         } = self;
-        BaseAddOnsBuilder {
+        UnstableAddOnsBuilder {
             sequencer_url,
             sequencer_headers,
             da_config,
@@ -406,14 +406,14 @@ impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
     }
 }
 
-impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
-    /// Builds an instance of [`BaseAddOns`].
+impl<NetworkT, RpcMiddleware> UnstableAddOnsBuilder<NetworkT, RpcMiddleware> {
+    /// Builds an instance of [`UnstableAddOns`].
     pub fn build<N, PVB, EB, EVB>(
         self,
-    ) -> BaseAddOns<N, BaseEthApiBuilder<NetworkT>, PVB, EB, EVB, RpcMiddleware>
+    ) -> UnstableAddOns<N, UnstableEthApiBuilder<NetworkT>, PVB, EB, EVB, RpcMiddleware>
     where
         N: FullNodeComponents<Types: NodeTypes>,
-        BaseEthApiBuilder<NetworkT>: EthApiBuilder<N>,
+        UnstableEthApiBuilder<NetworkT>: EthApiBuilder<N>,
         PVB: PayloadValidatorBuilder<N> + Default,
         EB: Default,
         EVB: Default,
@@ -429,9 +429,9 @@ impl<NetworkT, RpcMiddleware> BaseAddOnsBuilder<NetworkT, RpcMiddleware> {
             ..
         } = self;
 
-        BaseAddOns::new(
+        UnstableAddOns::new(
             RpcAddOns::new(
-                BaseEthApiBuilder::default()
+                UnstableEthApiBuilder::default()
                     .with_sequencer(sequencer_url)
                     .with_sequencer_headers(sequencer_headers)
                     .with_min_suggested_priority_fee(min_suggested_priority_fee),

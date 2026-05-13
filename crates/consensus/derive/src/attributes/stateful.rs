@@ -11,7 +11,7 @@ use alloy_rpc_types_engine::PayloadAttributes;
 use async_trait::async_trait;
 use base_common_consensus::Predeploys;
 use base_common_genesis::RollupConfig;
-use base_common_rpc_types_engine::BasePayloadAttributes;
+use base_common_rpc_types_engine::UnstablePayloadAttributes;
 use base_consensus_upgrades::{Upgrade, Upgrades};
 use base_protocol::{Deposits, L1BlockInfoTx, L2BlockInfo};
 use tracing::warn;
@@ -69,7 +69,7 @@ where
         &mut self,
         l2_parent: L2BlockInfo,
         epoch: BlockNumHash,
-    ) -> PipelineResult<BasePayloadAttributes> {
+    ) -> PipelineResult<UnstablePayloadAttributes> {
         let l1_header;
         let deposit_transactions: Vec<Bytes>;
 
@@ -196,7 +196,7 @@ where
             parent_beacon_root = Some(l1_header.parent_beacon_block_root.unwrap_or_default());
         }
 
-        Ok(BasePayloadAttributes {
+        Ok(UnstablePayloadAttributes {
             payload_attributes: PayloadAttributes {
                 timestamp: next_l2_time,
                 prev_randao: l1_header.mix_hash,
@@ -480,7 +480,7 @@ mod tests {
         };
         let next_l2_time = l2_parent.block_info.timestamp + block_time;
         let payload = builder.prepare_payload_attributes(l2_parent, epoch).await.unwrap();
-        let expected = BasePayloadAttributes {
+        let expected = UnstablePayloadAttributes {
             payload_attributes: PayloadAttributes {
                 timestamp: next_l2_time,
                 prev_randao,
@@ -532,7 +532,7 @@ mod tests {
         };
         let next_l2_time = l2_parent.block_info.timestamp + block_time;
         let payload = builder.prepare_payload_attributes(l2_parent, epoch).await.unwrap();
-        let expected = BasePayloadAttributes {
+        let expected = UnstablePayloadAttributes {
             payload_attributes: PayloadAttributes {
                 timestamp: next_l2_time,
                 prev_randao,
@@ -585,7 +585,7 @@ mod tests {
         };
         let next_l2_time = l2_parent.block_info.timestamp + block_time;
         let payload = builder.prepare_payload_attributes(l2_parent, epoch).await.unwrap();
-        let expected = BasePayloadAttributes {
+        let expected = UnstablePayloadAttributes {
             payload_attributes: PayloadAttributes {
                 timestamp: next_l2_time,
                 prev_randao,
@@ -637,7 +637,7 @@ mod tests {
         };
         let next_l2_time = l2_parent.block_info.timestamp + block_time;
         let payload = builder.prepare_payload_attributes(l2_parent, epoch).await.unwrap();
-        let expected = BasePayloadAttributes {
+        let expected = UnstablePayloadAttributes {
             payload_attributes: PayloadAttributes {
                 timestamp: next_l2_time,
                 prev_randao,

@@ -1,6 +1,6 @@
 [package]
 name = "base-challenger"
-description = "Base Challenger"
+description = "Unstable Challenger"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

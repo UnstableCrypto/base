@@ -1,22 +1,22 @@
 use std::fmt::Debug;
 
 use async_trait::async_trait;
-use base_common_rpc_types_engine::BaseExecutionPayloadEnvelope;
+use base_common_rpc_types_engine::UnstableExecutionPayloadEnvelope;
 use derive_more::Constructor;
 use thiserror::Error;
 use tokio::sync::mpsc;
 
-/// Client used to schedule unsafe [`BaseExecutionPayloadEnvelope`] to be gossiped.
+/// Client used to schedule unsafe [`UnstableExecutionPayloadEnvelope`] to be gossiped.
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait UnsafePayloadGossipClient: Send + Sync + Debug {
     /// This is a fire-and-forget function that schedules the provided
-    /// [`BaseExecutionPayloadEnvelope`] to be gossiped. The implementation should return as
+    /// [`UnstableExecutionPayloadEnvelope`] to be gossiped. The implementation should return as
     /// quickly as possible and offers no guarantees that the payload actually was gossiped
     /// successfully.
     async fn schedule_execution_payload_gossip(
         &self,
-        payload: BaseExecutionPayloadEnvelope,
+        payload: UnstableExecutionPayloadEnvelope,
     ) -> Result<(), UnsafePayloadGossipClientError>;
 }
 
@@ -33,14 +33,14 @@ pub enum UnsafePayloadGossipClientError {
 #[derive(Debug, Clone, Constructor)]
 pub struct QueuedUnsafePayloadGossipClient {
     /// Queue used to relay unsafe payloads to gossip.
-    request_tx: mpsc::Sender<BaseExecutionPayloadEnvelope>,
+    request_tx: mpsc::Sender<UnstableExecutionPayloadEnvelope>,
 }
 
 #[async_trait]
 impl UnsafePayloadGossipClient for QueuedUnsafePayloadGossipClient {
     async fn schedule_execution_payload_gossip(
         &self,
-        payload: BaseExecutionPayloadEnvelope,
+        payload: UnstableExecutionPayloadEnvelope,
     ) -> Result<(), UnsafePayloadGossipClientError> {
         self.request_tx
             .send(payload.clone())

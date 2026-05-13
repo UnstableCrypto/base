@@ -1,16 +1,16 @@
-//! Types related to transactions for Base chains.
+//! Types related to transactions for Unstable chains.
 
 use alloy_consensus::{Transaction as TransactionTrait, Typed2718, transaction::Recovered};
 use alloy_eips::{eip2930::AccessList, eip7702::SignedAuthorization};
 use alloy_primitives::{Address, B256, BlockHash, Bytes, ChainId, TxKind, U256};
 use alloy_serde::OtherFields;
-use base_common_consensus::{BaseTransactionInfo, BaseTxEnvelope};
+use base_common_consensus::{UnstableTransactionInfo, UnstableTxEnvelope};
 use serde::{Deserialize, Serialize};
 
 mod request;
-pub use request::BaseTransactionRequest;
+pub use request::UnstableTransactionRequest;
 
-/// Base transaction type
+/// Unstable transaction type
 #[derive(
     Clone, Debug, PartialEq, Eq, Serialize, Deserialize, derive_more::Deref, derive_more::DerefMut,
 )]
@@ -20,7 +20,7 @@ pub struct Transaction {
     /// Ethereum Transaction Types
     #[deref]
     #[deref_mut]
-    pub inner: alloy_rpc_types_eth::Transaction<BaseTxEnvelope>,
+    pub inner: alloy_rpc_types_eth::Transaction<UnstableTxEnvelope>,
 
     /// Nonce for deposit transactions. Only present in RPC responses.
     pub deposit_nonce: Option<u64>,
@@ -31,7 +31,7 @@ pub struct Transaction {
 
 impl Transaction {
     /// Converts a consensus `tx` with an additional context `tx_info` into an RPC [`Transaction`].
-    pub fn from_transaction(tx: Recovered<BaseTxEnvelope>, tx_info: BaseTransactionInfo) -> Self {
+    pub fn from_transaction(tx: Recovered<UnstableTxEnvelope>, tx_info: UnstableTransactionInfo) -> Self {
         let base_fee = tx_info.inner.base_fee;
         let effective_gas_price = if tx.is_deposit() {
             // For deposits, we must always set the `gasPrice` field to 0 in rpc
@@ -162,10 +162,10 @@ impl alloy_network_primitives::TransactionResponse for Transaction {
     }
 }
 
-/// Base chain-specific transaction fields
+/// Unstable chain-specific transaction fields
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BaseTransactionFields {
+pub struct UnstableTransactionFields {
     /// The ETH value to mint on L2
     #[serde(default, skip_serializing_if = "Option::is_none", with = "alloy_serde::quantity::opt")]
     pub mint: Option<u128>,
@@ -181,22 +181,22 @@ pub struct BaseTransactionFields {
     pub deposit_receipt_version: Option<u64>,
 }
 
-impl TryFrom<BaseTransactionFields> for OtherFields {
+impl TryFrom<UnstableTransactionFields> for OtherFields {
     type Error = serde_json::Error;
 
-    fn try_from(value: BaseTransactionFields) -> Result<Self, Self::Error> {
+    fn try_from(value: UnstableTransactionFields) -> Result<Self, Self::Error> {
         serde_json::to_value(value)?.try_into()
     }
 }
 
-impl AsRef<BaseTxEnvelope> for Transaction {
-    fn as_ref(&self) -> &BaseTxEnvelope {
+impl AsRef<UnstableTxEnvelope> for Transaction {
+    fn as_ref(&self) -> &UnstableTxEnvelope {
         self.inner.as_ref()
     }
 }
 
 mod tx_serde {
-    //! Helper module for serializing and deserializing Base [`Transaction`].
+    //! Helper module for serializing and deserializing Unstable [`Transaction`].
     //!
     //! This is needed because we might need to deserialize the `from` field into both
     //! [`alloy_consensus::transaction::Recovered::signer`] which resides in
@@ -204,13 +204,13 @@ mod tx_serde {
     //!
     //! Additionally, we need similar logic for the `gasPrice` field
     use alloy_consensus::{Transaction as TransactionTrait, transaction::Recovered};
-    use base_common_consensus::BaseTxEnvelope;
+    use base_common_consensus::UnstableTxEnvelope;
     use serde::{Deserialize, Serialize, de::Error};
 
     use super::{Address, BlockHash, Transaction};
 
     /// Helper struct which will be flattened into the transaction and will only contain `from`
-    /// field if inner [`BaseTxEnvelope`] did not consume it.
+    /// field if inner [`UnstableTxEnvelope`] did not consume it.
     #[derive(Serialize, Deserialize)]
     struct OptionalFields {
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -235,7 +235,7 @@ mod tx_serde {
     #[serde(rename_all = "camelCase")]
     pub(crate) struct TransactionSerdeHelper {
         #[serde(flatten)]
-        inner: BaseTxEnvelope,
+        inner: UnstableTxEnvelope,
         #[serde(default)]
         block_hash: Option<BlockHash>,
         #[serde(default, with = "alloy_serde::quantity::opt")]
@@ -341,7 +341,7 @@ mod tests {
 
         let tx = serde_json::from_str::<Transaction>(rpc_tx).unwrap();
 
-        let BaseTxEnvelope::Deposit(inner) = tx.as_ref() else {
+        let UnstableTxEnvelope::Deposit(inner) = tx.as_ref() else {
             panic!("Expected deposit transaction");
         };
         assert_eq!(tx.inner.inner.signer(), inner.from);

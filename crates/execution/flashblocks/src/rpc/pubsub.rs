@@ -2,13 +2,13 @@
 //!
 //! This module provides an extended `eth_subscribe` implementation that supports both
 //! standard Ethereum subscription types (newHeads, logs, newPendingTransactions, syncing)
-//! and Base-specific flashblocks subscriptions (newFlashblocks, pendingLogs).
+//! and Unstable-specific flashblocks subscriptions (newFlashblocks, pendingLogs).
 
 use std::sync::Arc;
 
 use alloy_primitives::B256;
 use alloy_rpc_types_eth::{Filter, Log, pubsub::Params};
-use base_common_network::Base;
+use base_common_network::Unstable;
 use futures::stream;
 use jsonrpsee::{
     PendingSubscriptionSink, SubscriptionSink,
@@ -27,19 +27,19 @@ use tracing::error;
 
 use crate::{
     FlashblocksAPI, TransactionWithLogs,
-    rpc::types::{BaseSubscriptionKind, ExtendedSubscriptionKind},
+    rpc::types::{UnstableSubscriptionKind, ExtendedSubscriptionKind},
 };
 
 /// Eth pub-sub RPC extension for flashblocks and standard subscriptions.
 ///
 /// This trait defines the `eth_subscribe` and `eth_unsubscribe` methods that handle
-/// both standard Ethereum subscriptions and Base-specific flashblocks subscriptions.
+/// both standard Ethereum subscriptions and Unstable-specific flashblocks subscriptions.
 #[rpc(server, namespace = "eth")]
 pub trait EthPubSubApi {
     /// Create an Eth subscription for the given kind.
     ///
     /// Supports standard subscription types (newHeads, logs, newPendingTransactions, syncing)
-    /// as well as Base-specific subscriptions (newFlashblocks, pendingLogs).
+    /// as well as Unstable-specific subscriptions (newFlashblocks, pendingLogs).
     #[subscription(
         name = "subscribe" => "subscription",
         unsubscribe = "unsubscribe",
@@ -56,7 +56,7 @@ pub trait EthPubSubApi {
 /// with flashblocks support.
 ///
 /// This handles `eth_subscribe` RPC calls for both standard Ethereum subscriptions
-/// and Base-specific flashblocks subscriptions.
+/// and Unstable-specific flashblocks subscriptions.
 #[derive(Clone, Debug)]
 pub struct EthPubSub<Eth, FB> {
     /// Reth's standard `EthPubSub` for handling standard subscription types
@@ -72,7 +72,7 @@ impl<Eth, FB> EthPubSub<Eth, FB> {
     }
 
     /// Returns a stream that yields all new flashblocks as RPC blocks
-    fn new_flashblocks_stream(flashblocks_state: Arc<FB>) -> impl Stream<Item = RpcBlock<Base>>
+    fn new_flashblocks_stream(flashblocks_state: Arc<FB>) -> impl Stream<Item = RpcBlock<Unstable>>
     where
         FB: FlashblocksAPI + Send + Sync + 'static,
     {
@@ -245,21 +245,21 @@ where
         }
 
         // Handle flashblocks-specific subscriptions
-        let ExtendedSubscriptionKind::Base(base_kind) = kind else {
+        let ExtendedSubscriptionKind::Unstable(base_kind) = kind else {
             unreachable!("Standard subscription types should be delegated to inner");
         };
 
         let sink = pending.accept().await?;
 
         match base_kind {
-            BaseSubscriptionKind::NewFlashblocks => {
+            UnstableSubscriptionKind::NewFlashblocks => {
                 let stream = Self::new_flashblocks_stream(Arc::clone(&self.flashblocks_state));
 
                 tokio::spawn(async move {
                     pipe_from_stream(sink, stream).await;
                 });
             }
-            BaseSubscriptionKind::PendingLogs => {
+            UnstableSubscriptionKind::PendingLogs => {
                 // Extract filter from params, default to empty filter (match all)
                 let filter = match params {
                     Some(Params::Logs(filter)) => *filter,
@@ -272,7 +272,7 @@ where
                     pipe_from_stream(sink, stream).await;
                 });
             }
-            BaseSubscriptionKind::NewFlashblockTransactions => match params {
+            UnstableSubscriptionKind::NewFlashblockTransactions => match params {
                 Some(Params::Logs(filter)) => {
                     let stream = Self::new_flashblock_transactions_filtered_stream(
                         Arc::clone(&self.flashblocks_state),

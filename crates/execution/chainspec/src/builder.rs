@@ -1,25 +1,25 @@
 use alloy_chains::Chain;
 use alloy_genesis::Genesis;
 use alloy_hardforks::Hardfork;
-use base_common_chains::BaseUpgrade;
+use base_common_chains::UnstableUpgrade;
 use derive_more::From;
 use reth_chainspec::ChainSpecBuilder;
 use reth_ethereum_forks::{ChainHardforks, EthereumHardfork, ForkCondition};
 use reth_primitives_traits::SealedHeader;
 
-use crate::BaseChainSpec;
+use crate::UnstableChainSpec;
 
-/// Chain spec builder for a Base chain.
+/// Chain spec builder for a Unstable chain.
 #[derive(Debug, Default, From)]
-pub struct BaseChainSpecBuilder {
+pub struct UnstableChainSpecBuilder {
     /// [`ChainSpecBuilder`]
     inner: ChainSpecBuilder,
 }
 
-impl BaseChainSpecBuilder {
-    /// Construct a new builder from the Base Mainnet chain spec.
+impl UnstableChainSpecBuilder {
+    /// Construct a new builder from the Unstable Mainnet chain spec.
     pub fn base_mainnet() -> Self {
-        let base_mainnet = BaseChainSpec::mainnet();
+        let base_mainnet = UnstableChainSpec::mainnet();
         let mut inner = ChainSpecBuilder::default()
             .chain(base_mainnet.chain)
             .genesis(base_mainnet.genesis.clone());
@@ -53,7 +53,7 @@ impl BaseChainSpecBuilder {
     }
 
     /// Remove the given fork from the spec.
-    pub fn without_fork(mut self, fork: BaseUpgrade) -> Self {
+    pub fn without_fork(mut self, fork: UnstableUpgrade) -> Self {
         self.inner = self.inner.without_fork(fork);
         self
     }
@@ -61,14 +61,14 @@ impl BaseChainSpecBuilder {
     /// Enable Bedrock at genesis.
     pub fn bedrock_activated(mut self) -> Self {
         self.inner = self.inner.paris_activated();
-        self.inner = self.inner.with_fork(BaseUpgrade::Bedrock, ForkCondition::Block(0));
+        self.inner = self.inner.with_fork(UnstableUpgrade::Bedrock, ForkCondition::Block(0));
         self
     }
 
     /// Enable Regolith at genesis.
     pub fn regolith_activated(mut self) -> Self {
         self = self.bedrock_activated();
-        self.inner = self.inner.with_fork(BaseUpgrade::Regolith, ForkCondition::Timestamp(0));
+        self.inner = self.inner.with_fork(UnstableUpgrade::Regolith, ForkCondition::Timestamp(0));
         self
     }
 
@@ -76,7 +76,7 @@ impl BaseChainSpecBuilder {
     pub fn canyon_activated(mut self) -> Self {
         self = self.regolith_activated();
         self.inner = self.inner.with_fork(EthereumHardfork::Shanghai, ForkCondition::Timestamp(0));
-        self.inner = self.inner.with_fork(BaseUpgrade::Canyon, ForkCondition::Timestamp(0));
+        self.inner = self.inner.with_fork(UnstableUpgrade::Canyon, ForkCondition::Timestamp(0));
         self
     }
 
@@ -84,72 +84,72 @@ impl BaseChainSpecBuilder {
     pub fn ecotone_activated(mut self) -> Self {
         self = self.canyon_activated();
         self.inner = self.inner.with_fork(EthereumHardfork::Cancun, ForkCondition::Timestamp(0));
-        self.inner = self.inner.with_fork(BaseUpgrade::Ecotone, ForkCondition::Timestamp(0));
+        self.inner = self.inner.with_fork(UnstableUpgrade::Ecotone, ForkCondition::Timestamp(0));
         self
     }
 
     /// Enable Fjord at genesis.
     pub fn fjord_activated(mut self) -> Self {
         self = self.ecotone_activated();
-        self.inner = self.inner.with_fork(BaseUpgrade::Fjord, ForkCondition::Timestamp(0));
+        self.inner = self.inner.with_fork(UnstableUpgrade::Fjord, ForkCondition::Timestamp(0));
         self
     }
 
     /// Enable Granite at genesis.
     pub fn granite_activated(mut self) -> Self {
         self = self.fjord_activated();
-        self.inner = self.inner.with_fork(BaseUpgrade::Granite, ForkCondition::Timestamp(0));
+        self.inner = self.inner.with_fork(UnstableUpgrade::Granite, ForkCondition::Timestamp(0));
         self
     }
 
     /// Enable Holocene at genesis.
     pub fn holocene_activated(mut self) -> Self {
         self = self.granite_activated();
-        self.inner = self.inner.with_fork(BaseUpgrade::Holocene, ForkCondition::Timestamp(0));
+        self.inner = self.inner.with_fork(UnstableUpgrade::Holocene, ForkCondition::Timestamp(0));
         self
     }
 
     /// Enable Isthmus at genesis.
     pub fn isthmus_activated(mut self) -> Self {
         self = self.holocene_activated();
-        self.inner = self.inner.with_fork(BaseUpgrade::Isthmus, ForkCondition::Timestamp(0));
+        self.inner = self.inner.with_fork(UnstableUpgrade::Isthmus, ForkCondition::Timestamp(0));
         self
     }
 
     /// Enable Jovian at genesis.
     pub fn jovian_activated(mut self) -> Self {
         self = self.isthmus_activated();
-        self.inner = self.inner.with_fork(BaseUpgrade::Jovian, ForkCondition::Timestamp(0));
+        self.inner = self.inner.with_fork(UnstableUpgrade::Jovian, ForkCondition::Timestamp(0));
         self
     }
 
-    /// Enable Base Azul at genesis.
+    /// Enable Unstable Azul at genesis.
     pub fn azul_activated(mut self) -> Self {
         self = self.jovian_activated();
         self.inner = self.inner.with_fork(EthereumHardfork::Osaka, ForkCondition::Timestamp(0));
-        self.inner = self.inner.with_fork(BaseUpgrade::Azul, ForkCondition::Timestamp(0));
+        self.inner = self.inner.with_fork(UnstableUpgrade::Azul, ForkCondition::Timestamp(0));
         self
     }
 
     /// Enable Beryl at genesis.
     pub fn beryl_activated(mut self) -> Self {
         self = self.azul_activated();
-        self.inner = self.inner.with_fork(BaseUpgrade::Beryl, ForkCondition::Timestamp(0));
+        self.inner = self.inner.with_fork(UnstableUpgrade::Beryl, ForkCondition::Timestamp(0));
         self
     }
 
-    /// Build the resulting [`BaseChainSpec`].
+    /// Build the resulting [`UnstableChainSpec`].
     ///
     /// # Panics
     ///
     /// This function panics if the chain ID and genesis is not set ([`Self::chain`] and
     /// [`Self::genesis`]).
-    pub fn build(self) -> BaseChainSpec {
+    pub fn build(self) -> UnstableChainSpec {
         let mut inner = self.inner.build();
-        inner.genesis_header = SealedHeader::seal_slow(BaseChainSpec::make_genesis_header(
+        inner.genesis_header = SealedHeader::seal_slow(UnstableChainSpec::make_genesis_header(
             &inner.genesis,
             &inner.hardforks,
         ));
-        BaseChainSpec { inner }
+        UnstableChainSpec { inner }
     }
 }

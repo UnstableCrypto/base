@@ -6,22 +6,22 @@ use alloy_provider::{
     Identity, Provider, ProviderBuilder, RootProvider,
     fillers::{ChainIdFiller, FillProvider, JoinFill, WalletFiller},
 };
-use base_common_network::Base;
+use base_common_network::Unstable;
 use tracing::{debug, instrument, warn};
 use url::Url;
 
-use crate::utils::{BaselineError, Result};
+use crate::utils::{UnstablelineError, Result};
 
 /// Default timeout for load-test RPC HTTP requests.
 pub const RPC_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Read-only provider type for querying Base nodes.
-pub type QueryProvider = RootProvider<Base>;
+/// Read-only provider type for querying Unstable nodes.
+pub type QueryProvider = RootProvider<Unstable>;
 
 /// Provider type with wallet signing capability for sending transactions.
 ///
 /// Uses Ethereum network type because `send_transaction` works identically
-/// for both Ethereum and Base networks.
+/// for both Ethereum and Unstable networks.
 pub type WalletProvider = FillProvider<
     JoinFill<JoinFill<Identity, ChainIdFiller>, WalletFiller<EthereumWallet>>,
     RootProvider<Ethereum>,
@@ -47,8 +47,8 @@ impl RpcProviders {
         let client = reqwest::Client::builder()
             .timeout(RPC_TIMEOUT)
             .build()
-            .map_err(|e| BaselineError::Rpc(format!("failed to build RPC HTTP client: {e}")))?;
-        Ok(ProviderBuilder::<Identity, Identity, Base>::default().connect_reqwest(client, url))
+            .map_err(|e| UnstablelineError::Rpc(format!("failed to build RPC HTTP client: {e}")))?;
+        Ok(ProviderBuilder::<Identity, Identity, Unstable>::default().connect_reqwest(client, url))
     }
 }
 
@@ -63,7 +63,7 @@ where
     E: Display,
 {
     fn rpc(self, context: &'static str) -> Result<T> {
-        self.map_err(|e| BaselineError::Rpc(format!("{context}: {e}")))
+        self.map_err(|e| UnstablelineError::Rpc(format!("{context}: {e}")))
     }
 }
 
@@ -190,23 +190,23 @@ impl BatchRpcClient {
             .json(&batch)
             .send()
             .await
-            .map_err(|e| BaselineError::Rpc(format!("batch send request failed: {e}")))?;
+            .map_err(|e| UnstablelineError::Rpc(format!("batch send request failed: {e}")))?;
 
         let status = response.status();
         let body_text = response.text().await.map_err(|e| {
-            BaselineError::Rpc(format!("failed to read batch send response body: {e}"))
+            UnstablelineError::Rpc(format!("failed to read batch send response body: {e}"))
         })?;
 
         if !status.is_success() {
             let preview = truncate_for_log(&body_text);
-            return Err(BaselineError::Rpc(format!(
+            return Err(UnstablelineError::Rpc(format!(
                 "batch send request returned HTTP {status}: {preview}"
             )));
         }
 
         let body: Vec<serde_json::Value> = serde_json::from_str(&body_text).map_err(|e| {
             let preview = truncate_for_log(&body_text);
-            BaselineError::Rpc(format!(
+            UnstablelineError::Rpc(format!(
                 "batch send response is not a JSON array: {e} (body: {preview})"
             ))
         })?;

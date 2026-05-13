@@ -1,6 +1,6 @@
 [package]
 name = "base-common-rpc-types"
-description = "Base RPC types"
+description = "Unstable RPC types"
 
 version.workspace = true
 edition.workspace = true

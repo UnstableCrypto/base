@@ -59,7 +59,7 @@ main() {
 
     echo "New version: $NEW_VERSION"
     echo "Release branch: $RELEASE_BRANCH"
-    echo "Base: $base"
+    echo "Unstable: $base"
 
     # Error if branch already exists on remote
     if git ls-remote --heads origin "$RELEASE_BRANCH" | grep -q "$RELEASE_BRANCH"; then

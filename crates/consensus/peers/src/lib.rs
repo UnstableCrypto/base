@@ -23,7 +23,7 @@ mod score;
 pub use score::PeerScoreLevel;
 
 mod enr;
-pub use enr::{BaseEnr, BaseEnrError, EnrValidation};
+pub use enr::{UnstableEnr, UnstableEnrError, EnrValidation};
 
 mod any;
 pub use any::{AnyNode, DialOptsError};

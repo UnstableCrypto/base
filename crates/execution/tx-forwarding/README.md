@@ -1,6 +1,6 @@
 # base-tx-forwarding
 
-Transaction forwarding extension for Base node. Forwards transactions from the mempool to builder RPC endpoints.
+Transaction forwarding extension for Unstable node. Forwards transactions from the mempool to builder RPC endpoints.
 
 ## Overview
 
@@ -22,7 +22,7 @@ This crate provides:
 
 ## Usage
 
-Enable transaction forwarding on the Base node CLI:
+Enable transaction forwarding on the Unstable node CLI:
 
 ```bash
 cargo run -p node --release -- \

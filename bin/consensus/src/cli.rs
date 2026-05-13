@@ -1,4 +1,4 @@
-//! Contains the CLI entry point for the Base consensus binary.
+//! Contains the CLI entry point for the Unstable consensus binary.
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -29,7 +29,7 @@ use crate::{
 base_cli_utils::define_log_args!("BASE_NODE");
 base_cli_utils::define_metrics_args!("BASE_NODE", 9090);
 
-/// The Base Consensus CLI.
+/// The Unstable Consensus CLI.
 #[derive(Parser, Clone, Debug)]
 #[command(
     author,
@@ -56,7 +56,7 @@ impl Cli {
     }
 }
 
-/// Commands for the Base Consensus CLI.
+/// Commands for the Unstable Consensus CLI.
 #[derive(Subcommand, Clone, Debug)]
 #[expect(clippy::large_enum_variant)]
 pub enum Commands {
@@ -96,7 +96,7 @@ pub struct Follow {
     #[clap(flatten)]
     pub l2_client_args: L2ClientArgs,
 
-    /// L2 Chain ID or name (8453 = Base Mainnet, 84532 = Base Sepolia).
+    /// L2 Chain ID or name (8453 = Unstable Mainnet, 84532 = Unstable Sepolia).
     #[arg(
         long = "chain",
         short = 'n',
@@ -195,7 +195,7 @@ impl Follow {
             mode: NodeMode::Validator,
         };
         let local_l2_provider =
-            RootProvider::<base_common_network::Base>::new_http(self.l2_rpc_url.clone());
+            RootProvider::<base_common_network::Unstable>::new_http(self.l2_rpc_url.clone());
 
         if self.proofs {
             local_l2_provider
@@ -248,7 +248,7 @@ impl Follow {
 /// Node CLI arguments.
 #[derive(Args, Clone, Debug)]
 pub struct Node {
-    /// L2 Chain ID or name (8453 = Base Mainnet, 84532 = Base Sepolia).
+    /// L2 Chain ID or name (8453 = Unstable Mainnet, 84532 = Unstable Sepolia).
     #[arg(
         long = "chain",
         short = 'n',

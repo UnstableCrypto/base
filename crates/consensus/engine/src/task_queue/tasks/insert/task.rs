@@ -7,10 +7,10 @@ use alloy_rpc_types_engine::{
     CancunPayloadFields, ExecutionPayloadInputV2, PayloadStatusEnum, PraguePayloadFields,
 };
 use async_trait::async_trait;
-use base_common_consensus::BaseBlock;
+use base_common_consensus::UnstableBlock;
 use base_common_genesis::RollupConfig;
 use base_common_rpc_types_engine::{
-    BaseExecutionPayload, BaseExecutionPayloadEnvelope, BaseExecutionPayloadSidecar,
+    UnstableExecutionPayload, UnstableExecutionPayloadEnvelope, UnstableExecutionPayloadSidecar,
 };
 use base_protocol::L2BlockInfo;
 
@@ -51,7 +51,7 @@ pub struct InsertTask<EngineClient_: EngineClient> {
     /// The rollup config.
     rollup_config: Arc<RollupConfig>,
     /// The payload envelope.
-    envelope: BaseExecutionPayloadEnvelope,
+    envelope: UnstableExecutionPayloadEnvelope,
     /// Whether the inserted payload should advance the safe head.
     payload_safety: InsertPayloadSafety,
 }
@@ -61,7 +61,7 @@ impl<EngineClient_: EngineClient> InsertTask<EngineClient_> {
     pub const fn new(
         client: Arc<EngineClient_>,
         rollup_config: Arc<RollupConfig>,
-        envelope: BaseExecutionPayloadEnvelope,
+        envelope: UnstableExecutionPayloadEnvelope,
         payload_safety: InsertPayloadSafety,
     ) -> Self {
         Self { client, rollup_config, envelope, payload_safety }
@@ -71,7 +71,7 @@ impl<EngineClient_: EngineClient> InsertTask<EngineClient_> {
     pub const fn unsafe_payload(
         client: Arc<EngineClient_>,
         rollup_config: Arc<RollupConfig>,
-        envelope: BaseExecutionPayloadEnvelope,
+        envelope: UnstableExecutionPayloadEnvelope,
     ) -> Self {
         Self::new(client, rollup_config, envelope, InsertPayloadSafety::Unsafe)
     }
@@ -80,7 +80,7 @@ impl<EngineClient_: EngineClient> InsertTask<EngineClient_> {
     pub const fn safe_payload(
         client: Arc<EngineClient_>,
         rollup_config: Arc<RollupConfig>,
-        envelope: BaseExecutionPayloadEnvelope,
+        envelope: UnstableExecutionPayloadEnvelope,
     ) -> Self {
         Self::new(client, rollup_config, envelope, InsertPayloadSafety::Safe)
     }
@@ -153,20 +153,20 @@ impl<EngineClient_: EngineClient> EngineTaskExt for InsertTask<EngineClient_> {
         // Form a block ref before insertion so stale unsafe payloads can be dropped before import.
         let parent_beacon_block_root = self.envelope.parent_beacon_block_root.unwrap_or_default();
         let execution_payload = self.envelope.execution_payload.clone();
-        let block: BaseBlock = match &execution_payload {
-            BaseExecutionPayload::V1(payload) => BaseExecutionPayload::V1(payload.clone())
+        let block: UnstableBlock = match &execution_payload {
+            UnstableExecutionPayload::V1(payload) => UnstableExecutionPayload::V1(payload.clone())
                 .try_into_block()
                 .map_err(InsertTaskError::FromBlockError)?,
-            BaseExecutionPayload::V2(payload) => BaseExecutionPayload::V2(payload.clone())
+            UnstableExecutionPayload::V2(payload) => UnstableExecutionPayload::V2(payload.clone())
                 .try_into_block()
                 .map_err(InsertTaskError::FromBlockError)?,
-            BaseExecutionPayload::V3(payload) => BaseExecutionPayload::V3(payload.clone())
-                .try_into_block_with_sidecar(&BaseExecutionPayloadSidecar::v3(
+            UnstableExecutionPayload::V3(payload) => UnstableExecutionPayload::V3(payload.clone())
+                .try_into_block_with_sidecar(&UnstableExecutionPayloadSidecar::v3(
                     CancunPayloadFields::new(parent_beacon_block_root, vec![]),
                 ))
                 .map_err(InsertTaskError::FromBlockError)?,
-            BaseExecutionPayload::V4(payload) => BaseExecutionPayload::V4(payload.clone())
-                .try_into_block_with_sidecar(&BaseExecutionPayloadSidecar::v4(
+            UnstableExecutionPayload::V4(payload) => UnstableExecutionPayload::V4(payload.clone())
+                .try_into_block_with_sidecar(&UnstableExecutionPayloadSidecar::v4(
                     CancunPayloadFields::new(parent_beacon_block_root, vec![]),
                     PraguePayloadFields::new(EMPTY_REQUESTS_HASH),
                 ))
@@ -184,22 +184,22 @@ impl<EngineClient_: EngineClient> EngineTaskExt for InsertTask<EngineClient_> {
         // Insert the new payload.
         let insert_time_start = Instant::now();
         let response = match execution_payload {
-            BaseExecutionPayload::V1(payload) => {
+            UnstableExecutionPayload::V1(payload) => {
                 let payload_input =
                     ExecutionPayloadInputV2 { execution_payload: payload, withdrawals: None };
                 self.client.new_payload_v2(payload_input).await
             }
-            BaseExecutionPayload::V2(payload) => {
+            UnstableExecutionPayload::V2(payload) => {
                 let payload_input = ExecutionPayloadInputV2 {
                     execution_payload: payload.payload_inner,
                     withdrawals: Some(payload.withdrawals),
                 };
                 self.client.new_payload_v2(payload_input).await
             }
-            BaseExecutionPayload::V3(payload) => {
+            UnstableExecutionPayload::V3(payload) => {
                 self.client.new_payload_v3(payload, parent_beacon_block_root).await
             }
-            BaseExecutionPayload::V4(payload) => {
+            UnstableExecutionPayload::V4(payload) => {
                 self.client.new_payload_v4(payload, parent_beacon_block_root).await
             }
         };
@@ -260,8 +260,8 @@ mod tests {
     use alloy_eips::eip2718::Encodable2718;
     use alloy_primitives::{Address, B256, Bloom, FixedBytes, U256};
     use alloy_rpc_types_engine::{ForkchoiceUpdated, PayloadStatus, PayloadStatusEnum};
-    use base_common_consensus::{BaseTxEnvelope, TxDeposit};
-    use base_common_rpc_types_engine::{BaseExecutionPayload, BaseExecutionPayloadEnvelope};
+    use base_common_consensus::{UnstableTxEnvelope, TxDeposit};
+    use base_common_rpc_types_engine::{UnstableExecutionPayload, UnstableExecutionPayloadEnvelope};
     use base_protocol::{BlockInfo, L1BlockInfoBedrock, L2BlockInfo};
 
     use super::{InsertPayloadSafety, InsertTask};
@@ -282,7 +282,7 @@ mod tests {
     }
 
     fn l1_info_deposit_tx() -> Vec<u8> {
-        BaseTxEnvelope::from(TxDeposit {
+        UnstableTxEnvelope::from(TxDeposit {
             input: L1BlockInfoBedrock::default().encode_calldata(),
             ..Default::default()
         })
@@ -302,8 +302,8 @@ mod tests {
         }
     }
 
-    fn bedrock_payload_with_parent(block_number: u64, parent_hash: B256) -> BaseExecutionPayload {
-        BaseExecutionPayload::V1(alloy_rpc_types_engine::ExecutionPayloadV1 {
+    fn bedrock_payload_with_parent(block_number: u64, parent_hash: B256) -> UnstableExecutionPayload {
+        UnstableExecutionPayload::V1(alloy_rpc_types_engine::ExecutionPayloadV1 {
             parent_hash,
             fee_recipient: Address::ZERO,
             state_root: B256::ZERO,
@@ -321,12 +321,12 @@ mod tests {
         })
     }
 
-    fn bedrock_payload(block_number: u64) -> BaseExecutionPayload {
+    fn bedrock_payload(block_number: u64) -> UnstableExecutionPayload {
         bedrock_payload_with_parent(block_number, B256::ZERO)
     }
 
-    fn canyon_payload(block_number: u64) -> BaseExecutionPayload {
-        BaseExecutionPayload::V2(alloy_rpc_types_engine::ExecutionPayloadV2 {
+    fn canyon_payload(block_number: u64) -> UnstableExecutionPayload {
+        UnstableExecutionPayload::V2(alloy_rpc_types_engine::ExecutionPayloadV2 {
             payload_inner: alloy_rpc_types_engine::ExecutionPayloadV1 {
                 parent_hash: B256::ZERO,
                 fee_recipient: Address::ZERO,
@@ -360,7 +360,7 @@ mod tests {
     async fn bedrock_payload_uses_new_payload_v2_with_no_withdrawals() {
         let client = test_client();
         let payload = bedrock_payload(1);
-        let envelope = BaseExecutionPayloadEnvelope {
+        let envelope = UnstableExecutionPayloadEnvelope {
             parent_beacon_block_root: None,
             execution_payload: payload,
         };
@@ -390,7 +390,7 @@ mod tests {
     async fn canyon_payload_uses_new_payload_v2_with_withdrawals() {
         let client = test_client();
         let payload = canyon_payload(1);
-        let envelope = BaseExecutionPayloadEnvelope {
+        let envelope = UnstableExecutionPayloadEnvelope {
             parent_beacon_block_root: None,
             execution_payload: payload,
         };
@@ -421,7 +421,7 @@ mod tests {
     async fn unsafe_payload_insert_advances_only_unsafe_head() {
         let client = test_client();
         let payload = bedrock_payload(2);
-        let envelope = BaseExecutionPayloadEnvelope {
+        let envelope = UnstableExecutionPayloadEnvelope {
             parent_beacon_block_root: None,
             execution_payload: payload,
         };
@@ -445,7 +445,7 @@ mod tests {
     async fn safe_payload_insert_advances_safe_heads() {
         let client = test_client();
         let payload = bedrock_payload(3);
-        let envelope = BaseExecutionPayloadEnvelope {
+        let envelope = UnstableExecutionPayloadEnvelope {
             parent_beacon_block_root: None,
             execution_payload: payload,
         };
@@ -470,7 +470,7 @@ mod tests {
         let client = test_client();
         let current_unsafe = l2_block_info(4, B256::with_last_byte(4), B256::with_last_byte(3));
         let mut state = TestEngineStateBuilder::new().with_unsafe_head(current_unsafe).build();
-        let envelope = BaseExecutionPayloadEnvelope {
+        let envelope = UnstableExecutionPayloadEnvelope {
             parent_beacon_block_root: None,
             execution_payload: bedrock_payload_with_parent(2, B256::with_last_byte(1)),
         };
@@ -496,7 +496,7 @@ mod tests {
         let client = test_client();
         let current_unsafe = l2_block_info(4, B256::with_last_byte(4), B256::with_last_byte(3));
         let mut state = TestEngineStateBuilder::new().with_unsafe_head(current_unsafe).build();
-        let envelope = BaseExecutionPayloadEnvelope {
+        let envelope = UnstableExecutionPayloadEnvelope {
             parent_beacon_block_root: None,
             execution_payload: bedrock_payload_with_parent(5, B256::with_last_byte(0x99)),
         };
@@ -522,7 +522,7 @@ mod tests {
         let client = test_client();
         let current_unsafe = l2_block_info(4, B256::with_last_byte(4), B256::with_last_byte(3));
         let mut state = TestEngineStateBuilder::new().with_unsafe_head(current_unsafe).build();
-        let envelope = BaseExecutionPayloadEnvelope {
+        let envelope = UnstableExecutionPayloadEnvelope {
             parent_beacon_block_root: None,
             execution_payload: bedrock_payload_with_parent(5, current_unsafe.block_info.hash),
         };

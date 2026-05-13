@@ -1,9 +1,9 @@
 //! Builder-specific node extensions.
 
 use base_builder_core::SharedMeteringProvider;
-use base_node_runner::{BaseNodeExtension, BaseRpcContext, FromExtensionConfig, NodeHooks};
+use base_node_runner::{UnstableNodeExtension, UnstableRpcContext, FromExtensionConfig, NodeHooks};
 
-use crate::{BaseApiExtServer, MeteringStoreExt};
+use crate::{UnstableApiExtServer, MeteringStoreExt};
 
 /// Extension that registers the [`MeteringStoreExt`] RPC module.
 #[derive(Debug)]
@@ -11,10 +11,10 @@ pub struct MeteringStoreExtension {
     metering_provider: SharedMeteringProvider,
 }
 
-impl BaseNodeExtension for MeteringStoreExtension {
+impl UnstableNodeExtension for MeteringStoreExtension {
     fn apply(self: Box<Self>, hooks: NodeHooks) -> NodeHooks {
         let metering_provider = self.metering_provider;
-        hooks.add_rpc_module(move |ctx: &mut BaseRpcContext<'_>| {
+        hooks.add_rpc_module(move |ctx: &mut UnstableRpcContext<'_>| {
             let ext = MeteringStoreExt::new(metering_provider);
             ctx.modules.add_or_replace_configured(ext.into_rpc())?;
             Ok(())

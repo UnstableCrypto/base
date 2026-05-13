@@ -8,12 +8,12 @@ The L1 block attributes transaction is updated to include the operator fee param
 | ----------------- | ------- | -------------- | ------- |
 | {0x098999be}      |         | 0-3            | n/a     |
 | baseFeeScalar     | uint32  | 4-7            | 1       |
-| blobBaseFeeScalar | uint32  | 8-11           |         |
+| blobUnstableFeeScalar | uint32  | 8-11           |         |
 | sequenceNumber    | uint64  | 12-19          |         |
 | l1BlockTimestamp  | uint64  | 20-27          |         |
 | l1BlockNumber     | uint64  | 28-35          |         |
 | basefee           | uint256 | 36-67          | 2       |
-| blobBaseFee       | uint256 | 68-99          | 3       |
+| blobUnstableFee       | uint256 | 68-99          | 3       |
 | l1BlockHash       | bytes32 | 100-131        | 4       |
 | batcherHash       | bytes32 | 132-163        | 5       |
 | operatorFeeScalar   | uint32  | 164-167      | 6       |

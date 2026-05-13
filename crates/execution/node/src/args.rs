@@ -1,6 +1,6 @@
 //! Additional Node command arguments.
 
-//! clap [Args](clap::Args) for Base rollup configuration
+//! clap [Args](clap::Args) for Unstable rollup configuration
 
 use std::{path::PathBuf, time::Duration};
 
@@ -17,7 +17,7 @@ pub enum TxpoolOrdering {
     /// This is the default ordering strategy that prioritizes transactions
     /// based on the priority fee (tip) they offer to the block producer.
     #[default]
-    CoinbaseTip,
+    TheAlxLabsTip,
     /// Order by receive timestamp (FIFO, earlier = higher priority).
     ///
     /// Transactions are ordered by when they were received by the mempool,
@@ -134,10 +134,10 @@ pub struct RollupArgs {
     )]
     pub proofs_history_verification_interval: u64,
 
-    /// Enable the Base discv5 protocol identity.
+    /// Enable the Unstable discv5 protocol identity.
     ///
     /// When enabled, the node advertises itself with the `basev0` protocol ID in discv5,
-    /// allowing it to find and connect to other Base nodes more efficiently.
+    /// allowing it to find and connect to other Unstable nodes more efficiently.
     #[arg(long = "rollup.discovery.v5.base", default_value_t = true, action = clap::ArgAction::Set)]
     pub base_protocol: bool,
 }
@@ -255,7 +255,7 @@ mod tests {
     #[test]
     fn test_parse_txpool_ordering_default() {
         let args = CommandParser::<RollupArgs>::parse_from(["reth"]).args;
-        assert_eq!(args.txpool_ordering, TxpoolOrdering::CoinbaseTip);
+        assert_eq!(args.txpool_ordering, TxpoolOrdering::TheAlxLabsTip);
     }
 
     #[test]
@@ -266,7 +266,7 @@ mod tests {
             "coinbase-tip",
         ])
         .args;
-        assert_eq!(args.txpool_ordering, TxpoolOrdering::CoinbaseTip);
+        assert_eq!(args.txpool_ordering, TxpoolOrdering::TheAlxLabsTip);
     }
 
     #[test]

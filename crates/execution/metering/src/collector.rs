@@ -278,11 +278,11 @@ mod tests {
     use alloy_consensus::{Header, Receipt, ReceiptWithBloom, Sealed};
     use alloy_primitives::{Address, B256, Bloom, Bytes, Signature};
     use alloy_rpc_types_engine::PayloadId;
-    use base_common_consensus::BaseTxEnvelope;
+    use base_common_consensus::UnstableTxEnvelope;
     use base_common_flashblocks::{
-        ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
+        ExecutionPayloadUnstableV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
     };
-    use base_common_rpc_types::{BaseTransactionReceipt, L1BlockInfo, Transaction};
+    use base_common_rpc_types::{UnstableTransactionReceipt, L1BlockInfo, Transaction};
     use base_flashblocks::PendingBlocksBuilder;
     use revm::context_interface::result::ExecutionResult;
 
@@ -312,7 +312,7 @@ mod tests {
         };
         let signed =
             alloy_consensus::Signed::new_unchecked(tx, Signature::test_signature(), B256::ZERO);
-        let envelope = BaseTxEnvelope::Legacy(signed);
+        let envelope = UnstableTxEnvelope::Legacy(signed);
         let raw = alloy_eips::Encodable2718::encoded_2718(&envelope);
         let raw_bytes = Bytes::from(raw);
         let hash = keccak256(&raw_bytes);
@@ -336,7 +336,7 @@ mod tests {
             let tx = Transaction {
                 inner: alloy_rpc_types_eth::Transaction {
                     inner: alloy_consensus::transaction::Recovered::new_unchecked(
-                        BaseTxEnvelope::Legacy(alloy_consensus::Signed::new_unchecked(
+                        UnstableTxEnvelope::Legacy(alloy_consensus::Signed::new_unchecked(
                             alloy_consensus::TxLegacy::default(),
                             Signature::test_signature(),
                             entry.tx_hash,
@@ -352,10 +352,10 @@ mod tests {
                 deposit_receipt_version: None,
             };
 
-            let receipt = BaseTransactionReceipt {
+            let receipt = UnstableTransactionReceipt {
                 inner: alloy_rpc_types_eth::TransactionReceipt {
                     inner: ReceiptWithBloom {
-                        receipt: base_common_consensus::BaseReceipt::Legacy(Receipt {
+                        receipt: base_common_consensus::UnstableReceipt::Legacy(Receipt {
                             status: alloy_consensus::Eip658Value::Eip658(true),
                             cumulative_gas_used: 21000,
                             logs: vec![],
@@ -380,7 +380,7 @@ mod tests {
             let flashblock = Flashblock {
                 payload_id: PayloadId::default(),
                 index: entry.index,
-                base: (entry.index == 0).then_some(ExecutionPayloadBaseV1 {
+                base: (entry.index == 0).then_some(ExecutionPayloadUnstableV1 {
                     parent_beacon_block_root: B256::ZERO,
                     parent_hash: B256::ZERO,
                     fee_recipient: Address::ZERO,

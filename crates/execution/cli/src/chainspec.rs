@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
 use base_common_chains::ChainConfig;
-use base_execution_chainspec::BaseChainSpec;
+use base_execution_chainspec::UnstableChainSpec;
 use reth_cli::chainspec::{ChainSpecParser, parse_genesis};
 
-/// Base chain specification parser.
+/// Unstable chain specification parser.
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
-pub struct BaseChainSpecParser;
+pub struct UnstableChainSpecParser;
 
-impl ChainSpecParser for BaseChainSpecParser {
-    type ChainSpec = BaseChainSpec;
+impl ChainSpecParser for UnstableChainSpecParser {
+    type ChainSpec = UnstableChainSpec;
 
     const SUPPORTED_CHAINS: &'static [&'static str] = ChainConfig::SUPPORTED_NAMES;
 
@@ -19,12 +19,12 @@ impl ChainSpecParser for BaseChainSpecParser {
     }
 }
 
-/// Clap value parser for [`BaseChainSpec`]s.
+/// Clap value parser for [`UnstableChainSpec`]s.
 ///
 /// The value parser matches either a known chain, the path
 /// to a json file, or a json formatted string in-memory. The json needs to be a Genesis struct.
-pub fn chain_value_parser(s: &str) -> eyre::Result<Arc<BaseChainSpec>, eyre::Error> {
-    if let Some(base_chain_spec) = BaseChainSpec::parse_chain(s) {
+pub fn chain_value_parser(s: &str) -> eyre::Result<Arc<UnstableChainSpec>, eyre::Error> {
+    if let Some(base_chain_spec) = UnstableChainSpec::parse_chain(s) {
         Ok(base_chain_spec)
     } else {
         Ok(Arc::new(parse_genesis(s)?.into()))
@@ -37,9 +37,9 @@ mod tests {
 
     #[test]
     fn parse_known_chain_spec() {
-        for &chain in BaseChainSpecParser::SUPPORTED_CHAINS {
+        for &chain in UnstableChainSpecParser::SUPPORTED_CHAINS {
             assert!(
-                <BaseChainSpecParser as ChainSpecParser>::parse(chain).is_ok(),
+                <UnstableChainSpecParser as ChainSpecParser>::parse(chain).is_ok(),
                 "Failed to parse {chain}"
             );
         }

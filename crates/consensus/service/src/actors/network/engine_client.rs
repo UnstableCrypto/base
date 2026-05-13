@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use async_trait::async_trait;
-use base_common_rpc_types_engine::BaseExecutionPayloadEnvelope;
+use base_common_rpc_types_engine::UnstableExecutionPayloadEnvelope;
 use tokio::sync::mpsc;
 
 use crate::{EngineActorRequest, EngineClientError, EngineClientResult};
@@ -14,7 +14,7 @@ pub trait NetworkEngineClient: Debug + Send + Sync {
     /// This function just sends the message to the engine. It does not wait for a response.
     async fn send_unsafe_block(
         &self,
-        block: BaseExecutionPayloadEnvelope,
+        block: UnstableExecutionPayloadEnvelope,
     ) -> EngineClientResult<()>;
 }
 
@@ -29,7 +29,7 @@ pub struct QueuedNetworkEngineClient {
 impl NetworkEngineClient for QueuedNetworkEngineClient {
     async fn send_unsafe_block(
         &self,
-        block: BaseExecutionPayloadEnvelope,
+        block: UnstableExecutionPayloadEnvelope,
     ) -> EngineClientResult<()> {
         trace!(target: "network", ?block, "Sending unsafe block to engine.");
         Ok(self

@@ -1,5 +1,5 @@
-use base_execution_payload_builder::BaseBuiltPayload;
-use base_node_core::BaseEngineTypes;
+use base_execution_payload_builder::UnstableBuiltPayload;
+use base_node_core::UnstableEngineTypes;
 use reth_node_builder::Events;
 use tokio::sync::mpsc;
 use tracing::{debug, warn};
@@ -11,16 +11,16 @@ use tracing::{debug, warn};
 #[derive(Debug)]
 pub struct PayloadHandler {
     // receives new payloads built by this builder.
-    built_rx: mpsc::Receiver<BaseBuiltPayload>,
+    built_rx: mpsc::Receiver<UnstableBuiltPayload>,
     // sends a `Events::BuiltPayload` to the reth payload builder when a new payload is received.
-    payload_events_handle: tokio::sync::broadcast::Sender<Events<BaseEngineTypes>>,
+    payload_events_handle: tokio::sync::broadcast::Sender<Events<UnstableEngineTypes>>,
 }
 
 impl PayloadHandler {
     /// Constructs a new `PayloadHandler`.
     pub const fn new(
-        built_rx: mpsc::Receiver<BaseBuiltPayload>,
-        payload_events_handle: tokio::sync::broadcast::Sender<Events<BaseEngineTypes>>,
+        built_rx: mpsc::Receiver<UnstableBuiltPayload>,
+        payload_events_handle: tokio::sync::broadcast::Sender<Events<UnstableEngineTypes>>,
     ) -> Self {
         Self { built_rx, payload_events_handle }
     }

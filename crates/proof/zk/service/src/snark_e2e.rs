@@ -7,7 +7,7 @@
 use alloy_provider::{Identity, Provider, ProviderBuilder};
 use alloy_rpc_types::{BlockId, BlockNumberOrTag};
 use anyhow::{Context, Result, bail};
-use base_common_network::Base;
+use base_common_network::Unstable;
 use base_zk_client::{
     GetProofRequest, ProveBlockRequest, get_proof_response,
     prover_service_client::ProverServiceClient,
@@ -152,7 +152,7 @@ impl SnarkE2e {
             .context("BASE_CONSENSUS_ADDRESS must be set")?;
 
         let l1_provider = ProviderBuilder::new().connect_http(l1_url.parse()?);
-        let base_provider = ProviderBuilder::<Identity, Identity, Base>::default()
+        let base_provider = ProviderBuilder::<Identity, Identity, Unstable>::default()
             .connect_http(l2_consensus_url.parse()?);
 
         let finalized_l1 = l1_provider

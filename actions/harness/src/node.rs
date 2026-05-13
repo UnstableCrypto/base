@@ -4,9 +4,9 @@ use alloy_eips::BlockNumHash;
 use alloy_primitives::{B256, Bytes};
 use alloy_rlp::Decodable;
 use alloy_rpc_types_engine::ForkchoiceState;
-use base_common_consensus::{BaseBlock, BaseTxEnvelope, TxDeposit};
+use base_common_consensus::{UnstableBlock, UnstableTxEnvelope, TxDeposit};
 use base_common_genesis::RollupConfig;
-use base_common_network::BaseEngineApi;
+use base_common_network::UnstableEngineApi;
 use base_consensus_derive::{
     ActivationSignal, DerivationPipeline, EthereumDataSource, Pipeline, PipelineError,
     PipelineErrorKind, PolledAttributesQueueStage, ResetError, ResetSignal, SignalReceiver,
@@ -407,7 +407,7 @@ impl<P: Pipeline + SignalReceiver + Debug + Send> TestRollupNode<P> {
     /// # Panics
     ///
     /// Panics if the first transaction is not a valid L1 info deposit.
-    pub fn act_l2_unsafe_gossip_receive(&mut self, block: &BaseBlock) {
+    pub fn act_l2_unsafe_gossip_receive(&mut self, block: &UnstableBlock) {
         if block.header.number != self.unsafe_head.block_info.number + 1 {
             return;
         }
@@ -746,11 +746,11 @@ impl<P: Pipeline + SignalReceiver + Debug + Send> TestRollupNode<P> {
         self.l1_origin_from_transactions(txs)
     }
 
-    /// Decode the L1 epoch from the first deposit transaction in an [`BaseBlock`].
-    fn l1_origin_from_block(&self, block: &BaseBlock) -> Option<BlockNumHash> {
+    /// Decode the L1 epoch from the first deposit transaction in an [`UnstableBlock`].
+    fn l1_origin_from_block(&self, block: &UnstableBlock) -> Option<BlockNumHash> {
         let first = block.body.transactions.first()?;
         let deposit = match first {
-            BaseTxEnvelope::Deposit(d) => d,
+            UnstableTxEnvelope::Deposit(d) => d,
             _ => return None,
         };
         let l1_info = L1BlockInfoTx::decode_calldata(deposit.inner().input.as_ref()).ok()?;

@@ -2,24 +2,24 @@
 
 ## Overview
 
-Provides `BaseChainSpec`, the chain specification type for Base nodes. Includes hardfork-specific
+Provides `UnstableChainSpec`, the chain specification type for Unstable nodes. Includes hardfork-specific
 base fee computation helpers for Holocene and Jovian, and supported chain resolution from CLI
 strings.
 
 ## How it works
 
-`BaseChainSpec` wraps reth's `ChainSpec` and adds Base-specific hardfork awareness via the
-`BaseUpgrades` trait. Network specs are converted from `base-common-chains` configs, which own the
+`UnstableChainSpec` wraps reth's `ChainSpec` and adds Unstable-specific hardfork awareness via the
+`UnstableUpgrades` trait. Network specs are converted from `base-common-chains` configs, which own the
 genesis JSON, hardfork schedule, base fee params, and other chain constants.
 
 The genesis header is derived at startup from the genesis JSON using
-`BaseChainSpec::make_genesis_header`, which computes the correct state root, storage root, and
-other fields for Base.
+`UnstableChainSpec::make_genesis_header`, which computes the correct state root, storage root, and
+other fields for Unstable.
 
 Chain names are resolved from CLI strings via `SUPPORTED_CHAINS`, which maps `"base"`,
 `"base_sepolia"`, `"base-sepolia"`, and `"dev"` to specs built from `base-common-chains`.
 
-### Base fee computation
+### Unstable fee computation
 
 Two helpers handle hardfork-specific base fee logic:
 
@@ -44,9 +44,9 @@ base-execution-chainspec = { workspace = true }
 Build a chain spec from common chain config:
 
 ```rust,ignore
-use base_execution_chainspec::BaseChainSpec;
+use base_execution_chainspec::UnstableChainSpec;
 
-let spec = BaseChainSpec::mainnet();
+let spec = UnstableChainSpec::mainnet();
 println!("chain: {}", spec.chain());
 ```
 

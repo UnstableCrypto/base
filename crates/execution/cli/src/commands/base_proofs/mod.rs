@@ -1,9 +1,9 @@
-//! Base Proofs management commands
+//! Unstable Proofs management commands
 
 use std::sync::Arc;
 
-use base_common_consensus::BasePrimitives;
-use base_execution_chainspec::BaseChainSpec;
+use base_common_consensus::UnstablePrimitives;
+use base_execution_chainspec::UnstableChainSpec;
 use clap::{Parser, Subcommand};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_commands::common::CliNodeTypes;
@@ -19,9 +19,9 @@ pub struct Command<C: ChainSpecParser> {
     command: Subcommands<C>,
 }
 
-impl<C: ChainSpecParser<ChainSpec = BaseChainSpec>> Command<C> {
+impl<C: ChainSpecParser<ChainSpec = UnstableChainSpec>> Command<C> {
     /// Execute `base-proofs` command
-    pub async fn execute<N: CliNodeTypes<ChainSpec = C::ChainSpec, Primitives = BasePrimitives>>(
+    pub async fn execute<N: CliNodeTypes<ChainSpec = C::ChainSpec, Primitives = UnstablePrimitives>>(
         self,
     ) -> eyre::Result<()> {
         match self.command {

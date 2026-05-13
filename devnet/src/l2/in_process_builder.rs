@@ -10,10 +10,10 @@ use std::{any::Any, path::PathBuf, sync::Arc, time::Duration};
 use alloy_primitives::hex::ToHexExt;
 use alloy_rpc_types_engine::JwtSecret;
 use base_builder_core::{BuilderConfig, FlashblocksServiceBuilder, test_utils::get_available_port};
-use base_execution_chainspec::BaseChainSpec;
-use base_execution_txpool::{BasePooledTransaction, BuilderApiImpl, BuilderApiServer};
-use base_node_core::{args::RollupArgs, node::BasePoolBuilder};
-use base_node_runner::BaseNode;
+use base_execution_chainspec::UnstableChainSpec;
+use base_execution_txpool::{UnstablePooledTransaction, BuilderApiImpl, BuilderApiServer};
+use base_node_core::{args::RollupArgs, node::UnstablePoolBuilder};
+use base_node_runner::UnstableNode;
 use eyre::{Result, WrapErr, eyre};
 use nanoid::nanoid;
 use reth_db::{
@@ -120,12 +120,12 @@ impl InProcessBuilder {
 
         let rollup_args = RollupArgs::default();
 
-        let base_node = BaseNode::new(rollup_args.clone());
+        let base_node = UnstableNode::new(rollup_args.clone());
 
-        let addons: base_node_runner::BaseAddOns<
+        let addons: base_node_runner::UnstableAddOns<
             _,
-            base_execution_rpc::BaseEthApiBuilder,
-            base_node_core::BasePayloadValidatorBuilder,
+            base_execution_rpc::UnstableEthApiBuilder,
+            base_node_core::UnstablePayloadValidatorBuilder,
         > = base_node
             .add_ons_builder()
             .with_sequencer(rollup_args.sequencer.clone())
@@ -141,7 +141,7 @@ impl InProcessBuilder {
         let node_builder = NodeBuilder::new(node_config.clone())
             .with_database(db)
             .with_launch_context(runtime.clone())
-            .with_types::<BaseNode>()
+            .with_types::<UnstableNode>()
             .with_components(
                 base_node
                     .components()
@@ -256,18 +256,18 @@ fn clear_otel_env_vars() {
     }
 }
 
-fn parse_genesis(genesis_json: &[u8]) -> Result<Arc<BaseChainSpec>> {
+fn parse_genesis(genesis_json: &[u8]) -> Result<Arc<UnstableChainSpec>> {
     let genesis: alloy_genesis::Genesis =
         serde_json::from_slice(genesis_json).wrap_err("Invalid genesis JSON")?;
-    Ok(Arc::new(BaseChainSpec::from_genesis(genesis)))
+    Ok(Arc::new(UnstableChainSpec::from_genesis(genesis)))
 }
 
 fn create_node_config(
-    chain_spec: Arc<BaseChainSpec>,
+    chain_spec: Arc<UnstableChainSpec>,
     data_path: &std::path::Path,
     jwt_path: &std::path::Path,
     config: &InProcessBuilderConfig,
-) -> Result<NodeConfig<BaseChainSpec>> {
+) -> Result<NodeConfig<UnstableChainSpec>> {
     let mut rpc =
         if config.http_port.is_some() || config.ws_port.is_some() || config.auth_port.is_some() {
             RpcServerArgs::default().with_http().with_ws()
@@ -318,7 +318,7 @@ fn create_node_config(
         pprof_dumps_path: None,
     };
 
-    let mut node_config = NodeConfig::<BaseChainSpec>::new(chain_spec)
+    let mut node_config = NodeConfig::<UnstableChainSpec>::new(chain_spec)
         .with_datadir_args(datadir)
         .with_rpc(rpc)
         .with_network(network);
@@ -350,6 +350,6 @@ fn create_test_db(data_path: &std::path::Path) -> Result<(DatabaseEnv, PathBuf)>
     Ok((db, db_path))
 }
 
-fn pool_component(_rollup_args: &RollupArgs) -> BasePoolBuilder<BasePooledTransaction> {
-    BasePoolBuilder::<BasePooledTransaction>::default()
+fn pool_component(_rollup_args: &RollupArgs) -> UnstablePoolBuilder<UnstablePooledTransaction> {
+    UnstablePoolBuilder::<UnstablePooledTransaction>::default()
 }

@@ -1,7 +1,7 @@
-//! Engine API version selection based on Base hardfork activations.
+//! Engine API version selection based on Unstable hardfork activations.
 //!
 //! Automatically selects the appropriate Engine API method versions based on
-//! the rollup configuration and block timestamps. Different Base hardforks
+//! the rollup configuration and block timestamps. Different Unstable hardforks
 //! require different Engine API versions to support new features.
 //!
 //! # Version Mapping
@@ -9,7 +9,7 @@
 //! - **Bedrock, Canyon, Delta** → V2 methods
 //! - **Ecotone (Cancun)** → V3 methods
 //! - **Isthmus, Jovian** → V4 methods
-//! - **Base Azul (Osaka)** → `getPayloadV5`, `newPayloadV4`
+//! - **Unstable Azul (Osaka)** → `getPayloadV5`, `newPayloadV4`
 //!
 //! Adapted from the [reference node version providers](https://github.com/ethereum-optimism/optimism/blob/develop/op-node/rollup/types.go#L546).
 
@@ -47,7 +47,7 @@ impl EngineForkchoiceVersion {
 /// Progressive version selection based on hardfork activation:
 /// - V2: Basic payload processing
 /// - V3: Adds Cancun/Ecotone support
-/// - V4: Adds Isthmus hardfork support (also used for Jovian and Base Azul)
+/// - V4: Adds Isthmus hardfork support (also used for Jovian and Unstable Azul)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EngineNewPayloadVersion {
     /// Version 2: Basic payload processing for early hardforks.
@@ -86,7 +86,7 @@ pub enum EngineGetPayloadVersion {
     V3,
     /// Version 4: Extended payload format for Isthmus.
     V4,
-    /// Version 5: Osaka payload retrieval for Base Azul.
+    /// Version 5: Osaka payload retrieval for Unstable Azul.
     V5,
 }
 

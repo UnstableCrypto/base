@@ -1,6 +1,6 @@
 # Configuration
 
-There are four categories of Base configuration:
+There are four categories of Unstable configuration:
 
 - **Consensus Parameters**: Fixed at genesis or changeable through privileged accounts or protocol upgrades.
 - **Policy Parameters**: Changeable without breaking consensus, within protocol-imposed constraints.
@@ -37,7 +37,7 @@ There are four categories of Base configuration:
 | Governance Token | Governance token support is disabled. | n/a |
 | [Operator Fee Params](../upgrades/isthmus/exec-engine.md#operator-fee) | Operator fee scalar and constant for fee calculation. Standard values are 0; non-zero for non-standard configurations such as op-succinct. | [System Config Owner](#admin-roles) |
 | [DA Footprint Gas Scalar](../upgrades/jovian/exec-engine.md#DA-footprint-block-limit) | Scalar for DA footprint calculation | [System Config Owner](#admin-roles) |
-| [Minimum Base Fee](../upgrades/jovian/exec-engine.md#minimum-base-fee) | Minimum base fee on L2 | [System Config Owner](#admin-roles) |
+| [Minimum Unstable Fee](../upgrades/jovian/exec-engine.md#minimum-base-fee) | Minimum base fee on L2 | [System Config Owner](#admin-roles) |
 
 ## Policy Parameters
 

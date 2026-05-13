@@ -8,7 +8,7 @@ use base_batcher_core::{
 };
 use base_batcher_encoder::{BatchEncoder, EncoderConfig};
 use base_batcher_source::{ChannelBlockSource, ChannelL1HeadSource, L2BlockEvent};
-use base_common_consensus::BaseBlock;
+use base_common_consensus::UnstableBlock;
 use base_common_genesis::RollupConfig;
 use base_protocol::{BatchType, L2BlockInfo};
 use base_runtime::TokioRuntime;
@@ -461,7 +461,7 @@ impl Batcher<ActionL2Source> {
     /// Push a block into the L2 source for the next [`advance`] call.
     ///
     /// [`advance`]: Batcher::advance
-    pub fn push_block(&mut self, block: BaseBlock) {
+    pub fn push_block(&mut self, block: UnstableBlock) {
         self.l2_source.push(block);
     }
 }

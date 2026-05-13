@@ -1,6 +1,6 @@
 [package]
 name = "base-reth-node"
-description = "Base Reth Binary"
+description = "Unstable Reth Binary"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -1,4 +1,4 @@
-//! Sync start algorithm for the Base rollup node.
+//! Sync start algorithm for the Unstable rollup node.
 
 use base_common_genesis::RollupConfig;
 use base_protocol::L2BlockInfo;
@@ -124,7 +124,7 @@ mod tests {
     use alloy_provider::Network;
     use alloy_rpc_types_eth::Block;
     use base_common_genesis::ChainGenesis;
-    use base_common_network::Base;
+    use base_common_network::Unstable;
     use base_protocol::L2BlockInfo;
 
     const BASE_SEPOLIA_GENESIS_HASH: B256 =
@@ -133,7 +133,7 @@ mod tests {
 
     /// Sanity regression test - `alloy_rpc_types`' `Block::into_consensus` failed to saturate the
     /// header of the `alloy_consensus::Header` type on an old version. This test covers the
-    /// conversion to ensure a Base Sepolia genesis block's conversion to the consensus type works for
+    /// conversion to ensure a Unstable Sepolia genesis block's conversion to the consensus type works for
     /// the sake of `L2BlockInfo::from_block_and_genesis`.
     #[tokio::test]
     async fn test_genesis_block_hash() {
@@ -141,7 +141,7 @@ mod tests {
             l2: BlockNumHash { number: 0, hash: BASE_SEPOLIA_GENESIS_HASH },
             ..Default::default()
         };
-        let genesis_block: Block<<Base as Network>::TransactionResponse> =
+        let genesis_block: Block<<Unstable as Network>::TransactionResponse> =
             serde_json::from_str(BASE_SEPOLIA_GENESIS_RPC_RESPONSE).unwrap();
 
         let rpc_reported_hash = genesis_block.header.hash;

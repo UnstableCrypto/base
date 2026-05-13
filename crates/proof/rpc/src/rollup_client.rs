@@ -1,4 +1,4 @@
-//! Rollup RPC client implementation for Base rollup nodes.
+//! Rollup RPC client implementation for Unstable rollup nodes.
 
 use std::time::Duration;
 

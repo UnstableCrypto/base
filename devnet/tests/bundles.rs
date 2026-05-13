@@ -10,8 +10,8 @@ use alloy_provider::{Provider, RootProvider};
 use alloy_rpc_client::RpcClient;
 use alloy_signer::SignerSync;
 use alloy_signer_local::PrivateKeySigner;
-use base_common_network::Base;
-use base_common_rpc_types::BaseTransactionRequest;
+use base_common_network::Unstable;
+use base_common_rpc_types::UnstableTransactionRequest;
 use base_execution_txpool::unix_time_millis;
 use base_tx_forwarding::TxForwardingConfig;
 use devnet::{DevnetBuilder, config::ANVIL_ACCOUNT_1};
@@ -44,7 +44,7 @@ fn create_signed_eip1559_tx(
 ) -> Result<(Address, Bytes, B256)> {
     let sender = signer.address();
 
-    let tx_request = BaseTransactionRequest::default()
+    let tx_request = UnstableTransactionRequest::default()
         .from(sender)
         .to(recipient)
         .value(U256::from(1_000_000_000u64))
@@ -66,7 +66,7 @@ fn create_signed_eip1559_tx(
     Ok((sender, raw_tx, tx_hash))
 }
 
-async fn wait_for_block(provider: &RootProvider<Base>, min_block: u64) -> Result<u64> {
+async fn wait_for_block(provider: &RootProvider<Unstable>, min_block: u64) -> Result<u64> {
     let result = timeout(BLOCK_PRODUCTION_TIMEOUT, async {
         loop {
             let block = provider.get_block_number().await?;
@@ -82,7 +82,7 @@ async fn wait_for_block(provider: &RootProvider<Base>, min_block: u64) -> Result
     Ok(result)
 }
 
-async fn wait_for_balance(provider: &RootProvider<Base>, address: Address) -> Result<()> {
+async fn wait_for_balance(provider: &RootProvider<Unstable>, address: Address) -> Result<()> {
     timeout(Duration::from_secs(15), async {
         loop {
             let balance = provider.get_balance(address).await?;

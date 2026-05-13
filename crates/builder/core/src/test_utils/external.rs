@@ -7,8 +7,8 @@ use alloy_provider::{Identity, Provider, ProviderBuilder, RootProvider};
 use alloy_rpc_types_engine::{
     ExecutionPayloadV1, ExecutionPayloadV2, ExecutionPayloadV3, PayloadStatusEnum,
 };
-use base_common_network::Base;
-use base_common_rpc_types_engine::BaseExecutionPayloadV4;
+use base_common_network::Unstable;
+use base_common_rpc_types_engine::UnstableExecutionPayloadV4;
 use futures::{StreamExt, TryStreamExt};
 use testcontainers::bollard::{
     Docker,
@@ -28,7 +28,7 @@ use super::{EngineApi, Ipc};
 const AUTH_CONTAINER_IPC_PATH: &str = "/home/op-reth-shared/auth.ipc";
 const RPC_CONTAINER_IPC_PATH: &str = "/home/op-reth-shared/rpc.ipc";
 
-/// This type represents a Base execution client node that is running inside a
+/// This type represents a Unstable execution client node that is running inside a
 /// docker container. This node is used to validate the correctness of the blocks built
 /// by base-builder.
 ///
@@ -40,7 +40,7 @@ const RPC_CONTAINER_IPC_PATH: &str = "/home/op-reth-shared/rpc.ipc";
 #[derive(Debug)]
 pub struct ExternalNode {
     engine_api: EngineApi<Ipc>,
-    provider: RootProvider<Base>,
+    provider: RootProvider<Unstable>,
     docker: Docker,
     tempdir: PathBuf,
     container_id: String,
@@ -81,7 +81,7 @@ impl ExternalNode {
 
         // Connect to the IPCs
         let engine_api = EngineApi::with_ipc(&auth_ipc);
-        let provider = ProviderBuilder::<Identity, Identity, Base>::default()
+        let provider = ProviderBuilder::<Identity, Identity, Unstable>::default()
             .connect_ipc(rpc_ipc.into())
             .await?;
 
@@ -110,7 +110,7 @@ impl ExternalNode {
 
 impl ExternalNode {
     /// Access to the RPC API of the validation node.
-    pub const fn provider(&self) -> &RootProvider<Base> {
+    pub const fn provider(&self) -> &RootProvider<Unstable> {
         &self.provider
     }
 
@@ -125,7 +125,7 @@ impl ExternalNode {
     ///
     /// This method will fail if this node is ahead of the provided chain or they do not
     /// share the same genesis block.
-    pub async fn catch_up_with(&self, chain: &RootProvider<Base>) -> eyre::Result<()> {
+    pub async fn catch_up_with(&self, chain: &RootProvider<Unstable>) -> eyre::Result<()> {
         // check if we need to catch up
         let (latest_hash, latest_number) = chain.latest_block_hash_and_number().await?;
         let (our_latest_hash, our_latest_number) =
@@ -214,7 +214,7 @@ impl ExternalNode {
 
     /// Posts a block to the external validation node for validation and sets it as the latest block
     /// in the fork choice.
-    pub async fn post_block(&self, payload: &BaseExecutionPayloadV4) -> eyre::Result<()> {
+    pub async fn post_block(&self, payload: &UnstableExecutionPayloadV4) -> eyre::Result<()> {
         let result = self
             .engine_api
             .new_payload(payload.clone(), vec![], B256::ZERO, Requests::default())
@@ -420,16 +420,16 @@ async fn cleanup(tempdir: PathBuf, docker: Docker, container_id: String) {
     std::fs::remove_dir_all(&tempdir).expect("Failed to remove temporary directory");
 }
 
-trait BaseProviderExt {
+trait UnstableProviderExt {
     async fn hash_at_height(&self, height: u64) -> eyre::Result<B256>;
     async fn latest_block_hash_and_number(&self) -> eyre::Result<(B256, u64)>;
     async fn execution_payload_for_block(
         &self,
         number: u64,
-    ) -> eyre::Result<BaseExecutionPayloadV4>;
+    ) -> eyre::Result<UnstableExecutionPayloadV4>;
 }
 
-impl BaseProviderExt for RootProvider<Base> {
+impl UnstableProviderExt for RootProvider<Unstable> {
     async fn hash_at_height(&self, height: u64) -> eyre::Result<B256> {
         let block = self
             .get_block_by_number(BlockNumberOrTag::Number(height))
@@ -449,7 +449,7 @@ impl BaseProviderExt for RootProvider<Base> {
     async fn execution_payload_for_block(
         &self,
         number: u64,
-    ) -> eyre::Result<BaseExecutionPayloadV4> {
+    ) -> eyre::Result<UnstableExecutionPayloadV4> {
         let block = self
             .get_block_by_number(BlockNumberOrTag::Number(number))
             .full()
@@ -468,7 +468,7 @@ impl BaseProviderExt for RootProvider<Base> {
             keccak256(&buf)
         };
 
-        let payload = BaseExecutionPayloadV4 {
+        let payload = UnstableExecutionPayloadV4 {
             payload_inner: ExecutionPayloadV3 {
                 payload_inner: ExecutionPayloadV2 {
                     payload_inner: ExecutionPayloadV1 {

@@ -10,9 +10,9 @@ use alloy_rpc_client::RpcClient;
 use alloy_rpc_types_engine::PayloadAttributes;
 use alloy_transport_http::{Client, Http};
 use base_common_chains::Registry;
-use base_common_evm::BaseEvmFactory;
+use base_common_evm::UnstableEvmFactory;
 use base_common_genesis::RollupConfig;
-use base_common_rpc_types_engine::BasePayloadAttributes;
+use base_common_rpc_types_engine::UnstablePayloadAttributes;
 use base_proof_mpt::{NoopTrieHinter, TrieNode, TrieProvider};
 use rocksdb::{DB, Options};
 use serde::{Deserialize, Serialize};
@@ -47,7 +47,7 @@ pub async fn run_test_fixture(fixture_path: PathBuf) {
 
     let mut executor = StatelessL2Builder::new(
         &fixture.rollup_config,
-        BaseEvmFactory::default(),
+        UnstableEvmFactory::default(),
         provider,
         NoopTrieHinter,
         fixture.parent_header.seal_slow(),
@@ -70,7 +70,7 @@ pub struct ExecutorTestFixture {
     /// The parent block header.
     pub parent_header: Header,
     /// The executing payload attributes.
-    pub executing_payload: BasePayloadAttributes,
+    pub executing_payload: UnstablePayloadAttributes,
     /// The expected block hash
     pub expected_block_hash: B256,
 }
@@ -146,7 +146,7 @@ impl ExecutorTestFixtureCreator {
             _ => panic!("Only BlockTransactions::Hashes are supported."),
         };
 
-        let payload_attrs = BasePayloadAttributes {
+        let payload_attrs = UnstablePayloadAttributes {
             payload_attributes: PayloadAttributes {
                 timestamp: executing_header.timestamp,
                 parent_beacon_block_root: executing_header.parent_beacon_block_root,
@@ -183,7 +183,7 @@ impl ExecutorTestFixtureCreator {
 
         let mut executor = StatelessL2Builder::new(
             rollup_config,
-            BaseEvmFactory::default(),
+            UnstableEvmFactory::default(),
             self,
             NoopTrieHinter,
             parent_header,

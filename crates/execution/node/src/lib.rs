@@ -10,23 +10,23 @@
 #[cfg(feature = "test-utils")]
 use reth_db_api as _;
 
-/// CLI argument parsing for the Base node.
+/// CLI argument parsing for the Unstable node.
 pub mod args;
 pub use args::TxpoolOrdering;
 
-/// Exports Base-specific implementations of the [`EngineTypes`](reth_node_api::EngineTypes)
+/// Exports Unstable-specific implementations of the [`EngineTypes`](reth_node_api::EngineTypes)
 /// trait.
 pub mod engine;
-pub use engine::{BaseEngineTypes, BasePostExecutionValidator};
+pub use engine::{UnstableEngineTypes, UnstablePostExecutionValidator};
 
 pub mod node;
 pub use node::*;
 
 pub mod rpc;
-pub use rpc::BaseEngineApiBuilder;
+pub use rpc::UnstableEngineApiBuilder;
 
 mod storage;
-pub use storage::BaseStorage;
+pub use storage::UnstableStorage;
 
 pub mod version;
 pub use version::CLIENT_NAME;

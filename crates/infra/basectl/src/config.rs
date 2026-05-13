@@ -89,7 +89,7 @@ pub struct MonitoringConfig {
     pub flashblocks_ws: Url,
     /// L1 Ethereum JSON-RPC endpoint URL.
     pub l1_rpc: Url,
-    /// Optional Base consensus node JSON-RPC endpoint URL.
+    /// Optional Unstable consensus node JSON-RPC endpoint URL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub consensus_node_rpc: Option<Url>,
     /// L1 `SystemConfig` contract address.
@@ -181,14 +181,14 @@ impl MonitoringConfig {
         names
     }
 
-    /// Returns the default Base mainnet configuration.
+    /// Returns the default Unstable mainnet configuration.
     pub fn mainnet() -> Self {
         let rollup =
-            Registry::rollup_config(8453).expect("Base mainnet config missing from registry");
+            Registry::rollup_config(8453).expect("Unstable mainnet config missing from registry");
         Self {
             name: "mainnet".to_string(),
-            rpc: Url::parse("https://mainnet.base.org").unwrap(),
-            flashblocks_ws: Url::parse("wss://mainnet.flashblocks.base.org/ws").unwrap(),
+            rpc: Url::parse("https://mainnet.unstable.org").unwrap(),
+            flashblocks_ws: Url::parse("wss://mainnet.flashblocks.unstable.org/ws").unwrap(),
             l1_rpc: Url::parse("https://ethereum-rpc.publicnode.com").unwrap(),
             consensus_node_rpc: None,
             system_config: rollup.l1_system_config_address,
@@ -200,14 +200,14 @@ impl MonitoringConfig {
         }
     }
 
-    /// Returns the default Base Sepolia configuration.
+    /// Returns the default Unstable Sepolia configuration.
     pub fn sepolia() -> Self {
         let rollup =
-            Registry::rollup_config(84532).expect("Base Sepolia config missing from registry");
+            Registry::rollup_config(84532).expect("Unstable Sepolia config missing from registry");
         Self {
             name: "sepolia".to_string(),
-            rpc: Url::parse("https://sepolia.base.org").unwrap(),
-            flashblocks_ws: Url::parse("wss://sepolia.flashblocks.base.org/ws").unwrap(),
+            rpc: Url::parse("https://sepolia.unstable.org").unwrap(),
+            flashblocks_ws: Url::parse("wss://sepolia.flashblocks.unstable.org/ws").unwrap(),
             l1_rpc: Url::parse("https://ethereum-sepolia-rpc.publicnode.com").unwrap(),
             consensus_node_rpc: None,
             system_config: rollup.l1_system_config_address,

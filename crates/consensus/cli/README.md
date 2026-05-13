@@ -1,10 +1,10 @@
 # `base-consensus-cli`
 
-CLI argument types for Base consensus clients.
+CLI argument types for Unstable consensus clients.
 
 ## Overview
 
-This crate provides reusable CLI argument types for configuring Base consensus clients:
+This crate provides reusable CLI argument types for configuring Unstable consensus clients:
 
 - **`L1ClientArgs`**: L1 execution client RPC configuration
 - **`L2ClientArgs`**: L2 engine API configuration with JWT handling

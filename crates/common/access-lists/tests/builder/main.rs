@@ -6,7 +6,7 @@ use alloy_primitives::{Address, B256, TxKind, U256};
 use alloy_sol_types::SolCall;
 use base_access_lists::{FBALBuilderDb, FlashblockAccessList};
 use base_common_evm::{
-    BaseContext, BaseSpecId, BaseTransaction, BaseUpgrade, Builder, DefaultBase,
+    UnstableContext, UnstableSpecId, UnstableTransaction, UnstableUpgrade, Builder, DefaultUnstable,
 };
 use base_test_utils::{
     AccessListContract, ContractFactory, DEVNET_CHAIN_ID, GENESIS_GAS_LIMIT, Logic, Logic2, Proxy,
@@ -46,8 +46,8 @@ fn block_env() -> BlockEnv {
 }
 
 /// Builds the static cfg environment used for access-list tests.
-fn cfg_env() -> CfgEnv<BaseSpecId> {
-    let mut cfg_env = CfgEnv::new_with_spec(BaseSpecId::new(BaseUpgrade::LATEST));
+fn cfg_env() -> CfgEnv<UnstableSpecId> {
+    let mut cfg_env = CfgEnv::new_with_spec(UnstableSpecId::new(UnstableUpgrade::LATEST));
     cfg_env.chain_id = DEVNET_CHAIN_ID;
     cfg_env
 }
@@ -58,7 +58,7 @@ fn cfg_env() -> CfgEnv<BaseSpecId> {
 /// Uses a single `FBALBuilderDb` instance that wraps the underlying `InMemoryDB`,
 /// calling `set_index()` before each transaction to track which txn caused which change.
 pub fn execute_txns_build_access_list(
-    txs: Vec<BaseTransaction<TxEnv>>,
+    txs: Vec<UnstableTransaction<TxEnv>>,
     acc_overrides: Option<HashMap<Address, AccountInfo>>,
     storage_overrides: Option<HashMap<Address, HashMap<U256, B256>>>,
 ) -> Result<FlashblockAccessList> {
@@ -86,7 +86,7 @@ pub fn execute_txns_build_access_list(
         fbal_db.set_index(i as u64);
 
         let ctx =
-            BaseContext::base().with_db(&mut fbal_db).with_block(block_env()).with_cfg(cfg_env());
+            UnstableContext::base().with_db(&mut fbal_db).with_block(block_env()).with_cfg(cfg_env());
         let mut evm = ctx.build_base();
         let ResultAndState { state, .. } = evm.transact(tx).unwrap();
         drop(evm);

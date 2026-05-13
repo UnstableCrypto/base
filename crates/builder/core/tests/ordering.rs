@@ -17,7 +17,7 @@ async fn fee_priority_ordering() -> eyre::Result<()> {
     let base_fee = latest_block
         .header
         .base_fee_per_gas
-        .expect("Base fee should be present in the latest block");
+        .expect("Unstable fee should be present in the latest block");
 
     // generate transactions with randomized tips
     let txs = join_all(accounts.iter().map(|signer| {

@@ -1,15 +1,15 @@
 //! Contains the [`FlashblocksExtension`] which wires up the flashblocks feature
-//! (canonical block subscription and RPC surface) on the Base node builder.
+//! (canonical block subscription and RPC surface) on the Unstable node builder.
 
 use std::sync::Arc;
 
-use base_engine_tree::BaseEngineValidatorBuilder;
+use base_engine_tree::UnstableEngineValidatorBuilder;
 use base_flashblocks::{
     EthApiExt, EthApiOverrideServer, EthPubSub, EthPubSubApiServer, FlashblocksConfig,
     FlashblocksSubscriber,
 };
-use base_node_core::BasePayloadValidatorBuilder;
-use base_node_runner::{BaseNodeExtension, FromExtensionConfig, NodeHooks};
+use base_node_core::UnstablePayloadValidatorBuilder;
+use base_node_runner::{UnstableNodeExtension, FromExtensionConfig, NodeHooks};
 use reth_chain_state::CanonStateSubscriptions;
 use tokio_stream::{StreamExt, wrappers::BroadcastStream};
 use tracing::info;
@@ -28,7 +28,7 @@ impl FlashblocksExtension {
     }
 }
 
-impl BaseNodeExtension for FlashblocksExtension {
+impl UnstableNodeExtension for FlashblocksExtension {
     /// Applies the extension to the supplied hooks.
     fn apply(self: Box<Self>, hooks: NodeHooks) -> NodeHooks {
         let Some(cfg) = self.config else {
@@ -48,7 +48,7 @@ impl BaseNodeExtension for FlashblocksExtension {
             let state_for_engine = Arc::clone(&state_for_start);
             hooks.add_add_ons_hook(move |add_ons| {
                 add_ons.with_engine_validator(
-                    BaseEngineValidatorBuilder::new(BasePayloadValidatorBuilder::default())
+                    UnstableEngineValidatorBuilder::new(UnstablePayloadValidatorBuilder::default())
                         .with_flashblocks_state(state_for_engine),
                 )
             })

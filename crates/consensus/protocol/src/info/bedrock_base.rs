@@ -4,7 +4,7 @@ use ambassador::delegatable_trait;
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Default, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// The base fields shared by all L1 block info transactions from Bedrock onward.
-pub struct L1BlockInfoBedrockBase {
+pub struct L1BlockInfoBedrockUnstable {
     /// The current L1 origin block number
     pub number: u64,
     /// The current L1 origin block's timestamp
@@ -21,7 +21,7 @@ pub struct L1BlockInfoBedrockBase {
 
 /// Accessors for Bedrock fields that still are available in latest hardfork.
 #[delegatable_trait]
-pub trait L1BlockInfoBedrockBaseFields {
+pub trait L1BlockInfoBedrockUnstableFields {
     /// The current L1 origin block number
     fn number(&self) -> u64;
 
@@ -41,7 +41,7 @@ pub trait L1BlockInfoBedrockBaseFields {
     fn batcher_address(&self) -> Address;
 }
 
-impl L1BlockInfoBedrockBaseFields for L1BlockInfoBedrockBase {
+impl L1BlockInfoBedrockUnstableFields for L1BlockInfoBedrockUnstable {
     fn number(&self) -> u64 {
         self.number
     }
@@ -67,7 +67,7 @@ impl L1BlockInfoBedrockBaseFields for L1BlockInfoBedrockBase {
     }
 }
 
-impl L1BlockInfoBedrockBase {
+impl L1BlockInfoBedrockUnstable {
     /// Construct from all values.
     #[allow(clippy::too_many_arguments)]
     pub const fn new(

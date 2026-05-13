@@ -14,10 +14,10 @@ mod basefee;
 pub use basefee::*;
 
 mod builder;
-pub use builder::BaseChainSpecBuilder;
+pub use builder::UnstableChainSpecBuilder;
 
 mod hardforks;
 pub use hardforks::ChainUpgradesExt;
 
 mod spec;
-pub use spec::{BaseChainSpec, GenesisInfo};
+pub use spec::{UnstableChainSpec, GenesisInfo};

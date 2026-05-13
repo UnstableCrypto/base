@@ -1,6 +1,6 @@
 # `docker`
 
-This directory contains the Dockerfiles and Compose configuration for the Base node.
+This directory contains the Dockerfiles and Compose configuration for the Unstable node.
 
 ## Dockerfiles
 
@@ -15,8 +15,8 @@ This directory contains the Dockerfiles and Compose configuration for the Base n
 The `docker-compose.yml` orchestrates a complete local devnet environment with both L1 and L2 chains. It spins up:
 
 - An L1 execution client (Reth) and consensus client (Lighthouse) with a validator
-- The Base builder and client nodes on L2
-- Base consensus layer nodes (`base-consensus`) for both builder and client
+- The Unstable builder and client nodes on L2
+- Unstable consensus layer nodes (`base-consensus`) for both builder and client
 - The `base-batcher` for submitting L2 data to L1
 
 All services read configuration from `devnet-env` in this directory. The devnet stores chain data in `.devnet/` which is created on first run.

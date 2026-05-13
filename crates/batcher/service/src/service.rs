@@ -11,11 +11,11 @@ use base_batcher_core::{
 };
 use base_batcher_encoder::BatchEncoder;
 use base_batcher_source::{BlockSubscription, HybridBlockSource, HybridL1HeadSource, SourceError};
-use base_common_consensus::BaseBlock;
-use base_common_network::Base;
+use base_common_consensus::UnstableBlock;
+use base_common_network::Unstable;
 use base_consensus_rpc::RollupNodeApiClient;
 use base_runtime::TokioRuntime;
-use base_tx_manager::{BaseTxMetrics, SignerConfig, SimpleTxManager, TxManagerConfig};
+use base_tx_manager::{UnstableTxMetrics, SignerConfig, SimpleTxManager, TxManagerConfig};
 use futures::{StreamExt, future::BoxFuture, stream::BoxStream};
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use tokio::sync::watch;
@@ -60,7 +60,7 @@ enum Subscription {
 }
 
 impl BlockSubscription for Subscription {
-    fn take_stream(&mut self) -> BoxStream<'static, Result<BaseBlock, SourceError>> {
+    fn take_stream(&mut self) -> BoxStream<'static, Result<UnstableBlock, SourceError>> {
         match self {
             Self::Ws(ws) => ws.take_stream(),
             Self::Null(null) => null.take_stream(),
@@ -164,7 +164,7 @@ impl BatcherService {
     /// [`HybridBlockSource`]: base_batcher_source::HybridBlockSource
     async fn build_l2_subscription(
         url: Option<&Url>,
-        fetch_provider: Arc<dyn Provider<Base> + Send + Sync>,
+        fetch_provider: Arc<dyn Provider<Unstable> + Send + Sync>,
     ) -> Subscription {
         let Some(url) = url else {
             return Subscription::Null(NullSubscription);
@@ -405,13 +405,13 @@ impl BatcherService {
 
         // Connect to the L2 RPC endpoint, with connection-time failover across
         // the configured endpoint list.
-        let l2_provider: Arc<dyn Provider<Base> + Send + Sync> = Arc::new(
+        let l2_provider: Arc<dyn Provider<Unstable> + Send + Sync> = Arc::new(
             Self::connect_first(&self.config.l2_rpc_url, "l2-rpc", |url| {
                 let url = url.clone();
                 async move {
                     ProviderBuilder::new()
                         .disable_recommended_fillers()
-                        .network::<Base>()
+                        .network::<Unstable>()
                         .connect(url.as_str())
                         .await
                 }
@@ -617,7 +617,7 @@ impl BatcherService {
             signer_config,
             tx_manager_config,
             l1_chain_id,
-            Arc::new(BaseTxMetrics::new("batcher")),
+            Arc::new(UnstableTxMetrics::new("batcher")),
         )
         .await
         .map_err(|e| eyre::eyre!("failed to create tx manager: {e}"))?;

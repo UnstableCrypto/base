@@ -1,6 +1,6 @@
 [package]
 name = "base-consensus-derive"
-description = "A no_std derivation pipeline implementation for Base"
+description = "A no_std derivation pipeline implementation for Unstable"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -25,7 +25,7 @@ alloy-rlp = { workspace = true, features = ["derive"] }
 alloy-consensus = { workspace = true, features = ["k256"] }
 alloy-primitives = { workspace = true, features = ["rlp", "k256", "map"] }
 
-# Base Alloy
+# Unstable Alloy
 base-common-rpc-types-engine.workspace = true
 base-common-consensus = { workspace = true, features = ["k256"] }
 

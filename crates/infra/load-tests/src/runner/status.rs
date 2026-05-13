@@ -121,7 +121,7 @@ impl LoadTestDisplay {
                 pb
             },
         );
-        header.set_message("Base Load Test  starting...");
+        header.set_message("Unstable Load Test  starting...");
         header.enable_steady_tick(Duration::from_millis(120));
 
         let stat_style = ProgressStyle::with_template("  {msg}").expect("stat template is valid");
@@ -155,12 +155,12 @@ impl LoadTestDisplay {
         if let Some(d) = self.duration {
             self.header.set_position(snap.elapsed.as_secs().min(d.as_secs()));
             self.header.set_message(format!(
-                "Base Load Test  elapsed {}   remaining {}",
+                "Unstable Load Test  elapsed {}   remaining {}",
                 elapsed_str,
                 fmt_hms(d.saturating_sub(snap.elapsed)),
             ));
         } else {
-            self.header.set_message(format!("Base Load Test  elapsed {elapsed_str}   continuous"));
+            self.header.set_message(format!("Unstable Load Test  elapsed {elapsed_str}   continuous"));
         }
 
         self.txs.set_message(if snap.reverted > 0 {
@@ -247,7 +247,7 @@ impl LoadTestDisplay {
         if let Some(d) = self.duration {
             self.header.set_position(d.as_secs());
         }
-        self.header.finish_with_message("Base Load Test  complete");
+        self.header.finish_with_message("Unstable Load Test  complete");
         for bar in [
             &self.txs,
             &self.rate,

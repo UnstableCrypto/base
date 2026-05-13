@@ -16,7 +16,7 @@ base_cli_utils::define_health_args!("BASE_PROPOSER", 8080);
 base_tx_manager::define_signer_cli!("BASE_PROPOSER");
 base_tx_manager::define_tx_manager_cli!("BASE_PROPOSER", tx_send_timeout_default = "10m");
 
-/// Proposer - TEE-based output proposal generation for Base.
+/// Proposer - TEE-based output proposal generation for Unstable.
 #[derive(Debug, Clone, Parser)]
 #[command(name = "proposer")]
 #[command(version, about, long_about = None)]

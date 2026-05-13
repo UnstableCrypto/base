@@ -265,7 +265,7 @@ async fn granite_channel_timeout_enforced() {
     );
     assert_eq!(
         rollup_cfg.channel_timeout, 300,
-        "pre-Granite channel_timeout must be 300 (Base mainnet default)"
+        "pre-Granite channel_timeout must be 300 (Unstable mainnet default)"
     );
 
     let mut h = ActionTestHarness::new(L1MinerConfig::default(), rollup_cfg);

@@ -1,4 +1,4 @@
-//! Consensus-layer gossipsub driver for Base.
+//! Consensus-layer gossipsub driver for Unstable.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -144,7 +144,7 @@ where
     /// Handles the sync request/response protocol.
     ///
     /// This is a mock handler that supports the `payload_by_number` protocol.
-    /// It always returns: not found (1), version (0). `<https://specs.base.org/protocol/consensus/p2p#payload_by_number>`
+    /// It always returns: not found (1), version (0). `<https://specs.unstable.org/protocol/consensus/p2p#payload_by_number>`
     ///
     /// ## Note
     ///
@@ -169,7 +169,7 @@ where
                 trace!(target: "gossip", peer_id = %peer_id, "Received sync request");
                 Metrics::sync_requests().increment(1);
 
-                // We return: not found (1), version (0). `<https://specs.base.org/protocol/consensus/p2p#payload_by_number>`
+                // We return: not found (1), version (0). `<https://specs.unstable.org/protocol/consensus/p2p#payload_by_number>`
                 // Response format: <response> = <res><version><payload>
                 // No payload is returned.
                 const OUTPUT: [u8; 2] = hex!("0100");
@@ -242,7 +242,7 @@ where
     pub fn dial(&mut self, enr: Enr) {
         let validation = EnrValidation::validate(&enr, self.handler.rollup_config.l2_chain_id.id());
         if validation.is_invalid() {
-            trace!(target: "gossip", chain_id = %self.handler.rollup_config.l2_chain_id.id(), validation = %validation, "Invalid Base ENR");
+            trace!(target: "gossip", chain_id = %self.handler.rollup_config.l2_chain_id.id(), validation = %validation, "Invalid Unstable ENR");
             return;
         }
         let Some(multiaddr) = PeerUtils::enr_to_multiaddr(&enr) else {
@@ -358,7 +358,7 @@ where
         self.peerstore.pop(&peer_to_remove);
 
         // This is a cache-level cap, not Lighthouse's full peer lifecycle model. Lighthouse
-        // keeps explicit connection state and evicts excess disconnected, untrusted peers; Base
+        // keeps explicit connection state and evicts excess disconnected, untrusted peers; Unstable
         // currently only has identify metadata here, so prefer disconnected entries and bound
         // the cache until we model peer lifecycle state directly.
         debug!(

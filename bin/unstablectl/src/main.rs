@@ -1,4 +1,4 @@
-//! Base infrastructure control CLI binary.
+//! Unstable infrastructure control CLI binary.
 
 mod cli;
 

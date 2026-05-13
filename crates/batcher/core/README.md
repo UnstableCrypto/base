@@ -1,6 +1,6 @@
 # `base-batcher-core`
 
-Async orchestration core for the Base batcher.
+Async orchestration core for the Unstable batcher.
 
 `BatchDriver` is the central type exported by this crate. It is generic over a `Runtime`, a
 `BatchPipeline` (frame encoding), an `UnsafeBlockSource` (L2 block delivery), an `L1HeadSource`

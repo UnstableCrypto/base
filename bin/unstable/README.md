@@ -1,6 +1,6 @@
 # `base`
 
-Minimal scaffolding for the unified Base node binary.
+Minimal scaffolding for the unified Unstable node binary.
 
 The current implementation only does four things:
 

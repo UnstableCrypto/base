@@ -2,7 +2,7 @@
 
 use std::{ffi::OsString, path::PathBuf};
 
-/// Encapsulates log directory utilities for Base binaries.
+/// Encapsulates log directory utilities for Unstable binaries.
 ///
 /// Provides a standardized way to determine the default log file directory
 /// based on the system cache directory and package name.

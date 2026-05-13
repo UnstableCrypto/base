@@ -7,9 +7,9 @@ use alloy_eips::{Encodable2718, eip7685::EMPTY_REQUESTS_HASH};
 use alloy_evm::{EvmFactory, block::BlockExecutionResult};
 use alloy_primitives::{B256, Sealable, U256, logs_bloom};
 use alloy_trie::EMPTY_ROOT_HASH;
-use base_common_consensus::{BaseReceiptEnvelope, Predeploys};
+use base_common_consensus::{UnstableReceiptEnvelope, Predeploys};
 use base_common_genesis::RollupConfig;
-use base_common_rpc_types_engine::BasePayloadAttributes;
+use base_common_rpc_types_engine::UnstablePayloadAttributes;
 use base_proof_mpt::{TrieHinter, ordered_trie_with_encoder};
 use base_protocol::OutputRoot;
 use revm::{context::BlockEnv, database::BundleState};
@@ -26,14 +26,14 @@ where
     H: TrieHinter,
     Evm: EvmFactory,
 {
-    /// Seals the block executed from the given [`BasePayloadAttributes`] and [`BlockEnv`], returning
+    /// Seals the block executed from the given [`UnstablePayloadAttributes`] and [`BlockEnv`], returning
     /// the computed [Header].
     pub(crate) fn seal_block(
         &mut self,
-        attrs: &BasePayloadAttributes,
+        attrs: &UnstablePayloadAttributes,
         parent_hash: B256,
         block_env: &BlockEnv,
-        ex_result: &BlockExecutionResult<BaseReceiptEnvelope>,
+        ex_result: &BlockExecutionResult<UnstableReceiptEnvelope>,
         bundle: BundleState,
     ) -> ExecutorResult<Sealed<Header>> {
         let timestamp = block_env.timestamp.saturating_to::<u64>();
@@ -41,7 +41,7 @@ where
         // Compute the roots for the block header.
         let state_root = self.trie_db.state_root(&bundle)?;
         let transactions_root = ordered_trie_with_encoder(
-            // SAFETY: The Base protocol will never generate a payload attributes with an empty
+            // SAFETY: The Unstable protocol will never generate a payload attributes with an empty
             // transactions field. Panicking here is the desired behavior, as it indicates a severe
             // protocol violation.
             attrs.transactions.as_ref().expect("Transactions must be non-empty"),
@@ -85,7 +85,7 @@ where
             _ => Ok(Default::default()),
         }?;
 
-        // The requests hash on Base, if Isthmus is active, is always the empty SHA256 hash.
+        // The requests hash on Unstable, if Isthmus is active, is always the empty SHA256 hash.
         let requests_hash = self.config.is_isthmus_active(timestamp).then_some(EMPTY_REQUESTS_HASH);
 
         // Construct the new header.
@@ -169,7 +169,7 @@ where
 
 /// Computes the receipts root from the given set of receipts.
 pub fn compute_receipts_root(
-    receipts: &[BaseReceiptEnvelope],
+    receipts: &[UnstableReceiptEnvelope],
     config: &RollupConfig,
     timestamp: u64,
 ) -> B256 {
@@ -182,9 +182,9 @@ pub fn compute_receipts_root(
             .iter()
             .cloned()
             .map(|receipt| match receipt {
-                BaseReceiptEnvelope::Deposit(mut deposit_receipt) => {
+                UnstableReceiptEnvelope::Deposit(mut deposit_receipt) => {
                     deposit_receipt.receipt.deposit_nonce = None;
-                    BaseReceiptEnvelope::Deposit(deposit_receipt)
+                    UnstableReceiptEnvelope::Deposit(deposit_receipt)
                 }
                 _ => receipt,
             })

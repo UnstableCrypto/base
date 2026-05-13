@@ -9,8 +9,8 @@ use alloy_primitives::{Address, U256};
 use alloy_provider::{Provider, RootProvider};
 use alloy_signer::SignerSync;
 use alloy_signer_local::PrivateKeySigner;
-use base_common_network::Base;
-use base_common_rpc_types::BaseTransactionRequest;
+use base_common_network::Unstable;
+use base_common_rpc_types::UnstableTransactionRequest;
 use devnet::{DevnetBuilder, config::ANVIL_ACCOUNT_1};
 use eyre::{Result, WrapErr};
 use tokio::time::{sleep, timeout};
@@ -59,7 +59,7 @@ async fn verify_l1_block_production(provider: &RootProvider<Ethereum>) -> Result
     Ok(())
 }
 
-async fn verify_l2_block_production(provider: &RootProvider<Base>) -> Result<()> {
+async fn verify_l2_block_production(provider: &RootProvider<Unstable>) -> Result<()> {
     let initial_block = provider.get_block_number().await?;
 
     let result = timeout(BLOCK_PRODUCTION_TIMEOUT, async {
@@ -79,8 +79,8 @@ async fn verify_l2_block_production(provider: &RootProvider<Base>) -> Result<()>
 }
 
 async fn send_l2_transaction_via_client(
-    client_provider: &RootProvider<Base>,
-    builder_provider: &RootProvider<Base>,
+    client_provider: &RootProvider<Unstable>,
+    builder_provider: &RootProvider<Unstable>,
 ) -> Result<()> {
     let private_key_hex = format!("0x{}", hex::encode(ANVIL_ACCOUNT_1.private_key.as_slice()));
     let signer: PrivateKeySigner = private_key_hex.parse()?;
@@ -104,7 +104,7 @@ async fn send_l2_transaction_via_client(
     let nonce = client_provider.get_transaction_count(sender_address).await?;
 
     let recipient: Address = "0x000000000000000000000000000000000000dEaD".parse()?;
-    let tx_request = BaseTransactionRequest::default()
+    let tx_request = UnstableTransactionRequest::default()
         .from(sender_address)
         .to(recipient)
         .value(U256::from(1_000_000_000u64))
@@ -250,7 +250,7 @@ async fn smoke_test_client_pending_state_via_flashblocks() -> Result<()> {
     );
 }
 
-async fn get_pending_block_number(provider: &RootProvider<Base>) -> Result<u64> {
+async fn get_pending_block_number(provider: &RootProvider<Unstable>) -> Result<u64> {
     let block = provider
         .get_block_by_number(BlockNumberOrTag::Pending)
         .await

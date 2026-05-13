@@ -8,7 +8,7 @@ pub use config::{
 };
 
 mod utils;
-pub use utils::{BaselineError, Result};
+pub use utils::{UnstablelineError, Result};
 
 mod rpc;
 pub use rpc::{

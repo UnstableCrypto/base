@@ -1,4 +1,4 @@
-//! Contains the `ChannelOut` primitive for Base.
+//! Contains the `ChannelOut` primitive for Unstable.
 
 use alloc::{sync::Arc, vec, vec::Vec};
 

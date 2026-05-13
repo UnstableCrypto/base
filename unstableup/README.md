@@ -1,6 +1,6 @@
 # `baseup`
 
-Installer for Base release binaries published from this repository.
+Installer for Unstable release binaries published from this repository.
 
 ## Quick Install
 

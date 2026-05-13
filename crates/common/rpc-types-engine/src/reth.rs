@@ -6,9 +6,9 @@ use alloy_eips::eip4895::Withdrawal;
 use alloy_primitives::{B256, Bytes};
 use reth_payload_primitives::{ExecutionPayload, PayloadAttributes};
 
-use crate::{BasePayloadAttributes, ExecutionData};
+use crate::{UnstablePayloadAttributes, ExecutionData};
 
-impl PayloadAttributes for BasePayloadAttributes {
+impl PayloadAttributes for UnstablePayloadAttributes {
     fn timestamp(&self) -> u64 {
         self.payload_attributes.timestamp
     }

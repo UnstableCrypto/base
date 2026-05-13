@@ -7,18 +7,18 @@ use alloy_primitives::{B256, b256};
 use alloy_rpc_types_engine::{ForkchoiceUpdated, PayloadStatus, PayloadStatusEnum};
 use alloy_rpc_types_eth::Block as RpcBlock;
 use base_common_genesis::{ChainGenesis, RollupConfig};
-use base_common_rpc_types::Transaction as BaseTransaction;
+use base_common_rpc_types::Transaction as UnstableTransaction;
 
 use crate::{
     EngineTaskExt, FinalizeTask, FinalizeTaskError,
     test_utils::{TestEngineStateBuilder, test_block_info, test_engine_client_builder},
 };
 
-/// The genesis block hash for Base Sepolia (block 0).
+/// The genesis block hash for Unstable Sepolia (block 0).
 const BASE_SEPOLIA_GENESIS_HASH: B256 =
     b256!("0dcc9e089e30b90ddfc55be9a37dd15bc551aeee999d2e2b51414c54eaf934e4");
 
-/// The genesis block hash for Base Mainnet (block 0).
+/// The genesis block hash for Unstable Mainnet (block 0).
 const BASE_MAINNET_GENESIS_HASH: B256 =
     b256!("f712aa9241cc24369b143cf6dce85f0902a9731e70d66818a3a5845b296c73dd");
 
@@ -30,8 +30,8 @@ const BASE_MAINNET_GENESIS_HASH: B256 =
 /// [`L2BlockInfo::from_block_and_genesis`] accepts the block via the genesis path.
 ///
 /// [`L2BlockInfo::from_block_and_genesis`]: base_protocol::L2BlockInfo::from_block_and_genesis
-fn make_genesis_block() -> (RpcBlock<BaseTransaction>, B256) {
-    let block = RpcBlock::<BaseTransaction>::default();
+fn make_genesis_block() -> (RpcBlock<UnstableTransaction>, B256) {
+    let block = RpcBlock::<UnstableTransaction>::default();
     let hash = block.clone().into_consensus().hash_slow();
     (block, hash)
 }
@@ -96,7 +96,7 @@ async fn block_not_found_returns_error() {
 #[tokio::test]
 async fn from_block_error_on_genesis_hash_mismatch() {
     // Configure genesis.l2.hash = BASE_SEPOLIA_GENESIS_HASH but provide a default
-    // all-zero block, whose hash_slow() will not equal the real Base Sepolia genesis
+    // all-zero block, whose hash_slow() will not equal the real Unstable Sepolia genesis
     // hash. from_block_and_genesis returns InvalidGenesisHash → FinalizeTaskError::FromBlock.
     let (block, _) = make_genesis_block();
     let cfg = genesis_rollup_cfg(BASE_SEPOLIA_GENESIS_HASH);
@@ -123,7 +123,7 @@ async fn from_block_error_on_genesis_hash_mismatch() {
 async fn fcu_failure_propagates_as_forkchoice_update_failed() {
     // Provide a valid genesis block and matching config but do NOT configure a FCU
     // response. SynchronizeTask fails with a transport error → ForkchoiceUpdateFailed.
-    // The FCU call uses the Base Sepolia genesis hash in the forkchoice state.
+    // The FCU call uses the Unstable Sepolia genesis hash in the forkchoice state.
     let (block, hash) = make_genesis_block();
     let cfg = genesis_rollup_cfg(hash);
 
@@ -170,7 +170,7 @@ async fn stale_task_does_not_regress_finalized_head() {
 #[tokio::test]
 async fn success_updates_engine_state_finalized_head() {
     // Full happy path: fetch the genesis block, pass from_block_and_genesis, dispatch
-    // FCU, and verify the engine state updates. The Base Mainnet genesis hash is used
+    // FCU, and verify the engine state updates. The Unstable Mainnet genesis hash is used
     // in the FCU valid response to confirm the correct block was finalized.
     let (block, hash) = make_genesis_block();
     let cfg = genesis_rollup_cfg(hash);

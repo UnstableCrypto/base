@@ -1,6 +1,6 @@
 [package]
 name = "base-batcher-admin"
-description = "Admin JSON-RPC API server for the Base Batcher"
+description = "Admin JSON-RPC API server for the Unstable Batcher"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

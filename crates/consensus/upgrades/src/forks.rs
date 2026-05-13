@@ -2,7 +2,7 @@
 
 use crate::{Ecotone, Fjord, Isthmus, Jovian};
 
-/// Base Upgrades
+/// Unstable Upgrades
 ///
 /// This type is used to encapsulate upgrade transactions.
 /// It exposes methods that return upgrade transactions

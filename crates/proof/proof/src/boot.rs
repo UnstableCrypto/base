@@ -408,7 +408,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_oracle_rollup_config_with_mismatched_chain_id() {
         let rollup_config =
-            Registry::rollup_config(84532).expect("Base Sepolia config should exist").clone();
+            Registry::rollup_config(84532).expect("Unstable Sepolia config should exist").clone();
 
         let mut oracle = MockOracle::new();
         oracle.insert(L1_HEAD_KEY, B256::repeat_byte(0x11).to_vec());
@@ -436,7 +436,7 @@ mod tests {
         const ORACLE_CHAIN_ID: u64 = 999_999_999;
 
         let rollup_config =
-            Registry::rollup_config(84532).expect("Base Sepolia config should exist").clone();
+            Registry::rollup_config(84532).expect("Unstable Sepolia config should exist").clone();
         let mut rollup_config_value =
             serde_json::to_value(&rollup_config).expect("rollup config should convert to value");
         rollup_config_value["l2_chain_id"] = serde_json::json!(ORACLE_CHAIN_ID);

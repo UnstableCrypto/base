@@ -9,10 +9,10 @@ use alloy_consensus::{BlockHeader, Header, Sealed};
 use alloy_eips::BlockNumberOrTag;
 use alloy_primitives::{B256, TxHash, U256};
 use base_bundles::{Bundle, MeterBundleResponse, ParsedBundle};
-use base_common_consensus::BaseBlock;
+use base_common_consensus::UnstableBlock;
 use base_common_evm::L1BlockInfo;
 use base_common_flz::flz_compress_len;
-use base_execution_chainspec::BaseChainSpec;
+use base_execution_chainspec::UnstableChainSpec;
 use base_execution_evm::extract_l1_info_from_tx;
 use base_flashblocks::{FlashblocksAPI, PendingBlocksAPI};
 use jsonrpsee::core::{RpcResult, async_trait};
@@ -60,9 +60,9 @@ impl<Provider, FB> std::fmt::Debug for MeteringApiImpl<Provider, FB> {
 impl<Provider, FB> MeteringApiImpl<Provider, FB>
 where
     Provider: StateProviderFactory
-        + ChainSpecProvider<ChainSpec = BaseChainSpec>
+        + ChainSpecProvider<ChainSpec = UnstableChainSpec>
         + BlockReaderIdExt<Header = Header>
-        + BlockReader<Block = BaseBlock>
+        + BlockReader<Block = UnstableBlock>
         + HeaderProvider<Header = Header>
         + Clone,
     FB: FlashblocksAPI,
@@ -108,9 +108,9 @@ where
 impl<Provider, FB> MeteringApiServer for MeteringApiImpl<Provider, FB>
 where
     Provider: StateProviderFactory
-        + ChainSpecProvider<ChainSpec = BaseChainSpec>
+        + ChainSpecProvider<ChainSpec = UnstableChainSpec>
         + BlockReaderIdExt<Header = Header>
-        + BlockReader<Block = BaseBlock>
+        + BlockReader<Block = UnstableBlock>
         + HeaderProvider<Header = Header>
         + Clone
         + Send
@@ -543,9 +543,9 @@ fn compute_resource_demand(bundle: &Bundle, meter_result: &MeterBundleResponse) 
 impl<Provider, FB> MeteringApiImpl<Provider, FB>
 where
     Provider: StateProviderFactory
-        + ChainSpecProvider<ChainSpec = BaseChainSpec>
+        + ChainSpecProvider<ChainSpec = UnstableChainSpec>
         + BlockReaderIdExt<Header = Header>
-        + BlockReader<Block = BaseBlock>
+        + BlockReader<Block = UnstableBlock>
         + HeaderProvider<Header = Header>
         + Clone
         + Send
@@ -599,7 +599,7 @@ where
     }
 
     /// Internal helper to meter a block's execution
-    fn meter_block_internal(&self, block: &BaseBlock) -> RpcResult<MeterBlockResponse> {
+    fn meter_block_internal(&self, block: &UnstableBlock) -> RpcResult<MeterBlockResponse> {
         meter_block(self.provider.clone(), self.provider.chain_spec(), block).map_err(|e| {
             error!(error = %e, "Block metering failed");
             jsonrpsee::types::ErrorObjectOwned::owned(
@@ -620,9 +620,9 @@ mod tests {
     use alloy_primitives::{B256, Bloom, Bytes, address};
     use alloy_rpc_client::RpcClient;
     use base_bundles::{Bundle, MeterBundleResponse};
-    use base_common_consensus::{BaseTransactionSigned, BaseTxEnvelope};
+    use base_common_consensus::{UnstableTransactionSigned, UnstableTxEnvelope};
     use base_common_flashblocks::{
-        ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
+        ExecutionPayloadUnstableV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
     };
     use base_flashblocks::{FlashblocksConfig, PendingBlocksBuilder};
     use base_node_runner::test_utils::TestHarness;
@@ -717,8 +717,8 @@ mod tests {
             .into_eip1559();
 
         let signed_tx =
-            BaseTransactionSigned::Eip1559(tx.as_eip1559().expect("eip1559 transaction").clone());
-        let envelope: BaseTxEnvelope = signed_tx;
+            UnstableTransactionSigned::Eip1559(tx.as_eip1559().expect("eip1559 transaction").clone());
+        let envelope: UnstableTxEnvelope = signed_tx;
 
         let tx_bytes = Bytes::from(envelope.encoded_2718());
 
@@ -766,10 +766,10 @@ mod tests {
             .max_priority_fee_per_gas(1_000_000_000)
             .into_eip1559();
 
-        let tx1_signed = BaseTransactionSigned::Eip1559(
+        let tx1_signed = UnstableTransactionSigned::Eip1559(
             tx1_inner.as_eip1559().expect("eip1559 transaction").clone(),
         );
-        let tx1_envelope: BaseTxEnvelope = tx1_signed;
+        let tx1_envelope: UnstableTxEnvelope = tx1_signed;
         let tx1_bytes = Bytes::from(tx1_envelope.encoded_2718());
 
         let address2 = Account::Bob.address();
@@ -786,10 +786,10 @@ mod tests {
             .max_priority_fee_per_gas(2_000_000_000)
             .into_eip1559();
 
-        let tx2_signed = BaseTransactionSigned::Eip1559(
+        let tx2_signed = UnstableTransactionSigned::Eip1559(
             tx2_inner.as_eip1559().expect("eip1559 transaction").clone(),
         );
-        let tx2_envelope: BaseTxEnvelope = tx2_signed;
+        let tx2_envelope: UnstableTxEnvelope = tx2_signed;
         let tx2_bytes = Bytes::from(tx2_envelope.encoded_2718());
 
         let bundle = create_bundle(vec![tx1_bytes, tx2_bytes], 0, None);
@@ -925,10 +925,10 @@ mod tests {
             .max_priority_fee_per_gas(3_000_000_000)
             .into_eip1559();
 
-        let signed_tx1 = BaseTransactionSigned::Eip1559(
+        let signed_tx1 = UnstableTransactionSigned::Eip1559(
             tx1_inner.as_eip1559().expect("eip1559 transaction").clone(),
         );
-        let envelope1: BaseTxEnvelope = signed_tx1;
+        let envelope1: UnstableTxEnvelope = signed_tx1;
         let tx1_bytes = Bytes::from(envelope1.encoded_2718());
 
         let tx2_inner = TransactionBuilder::default()
@@ -942,10 +942,10 @@ mod tests {
             .max_priority_fee_per_gas(7_000_000_000)
             .into_eip1559();
 
-        let signed_tx2 = BaseTransactionSigned::Eip1559(
+        let signed_tx2 = UnstableTransactionSigned::Eip1559(
             tx2_inner.as_eip1559().expect("eip1559 transaction").clone(),
         );
-        let envelope2: BaseTxEnvelope = signed_tx2;
+        let envelope2: UnstableTxEnvelope = signed_tx2;
         let tx2_bytes = Bytes::from(envelope2.encoded_2718());
 
         let bundle = create_bundle(vec![tx1_bytes, tx2_bytes], 0, None);
@@ -1035,7 +1035,7 @@ mod tests {
         let flashblock = Flashblock {
             payload_id: Default::default(),
             index: 0,
-            base: Some(ExecutionPayloadBaseV1 {
+            base: Some(ExecutionPayloadUnstableV1 {
                 parent_beacon_block_root: B256::ZERO,
                 parent_hash: B256::ZERO,
                 fee_recipient: Default::default(),
@@ -1167,8 +1167,8 @@ mod tests {
             .into_eip1559();
 
         let signed_tx =
-            BaseTransactionSigned::Eip1559(tx.as_eip1559().expect("eip1559 transaction").clone());
-        let envelope: BaseTxEnvelope = signed_tx;
+            UnstableTransactionSigned::Eip1559(tx.as_eip1559().expect("eip1559 transaction").clone());
+        let envelope: UnstableTxEnvelope = signed_tx;
         let tx_bytes = Bytes::from(envelope.encoded_2718());
 
         let bundle = create_bundle(vec![tx_bytes], 0, None);

@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use alloy_primitives::B256;
 use async_trait::async_trait;
-use base_common_rpc_types_engine::BaseExecutionPayloadEnvelope;
+use base_common_rpc_types_engine::UnstableExecutionPayloadEnvelope;
 use base_consensus_node::{Conductor, ConductorError};
 
 /// Shared mutable state backing a [`TestConductorHandle`].
@@ -129,7 +129,7 @@ impl Conductor for TestConductor {
 
     async fn commit_unsafe_payload(
         &self,
-        payload: &BaseExecutionPayloadEnvelope,
+        payload: &UnstableExecutionPayloadEnvelope,
     ) -> Result<(), ConductorError> {
         let mut state = self.handle.0.lock().expect("conductor state lock poisoned");
         if state.leader_id != Some(self.id) {

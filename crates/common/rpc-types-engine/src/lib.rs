@@ -11,21 +11,21 @@
 extern crate alloc;
 
 mod attributes;
-pub use attributes::BasePayloadAttributes;
+pub use attributes::UnstablePayloadAttributes;
 
 mod envelope;
 pub use envelope::{
-    BaseExecutionPayloadEnvelope, ExecutionData, MAX_DECOMPRESSED_ENVELOPE_BYTES,
+    UnstableExecutionPayloadEnvelope, ExecutionData, MAX_DECOMPRESSED_ENVELOPE_BYTES,
     NetworkPayloadEnvelope, PayloadEnvelopeEncodeError, PayloadEnvelopeError, PayloadHash,
 };
 
 mod sidecar;
-pub use sidecar::BaseExecutionPayloadSidecar;
+pub use sidecar::UnstableExecutionPayloadSidecar;
 
 mod payload;
 pub use payload::{
-    BaseExecutionPayload, BaseExecutionPayloadEnvelopeV3, BaseExecutionPayloadEnvelopeV4,
-    BaseExecutionPayloadEnvelopeV5, BaseExecutionPayloadV4, BasePayloadError,
+    UnstableExecutionPayload, UnstableExecutionPayloadEnvelopeV3, UnstableExecutionPayloadEnvelopeV4,
+    UnstableExecutionPayloadEnvelopeV5, UnstableExecutionPayloadV4, UnstablePayloadError,
 };
 
 #[cfg(feature = "reth")]

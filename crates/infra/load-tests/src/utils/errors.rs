@@ -4,7 +4,7 @@ use alloy_primitives::Address;
 
 /// Errors that can occur in baseline operations.
 #[derive(Debug, thiserror::Error)]
-pub enum BaselineError {
+pub enum UnstablelineError {
     /// Network connection error.
     #[error("network error: {0}")]
     Network(String),
@@ -49,4 +49,4 @@ pub enum BaselineError {
 }
 
 /// Result type for baseline operations.
-pub type Result<T> = result::Result<T, BaselineError>;
+pub type Result<T> = result::Result<T, UnstablelineError>;

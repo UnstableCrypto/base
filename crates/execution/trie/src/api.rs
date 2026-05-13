@@ -16,7 +16,7 @@ use reth_trie_common::{
 };
 
 use crate::{
-    BaseProofsStorageResult,
+    UnstableProofsStorageResult,
     db::{HashedStorageKey, StorageTrieKey},
 };
 
@@ -68,7 +68,7 @@ pub struct OperationDurations {
 /// Only leaf nodes and some branch nodes are stored. The bottom layer of branch nodes
 /// are not stored to reduce write amplification. This matches Reth's non-historical trie storage.
 #[auto_impl(Arc)]
-pub trait BaseProofsStore: Send + Sync + Debug {
+pub trait UnstableProofsStore: Send + Sync + Debug {
     /// Cursor for iterating over trie branches.
     type StorageTrieCursor<'tx>: TrieStorageCursor + 'tx
     where
@@ -93,36 +93,36 @@ pub trait BaseProofsStore: Send + Sync + Debug {
     ///
     /// This is used to determine the block number of trie nodes with block number 0.
     /// All earliest block numbers are stored in 0 to reduce updates required to prune trie nodes.
-    fn get_earliest_block_number(&self) -> BaseProofsStorageResult<Option<(u64, B256)>>;
+    fn get_earliest_block_number(&self) -> UnstableProofsStorageResult<Option<(u64, B256)>>;
 
     /// Get the latest block number and hash that has been stored
-    fn get_latest_block_number(&self) -> BaseProofsStorageResult<Option<(u64, B256)>>;
+    fn get_latest_block_number(&self) -> UnstableProofsStorageResult<Option<(u64, B256)>>;
 
     /// Get a trie cursor for the storage backend
     fn storage_trie_cursor<'tx>(
         &self,
         hashed_address: B256,
         max_block_number: u64,
-    ) -> BaseProofsStorageResult<Self::StorageTrieCursor<'tx>>;
+    ) -> UnstableProofsStorageResult<Self::StorageTrieCursor<'tx>>;
 
     /// Get a trie cursor for the account backend
     fn account_trie_cursor<'tx>(
         &self,
         max_block_number: u64,
-    ) -> BaseProofsStorageResult<Self::AccountTrieCursor<'tx>>;
+    ) -> UnstableProofsStorageResult<Self::AccountTrieCursor<'tx>>;
 
     /// Get a storage cursor for the storage backend
     fn storage_hashed_cursor<'tx>(
         &self,
         hashed_address: B256,
         max_block_number: u64,
-    ) -> BaseProofsStorageResult<Self::StorageCursor<'tx>>;
+    ) -> UnstableProofsStorageResult<Self::StorageCursor<'tx>>;
 
     /// Get an account hashed cursor for the storage backend
     fn account_hashed_cursor<'tx>(
         &self,
         max_block_number: u64,
-    ) -> BaseProofsStorageResult<Self::AccountHashedCursor<'tx>>;
+    ) -> UnstableProofsStorageResult<Self::AccountHashedCursor<'tx>>;
 
     /// Store a batch of trie updates.
     ///
@@ -132,35 +132,35 @@ pub trait BaseProofsStore: Send + Sync + Debug {
         &self,
         block_ref: BlockWithParent,
         block_state_diff: BlockStateDiff,
-    ) -> BaseProofsStorageResult<WriteCounts>;
+    ) -> UnstableProofsStorageResult<WriteCounts>;
 
     /// Fetch all updates for a given block number.
-    fn fetch_trie_updates(&self, block_number: u64) -> BaseProofsStorageResult<BlockStateDiff>;
+    fn fetch_trie_updates(&self, block_number: u64) -> UnstableProofsStorageResult<BlockStateDiff>;
 
     /// Applies [`BlockStateDiff`] to the earliest state (updating/deleting nodes) and updates the
     /// earliest block number.
     fn prune_earliest_state(
         &self,
         new_earliest_block_ref: BlockWithParent,
-    ) -> BaseProofsStorageResult<WriteCounts>;
+    ) -> UnstableProofsStorageResult<WriteCounts>;
 
     /// Remove account, storage and trie updates from historical storage for all blocks till
     /// the specified block (inclusive).
-    fn unwind_history(&self, to: BlockWithParent) -> BaseProofsStorageResult<()>;
+    fn unwind_history(&self, to: BlockWithParent) -> UnstableProofsStorageResult<()>;
 
     /// Deletes all updates > `latest_common_block` and replaces them with the new updates.
     fn replace_updates(
         &self,
         latest_common_block: BlockNumHash,
         blocks_to_add: Vec<(BlockWithParent, BlockStateDiff)>,
-    ) -> BaseProofsStorageResult<()>;
+    ) -> UnstableProofsStorageResult<()>;
 
     /// Set the earliest block number and hash that has been stored
     fn set_earliest_block_number(
         &self,
         block_number: u64,
         hash: B256,
-    ) -> BaseProofsStorageResult<()>;
+    ) -> UnstableProofsStorageResult<()>;
 }
 
 /// Status of the initial state anchor.
@@ -195,42 +195,42 @@ pub struct InitialStateAnchor {
 
 /// Trait for storing and retrieving the initial state anchor.
 #[auto_impl(Arc)]
-pub trait BaseProofsInitialStateStore: Send + Sync + Debug {
+pub trait UnstableProofsInitialStateStore: Send + Sync + Debug {
     /// Read the current anchor.
-    fn initial_state_anchor(&self) -> BaseProofsStorageResult<InitialStateAnchor>;
+    fn initial_state_anchor(&self) -> UnstableProofsStorageResult<InitialStateAnchor>;
 
     /// Create the anchor if it doesn't exist.
     /// Returns `Err` if an anchor already exists (prevents accidental overwrite).
-    fn set_initial_state_anchor(&self, anchor: BlockNumHash) -> BaseProofsStorageResult<()>;
+    fn set_initial_state_anchor(&self, anchor: BlockNumHash) -> UnstableProofsStorageResult<()>;
 
     /// Store a batch of account trie branches. Used for saving existing state. For live state
-    /// capture, use [store_trie_updates](BaseProofsStore::store_trie_updates).
+    /// capture, use [store_trie_updates](UnstableProofsStore::store_trie_updates).
     fn store_account_branches(
         &self,
         account_nodes: Vec<(Nibbles, Option<BranchNodeCompact>)>,
-    ) -> BaseProofsStorageResult<()>;
+    ) -> UnstableProofsStorageResult<()>;
 
     /// Store a batch of storage trie branches. Used for saving existing state.
     fn store_storage_branches(
         &self,
         hashed_address: B256,
         storage_nodes: Vec<(Nibbles, Option<BranchNodeCompact>)>,
-    ) -> BaseProofsStorageResult<()>;
+    ) -> UnstableProofsStorageResult<()>;
 
     /// Store a batch of account trie leaf nodes. Used for saving existing state.
     fn store_hashed_accounts(
         &self,
         accounts: Vec<(B256, Option<Account>)>,
-    ) -> BaseProofsStorageResult<()>;
+    ) -> UnstableProofsStorageResult<()>;
 
     /// Store a batch of storage trie leaf nodes. Used for saving existing state.
     fn store_hashed_storages(
         &self,
         hashed_address: B256,
         storages: Vec<(B256, U256)>,
-    ) -> BaseProofsStorageResult<()>;
+    ) -> UnstableProofsStorageResult<()>;
 
     /// Commit the initial state - mark the anchor as completed and also set the earliest block
     /// number to anchor.
-    fn commit_initial_state(&self) -> BaseProofsStorageResult<BlockNumHash>;
+    fn commit_initial_state(&self) -> UnstableProofsStorageResult<BlockNumHash>;
 }

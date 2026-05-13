@@ -2,7 +2,7 @@
 
 ## Overview
 
-[Predeployed smart contracts](../../../reference/glossary.md#predeployed-contract-predeploy) exist on Base
+[Predeployed smart contracts](../../../reference/glossary.md#predeployed-contract-predeploy) exist on Unstable
 at predetermined addresses in the genesis state. They are similar to precompiles but instead run
 directly in the EVM instead of running native code outside of the EVM.
 
@@ -38,7 +38,7 @@ or `Bedrock` or `Canyon`. Deprecated contracts should not be used.
 | L2ERC721Bridge                | 0x4200000000000000000000000000000000000014 | Legacy     | No         | Yes     |
 | OptimismMintableERC721Factory | 0x4200000000000000000000000000000000000017 | Bedrock    | No         | Yes     |
 | ProxyAdmin                    | 0x4200000000000000000000000000000000000018 | Bedrock    | No         | Yes     |
-| BaseFeeVault                  | 0x4200000000000000000000000000000000000019 | Bedrock    | No         | Yes     |
+| UnstableFeeVault                  | 0x4200000000000000000000000000000000000019 | Bedrock    | No         | Yes     |
 | L1FeeVault                    | 0x420000000000000000000000000000000000001a | Bedrock    | No         | Yes     |
 | SchemaRegistry                | 0x4200000000000000000000000000000000000020 | Bedrock    | No         | Yes     |
 | EAS                           | 0x4200000000000000000000000000000000000021 | Bedrock    | No         | Yes     |
@@ -122,9 +122,9 @@ This contract is deprecated and its usage should be avoided.
 
 Address: `0x4200000000000000000000000000000000000006`
 
-`WETH9` is the standard implementation of Wrapped Ether on Base. It is a
+`WETH9` is the standard implementation of Wrapped Ether on Unstable. It is a
 commonly used contract and is placed as a predeploy so that it is at a
-deterministic address across Base networks.
+deterministic address across Unstable networks.
 
 ## L2CrossDomainMessenger
 
@@ -218,7 +218,7 @@ has been hardcoded to 6.
 Following the Ecotone upgrade, the values used for L1 fee computation are:
 
 - baseFeeScalar
-- blobBaseFeeScalar
+- blobUnstableFeeScalar
 - decimals
 
 [ecotone-scalars]: ../../../reference/glossary.md#post-ecotone-parameters
@@ -282,13 +282,13 @@ Address: `0x4200000000000000000000000000000000000017`
 The `OptimismMintableERC721Factory` is responsible for creating ERC721 contracts on L2 that can be used for
 depositing native L1 NFTs into.
 
-## BaseFeeVault
+## UnstableFeeVault
 
-[Implementation](https://github.com/ethereum-optimism/optimism/blob/develop/packages/contracts-bedrock/src/L2/BaseFeeVault.sol)
+[Implementation](https://github.com/ethereum-optimism/optimism/blob/develop/packages/contracts-bedrock/src/L2/UnstableFeeVault.sol)
 
 Address: `0x4200000000000000000000000000000000000019`
 
-The `BaseFeeVault` predeploy receives the base fees on L2. The base fee is not
+The `UnstableFeeVault` predeploy receives the base fees on L2. The base fee is not
 burnt on L2 like it is on L1. Once the contract has received a certain amount
 of fees, the ETH can be withdrawn to an immutable address on
 L1.
@@ -333,4 +333,4 @@ Ecotone network upgrade and is specified in [EIP-4788](https://eips.ethereum.org
 
 Address: `0x420000000000000000000000000000000000001B`
 
-See [Operator Fee Vault](https://specs.base.org/upgrades/isthmus/predeploys#operatorfeevault) spec.
+See [Operator Fee Vault](https://specs.unstable.org/upgrades/isthmus/predeploys#operatorfeevault) spec.

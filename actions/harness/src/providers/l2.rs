@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use alloy_eips::BlockNumHash;
 use alloy_primitives::map::HashMap;
 use async_trait::async_trait;
-use base_common_consensus::BaseBlock;
+use base_common_consensus::UnstableBlock;
 use base_common_genesis::{RollupConfig, SystemConfig};
 use base_consensus_derive::{L2ChainProvider, PipelineError, PipelineErrorKind};
 use base_protocol::{BatchValidationProvider, BlockInfo, L2BlockInfo};
@@ -41,8 +41,8 @@ impl From<L2ProviderError> for PipelineErrorKind {
 pub struct ActionL2ChainProvider {
     /// L2 blocks by block number.
     blocks: Arc<Mutex<HashMap<u64, L2BlockInfo>>>,
-    /// Base blocks (headers + txs) by block number, needed for batch validation.
-    base_blocks: Arc<Mutex<HashMap<u64, BaseBlock>>>,
+    /// Unstable blocks (headers + txs) by block number, needed for batch validation.
+    base_blocks: Arc<Mutex<HashMap<u64, UnstableBlock>>>,
     /// System configs by L2 block number.
     system_configs: Arc<Mutex<HashMap<u64, SystemConfig>>>,
 }
@@ -91,7 +91,7 @@ impl ActionL2ChainProvider {
     }
 
     /// Insert a known L2 block with transactions into the provider.
-    pub fn insert_base_block(&self, number: u64, block: BaseBlock) {
+    pub fn insert_base_block(&self, number: u64, block: UnstableBlock) {
         self.base_blocks.lock().expect("L2 base blocks lock poisoned").insert(number, block);
     }
 
@@ -117,7 +117,7 @@ impl BatchValidationProvider for ActionL2ChainProvider {
             .ok_or(L2ProviderError::BlockNotFound(number))
     }
 
-    async fn block_by_number(&mut self, number: u64) -> Result<BaseBlock, L2ProviderError> {
+    async fn block_by_number(&mut self, number: u64) -> Result<UnstableBlock, L2ProviderError> {
         self.base_blocks
             .lock()
             .expect("L2 base blocks lock poisoned")

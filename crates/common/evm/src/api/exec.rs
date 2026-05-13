@@ -1,38 +1,38 @@
-//! Base-specific [`BaseContextTr`] trait alias and [`BaseError`] type alias.
+//! Unstable-specific [`UnstableContextTr`] trait alias and [`UnstableError`] type alias.
 use revm::{
     context_interface::{Cfg, ContextTr, Database, JournalTr, result::EVMError},
     state::EvmState,
 };
 
-use crate::{BaseSpecId, BaseTransactionError, L1BlockInfo, transaction::BaseTxTr};
+use crate::{UnstableSpecId, UnstableTransactionError, L1BlockInfo, transaction::UnstableTxTr};
 
-/// Trait alias for the context type required by [`BaseEvm`][crate::BaseEvm].
+/// Trait alias for the context type required by [`UnstableEvm`][crate::UnstableEvm].
 ///
-/// Satisfied by [`crate::BaseContext`] for any database, binding the transaction type to
-/// [`BaseTxTr`], the spec to [`BaseSpecId`], and the chain extension to [`L1BlockInfo`].
-pub trait BaseContextTr:
+/// Satisfied by [`crate::UnstableContext`] for any database, binding the transaction type to
+/// [`UnstableTxTr`], the spec to [`UnstableSpecId`], and the chain extension to [`L1BlockInfo`].
+pub trait UnstableContextTr:
     ContextTr<
         Journal: JournalTr<State = EvmState>,
-        Tx: BaseTxTr,
-        Cfg: Cfg<Spec = BaseSpecId>,
+        Tx: UnstableTxTr,
+        Cfg: Cfg<Spec = UnstableSpecId>,
         Chain = L1BlockInfo,
     >
 {
 }
 
-impl<T> BaseContextTr for T where
+impl<T> UnstableContextTr for T where
     T: ContextTr<
             Journal: JournalTr<State = EvmState>,
-            Tx: BaseTxTr,
-            Cfg: Cfg<Spec = BaseSpecId>,
+            Tx: UnstableTxTr,
+            Cfg: Cfg<Spec = UnstableSpecId>,
             Chain = L1BlockInfo,
         >
 {
 }
 
-/// Error type for [`BaseEvm`][crate::BaseEvm] execution, parameterized over the database
+/// Error type for [`UnstableEvm`][crate::UnstableEvm] execution, parameterized over the database
 /// error type [`DB`].
-pub type BaseError<DB> = EVMError<<DB as Database>::Error, BaseTransactionError>;
+pub type UnstableError<DB> = EVMError<<DB as Database>::Error, UnstableTransactionError>;
 
 #[cfg(test)]
 mod tests {
@@ -42,7 +42,7 @@ mod tests {
         database::{InMemoryDB, State},
     };
 
-    use crate::{BaseContext, Builder, DefaultBase};
+    use crate::{UnstableContext, Builder, DefaultUnstable};
 
     /// Verifies that the system call caller is loaded into the EVM state cache so it appears in the
     /// execution witness.
@@ -64,7 +64,7 @@ mod tests {
         let state =
             State::builder().with_database(InMemoryDB::default()).with_bundle_update().build();
 
-        let ctx = BaseContext::base().with_db(state);
+        let ctx = UnstableContext::base().with_db(state);
         let mut evm = ctx.build_base();
 
         // Execute a system call. This internally calls `load_account_with_code_mut(caller)`,

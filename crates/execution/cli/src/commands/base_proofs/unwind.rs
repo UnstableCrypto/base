@@ -1,10 +1,10 @@
-//! Command that unwinds the Base Proofs storage to a specific block number.
+//! Command that unwinds the Unstable Proofs storage to a specific block number.
 
 use std::{path::PathBuf, sync::Arc};
 
-use base_common_consensus::BasePrimitives;
-use base_execution_chainspec::BaseChainSpec;
-use base_execution_trie::{BaseProofsStorage, BaseProofsStore, db::MdbxProofsStorage};
+use base_common_consensus::UnstablePrimitives;
+use base_execution_chainspec::UnstableChainSpec;
+use base_execution_trie::{UnstableProofsStorage, UnstableProofsStore, db::MdbxProofsStorage};
 use clap::Parser;
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_commands::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
@@ -37,9 +37,9 @@ pub struct UnwindCommand<C: ChainSpecParser> {
 
 impl<C: ChainSpecParser> UnwindCommand<C> {
     /// Validates that the target block number is within a valid range for unwinding.
-    fn validate_unwind_range<Store: BaseProofsStore>(
+    fn validate_unwind_range<Store: UnstableProofsStore>(
         &self,
-        storage: &BaseProofsStorage<Store>,
+        storage: &UnstableProofsStorage<Store>,
     ) -> eyre::Result<bool> {
         let (Some((earliest, _)), Some((latest, _))) =
             (storage.get_earliest_block_number()?, storage.get_latest_block_number()?)
@@ -62,19 +62,19 @@ impl<C: ChainSpecParser> UnwindCommand<C> {
     }
 }
 
-impl<C: ChainSpecParser<ChainSpec = BaseChainSpec>> UnwindCommand<C> {
+impl<C: ChainSpecParser<ChainSpec = UnstableChainSpec>> UnwindCommand<C> {
     /// Execute [`UnwindCommand`].
-    pub async fn execute<N: CliNodeTypes<ChainSpec = C::ChainSpec, Primitives = BasePrimitives>>(
+    pub async fn execute<N: CliNodeTypes<ChainSpec = C::ChainSpec, Primitives = UnstablePrimitives>>(
         self,
     ) -> eyre::Result<()> {
         info!(target: "reth::cli", version = %version_metadata().short_version, "reth starting");
-        info!(target: "reth::cli", path = ?self.storage_path, "Unwinding Base proofs storage");
+        info!(target: "reth::cli", path = ?self.storage_path, "Unwinding Unstable proofs storage");
 
         // Initialize the environment with read-only access
         let Environment { provider_factory, .. } = self.env.init::<N>(AccessRights::RO)?;
 
         // Create the proofs storage
-        let storage: BaseProofsStorage<Arc<MdbxProofsStorage>> = Arc::new(
+        let storage: UnstableProofsStorage<Arc<MdbxProofsStorage>> = Arc::new(
             MdbxProofsStorage::new(&self.storage_path)
                 .map_err(|e| eyre::eyre!("Failed to create MdbxProofsStorage: {e}"))?,
         )

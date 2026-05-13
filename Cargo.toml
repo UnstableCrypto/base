@@ -81,7 +81,7 @@ unnameable-types = "warn"
 all = "warn"
 
 [workspace.lints.clippy]
-# Baseline - enable all default clippy lints
+# Unstableline - enable all default clippy lints
 all = { level = "warn", priority = -1 }
 
 # === Performance & Cloning ===
@@ -152,7 +152,7 @@ debug = false
 incremental = false
 
 [workspace.dependencies]
-# Base Primitives
+# Unstable Primitives
 base-bundles = { path = "crates/common/bundles" }
 base-common-signer = { path = "crates/common/signer" }
 base-common-chains = { path = "crates/common/chains" }

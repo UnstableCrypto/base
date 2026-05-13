@@ -4,8 +4,8 @@ use alloy_provider::RootProvider;
 use alloy_rpc_types_engine::JwtSecret;
 use alloy_transport::TransportResult;
 use base_common_genesis::RollupConfig;
-use base_common_network::Base;
-use base_consensus_engine::{BaseEngineClient, EngineClientBuilder};
+use base_common_network::Unstable;
+use base_consensus_engine::{UnstableEngineClient, EngineClientBuilder};
 use url::Url;
 
 use crate::NodeMode;
@@ -31,10 +31,10 @@ pub struct EngineConfig {
 }
 
 impl EngineConfig {
-    /// Builds and returns the [`BaseEngineClient`].
+    /// Builds and returns the [`UnstableEngineClient`].
     pub async fn build_engine_client(
         self,
-    ) -> TransportResult<BaseEngineClient<RootProvider, RootProvider<Base>>> {
+    ) -> TransportResult<UnstableEngineClient<RootProvider, RootProvider<Unstable>>> {
         EngineClientBuilder {
             l2: self.l2_url.clone(),
             l2_jwt: self.l2_jwt_secret,

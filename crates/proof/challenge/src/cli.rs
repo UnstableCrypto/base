@@ -17,7 +17,7 @@ base_cli_utils::define_health_args!("BASE_CHALLENGER", 8080);
 base_tx_manager::define_signer_cli!("BASE_CHALLENGER");
 base_tx_manager::define_tx_manager_cli!("BASE_CHALLENGER");
 
-/// Challenger - ZK-proof dispute game challenger for Base.
+/// Challenger - ZK-proof dispute game challenger for Unstable.
 #[derive(Debug, Parser)]
 #[command(name = "challenger")]
 #[command(version, about, long_about = None)]

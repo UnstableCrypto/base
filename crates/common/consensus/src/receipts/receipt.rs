@@ -11,17 +11,17 @@ use alloy_eips::eip2718::{Eip2718Error, Eip2718Result, IsTyped2718};
 use alloy_primitives::{Bloom, Log};
 use alloy_rlp::{Buf, BufMut, Decodable, Encodable, Header};
 
-use super::{BaseTxReceipt, DepositReceipt};
-use crate::{BaseReceiptEnvelope, OpTxType};
+use super::{UnstableTxReceipt, DepositReceipt};
+use crate::{UnstableReceiptEnvelope, OpTxType};
 
-/// Transaction receipt for Base chains.
+/// Transaction receipt for Unstable chains.
 ///
 /// Receipt containing result of transaction execution.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "serde", serde(tag = "type"))]
-pub enum BaseReceipt<T = Log> {
+pub enum UnstableReceipt<T = Log> {
     /// Legacy receipt
     #[cfg_attr(feature = "serde", serde(rename = "0x0", alias = "0x00"))]
     Legacy(Receipt<T>),
@@ -39,7 +39,7 @@ pub enum BaseReceipt<T = Log> {
     Deposit(DepositReceipt<T>),
 }
 
-impl<T> BaseReceipt<T> {
+impl<T> UnstableReceipt<T> {
     /// Returns [`OpTxType`] of the receipt.
     pub const fn tx_type(&self) -> OpTxType {
         match self {
@@ -87,13 +87,13 @@ impl<T> BaseReceipt<T> {
     /// Converts the receipt's log type by applying a function to each log.
     ///
     /// Returns the receipt with the new log type
-    pub fn map_logs<U>(self, f: impl FnMut(T) -> U) -> BaseReceipt<U> {
+    pub fn map_logs<U>(self, f: impl FnMut(T) -> U) -> UnstableReceipt<U> {
         match self {
-            Self::Legacy(receipt) => BaseReceipt::Legacy(receipt.map_logs(f)),
-            Self::Eip2930(receipt) => BaseReceipt::Eip2930(receipt.map_logs(f)),
-            Self::Eip1559(receipt) => BaseReceipt::Eip1559(receipt.map_logs(f)),
-            Self::Eip7702(receipt) => BaseReceipt::Eip7702(receipt.map_logs(f)),
-            Self::Deposit(receipt) => BaseReceipt::Deposit(receipt.map_logs(f)),
+            Self::Legacy(receipt) => UnstableReceipt::Legacy(receipt.map_logs(f)),
+            Self::Eip2930(receipt) => UnstableReceipt::Eip2930(receipt.map_logs(f)),
+            Self::Eip1559(receipt) => UnstableReceipt::Eip1559(receipt.map_logs(f)),
+            Self::Eip7702(receipt) => UnstableReceipt::Eip7702(receipt.map_logs(f)),
+            Self::Deposit(receipt) => UnstableReceipt::Deposit(receipt.map_logs(f)),
         }
     }
 
@@ -268,7 +268,7 @@ impl<T> BaseReceipt<T> {
     }
 }
 
-impl<T: Encodable> Eip2718EncodableReceipt for BaseReceipt<T> {
+impl<T: Encodable> Eip2718EncodableReceipt for UnstableReceipt<T> {
     fn eip2718_encoded_length_with_bloom(&self, bloom: &Bloom) -> usize {
         !self.tx_type().is_legacy() as usize + self.rlp_header_inner(bloom).length_with_payload()
     }
@@ -282,7 +282,7 @@ impl<T: Encodable> Eip2718EncodableReceipt for BaseReceipt<T> {
     }
 }
 
-impl<T: Decodable> Eip2718DecodableReceipt for BaseReceipt<T> {
+impl<T: Decodable> Eip2718DecodableReceipt for UnstableReceipt<T> {
     fn typed_decode_with_bloom(ty: u8, buf: &mut &[u8]) -> Eip2718Result<ReceiptWithBloom<Self>> {
         let tx_type = OpTxType::try_from(ty).map_err(|_| Eip2718Error::UnexpectedType(ty))?;
         Ok(Self::rlp_decode_inner(buf, tx_type)?)
@@ -293,7 +293,7 @@ impl<T: Decodable> Eip2718DecodableReceipt for BaseReceipt<T> {
     }
 }
 
-impl<T: Encodable> RlpEncodableReceipt for BaseReceipt<T> {
+impl<T: Encodable> RlpEncodableReceipt for UnstableReceipt<T> {
     fn rlp_encoded_length_with_bloom(&self, bloom: &Bloom) -> usize {
         let mut len = self.eip2718_encoded_length_with_bloom(bloom);
         if !self.tx_type().is_legacy() {
@@ -316,7 +316,7 @@ impl<T: Encodable> RlpEncodableReceipt for BaseReceipt<T> {
     }
 }
 
-impl<T: Decodable> RlpDecodableReceipt for BaseReceipt<T> {
+impl<T: Decodable> RlpDecodableReceipt for UnstableReceipt<T> {
     fn rlp_decode_with_bloom(buf: &mut &[u8]) -> alloy_rlp::Result<ReceiptWithBloom<Self>> {
         let header_buf = &mut &**buf;
         let header = Header::decode(header_buf)?;
@@ -341,7 +341,7 @@ impl<T: Decodable> RlpDecodableReceipt for BaseReceipt<T> {
     }
 }
 
-impl<T: Encodable + Send + Sync> Encodable for BaseReceipt<T> {
+impl<T: Encodable + Send + Sync> Encodable for UnstableReceipt<T> {
     fn encode(&self, out: &mut dyn BufMut) {
         self.rlp_header_without_bloom().encode(out);
         self.rlp_encode_fields_without_bloom(out);
@@ -352,7 +352,7 @@ impl<T: Encodable + Send + Sync> Encodable for BaseReceipt<T> {
     }
 }
 
-impl<T: Decodable> Decodable for BaseReceipt<T> {
+impl<T: Decodable> Decodable for UnstableReceipt<T> {
     fn decode(buf: &mut &[u8]) -> alloy_rlp::Result<Self> {
         let header = Header::decode(buf)?;
         if !header.list {
@@ -375,7 +375,7 @@ impl<T: Decodable> Decodable for BaseReceipt<T> {
     }
 }
 
-impl<T: Send + Sync + Clone + Debug + Eq + AsRef<Log>> TxReceipt for BaseReceipt<T> {
+impl<T: Send + Sync + Clone + Debug + Eq + AsRef<Log>> TxReceipt for UnstableReceipt<T> {
     type Log = T;
 
     fn status_or_post_state(&self) -> Eip658Value {
@@ -409,19 +409,19 @@ impl<T: Send + Sync + Clone + Debug + Eq + AsRef<Log>> TxReceipt for BaseReceipt
     }
 }
 
-impl<T> Typed2718 for BaseReceipt<T> {
+impl<T> Typed2718 for UnstableReceipt<T> {
     fn ty(&self) -> u8 {
         self.tx_type().into()
     }
 }
 
-impl<T> IsTyped2718 for BaseReceipt<T> {
+impl<T> IsTyped2718 for UnstableReceipt<T> {
     fn is_type(type_id: u8) -> bool {
         <OpTxType as IsTyped2718>::is_type(type_id)
     }
 }
 
-impl<T: Send + Sync + Clone + Debug + Eq + AsRef<Log>> BaseTxReceipt for BaseReceipt<T> {
+impl<T: Send + Sync + Clone + Debug + Eq + AsRef<Log>> UnstableTxReceipt for UnstableReceipt<T> {
     fn deposit_nonce(&self) -> Option<u64> {
         match self {
             Self::Deposit(receipt) => receipt.deposit_nonce,
@@ -437,14 +437,14 @@ impl<T: Send + Sync + Clone + Debug + Eq + AsRef<Log>> BaseTxReceipt for BaseRec
     }
 }
 
-impl From<super::BaseReceiptEnvelope> for BaseReceipt {
-    fn from(envelope: super::BaseReceiptEnvelope) -> Self {
+impl From<super::UnstableReceiptEnvelope> for UnstableReceipt {
+    fn from(envelope: super::UnstableReceiptEnvelope) -> Self {
         match envelope {
-            super::BaseReceiptEnvelope::Legacy(receipt) => Self::Legacy(receipt.receipt),
-            super::BaseReceiptEnvelope::Eip2930(receipt) => Self::Eip2930(receipt.receipt),
-            super::BaseReceiptEnvelope::Eip1559(receipt) => Self::Eip1559(receipt.receipt),
-            super::BaseReceiptEnvelope::Eip7702(receipt) => Self::Eip7702(receipt.receipt),
-            super::BaseReceiptEnvelope::Deposit(receipt) => Self::Deposit(DepositReceipt {
+            super::UnstableReceiptEnvelope::Legacy(receipt) => Self::Legacy(receipt.receipt),
+            super::UnstableReceiptEnvelope::Eip2930(receipt) => Self::Eip2930(receipt.receipt),
+            super::UnstableReceiptEnvelope::Eip1559(receipt) => Self::Eip1559(receipt.receipt),
+            super::UnstableReceiptEnvelope::Eip7702(receipt) => Self::Eip7702(receipt.receipt),
+            super::UnstableReceiptEnvelope::Deposit(receipt) => Self::Deposit(DepositReceipt {
                 deposit_nonce: receipt.receipt.deposit_nonce,
                 deposit_receipt_version: receipt.receipt.deposit_receipt_version,
                 inner: receipt.receipt.inner,
@@ -453,21 +453,21 @@ impl From<super::BaseReceiptEnvelope> for BaseReceipt {
     }
 }
 
-impl From<ReceiptWithBloom<BaseReceipt>> for BaseReceiptEnvelope {
-    fn from(value: ReceiptWithBloom<BaseReceipt>) -> Self {
+impl From<ReceiptWithBloom<UnstableReceipt>> for UnstableReceiptEnvelope {
+    fn from(value: ReceiptWithBloom<UnstableReceipt>) -> Self {
         let (receipt, logs_bloom) = value.into_components();
         match receipt {
-            BaseReceipt::Legacy(receipt) => Self::Legacy(ReceiptWithBloom { receipt, logs_bloom }),
-            BaseReceipt::Eip2930(receipt) => {
+            UnstableReceipt::Legacy(receipt) => Self::Legacy(ReceiptWithBloom { receipt, logs_bloom }),
+            UnstableReceipt::Eip2930(receipt) => {
                 Self::Eip2930(ReceiptWithBloom { receipt, logs_bloom })
             }
-            BaseReceipt::Eip1559(receipt) => {
+            UnstableReceipt::Eip1559(receipt) => {
                 Self::Eip1559(ReceiptWithBloom { receipt, logs_bloom })
             }
-            BaseReceipt::Eip7702(receipt) => {
+            UnstableReceipt::Eip7702(receipt) => {
                 Self::Eip7702(ReceiptWithBloom { receipt, logs_bloom })
             }
-            BaseReceipt::Deposit(receipt) => {
+            UnstableReceipt::Deposit(receipt) => {
                 Self::Deposit(ReceiptWithBloom { receipt, logs_bloom })
             }
         }
@@ -480,23 +480,23 @@ pub(super) mod serde_bincode_compat {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use serde_with::{DeserializeAs, SerializeAs};
 
-    /// Bincode-compatible [`super::BaseReceipt`] serde implementation.
+    /// Bincode-compatible [`super::UnstableReceipt`] serde implementation.
     ///
     /// Intended to use with the [`serde_with::serde_as`] macro in the following way:
     /// ```rust
-    /// use base_common_consensus::{BaseReceipt, serde_bincode_compat};
+    /// use base_common_consensus::{UnstableReceipt, serde_bincode_compat};
     /// use serde::{Deserialize, Serialize, de::DeserializeOwned};
     /// use serde_with::serde_as;
     ///
     /// #[serde_as]
     /// #[derive(Serialize, Deserialize)]
     /// struct Data {
-    ///     #[serde_as(as = "serde_bincode_compat::BaseReceipt<'_>")]
-    ///     receipt: BaseReceipt,
+    ///     #[serde_as(as = "serde_bincode_compat::UnstableReceipt<'_>")]
+    ///     receipt: UnstableReceipt,
     /// }
     /// ```
     #[derive(Debug, Serialize, Deserialize)]
-    pub enum BaseReceipt<'a> {
+    pub enum UnstableReceipt<'a> {
         /// Legacy receipt
         Legacy(alloy_consensus::serde_bincode_compat::Receipt<'a, alloy_primitives::Log>),
         /// EIP-2930 receipt
@@ -509,45 +509,45 @@ pub(super) mod serde_bincode_compat {
         Deposit(crate::serde_bincode_compat::DepositReceipt<'a, alloy_primitives::Log>),
     }
 
-    impl<'a> From<&'a super::BaseReceipt> for BaseReceipt<'a> {
-        fn from(value: &'a super::BaseReceipt) -> Self {
+    impl<'a> From<&'a super::UnstableReceipt> for UnstableReceipt<'a> {
+        fn from(value: &'a super::UnstableReceipt) -> Self {
             match value {
-                super::BaseReceipt::Legacy(receipt) => Self::Legacy(receipt.into()),
-                super::BaseReceipt::Eip2930(receipt) => Self::Eip2930(receipt.into()),
-                super::BaseReceipt::Eip1559(receipt) => Self::Eip1559(receipt.into()),
-                super::BaseReceipt::Eip7702(receipt) => Self::Eip7702(receipt.into()),
-                super::BaseReceipt::Deposit(receipt) => Self::Deposit(receipt.into()),
+                super::UnstableReceipt::Legacy(receipt) => Self::Legacy(receipt.into()),
+                super::UnstableReceipt::Eip2930(receipt) => Self::Eip2930(receipt.into()),
+                super::UnstableReceipt::Eip1559(receipt) => Self::Eip1559(receipt.into()),
+                super::UnstableReceipt::Eip7702(receipt) => Self::Eip7702(receipt.into()),
+                super::UnstableReceipt::Deposit(receipt) => Self::Deposit(receipt.into()),
             }
         }
     }
 
-    impl<'a> From<BaseReceipt<'a>> for super::BaseReceipt {
-        fn from(value: BaseReceipt<'a>) -> Self {
+    impl<'a> From<UnstableReceipt<'a>> for super::UnstableReceipt {
+        fn from(value: UnstableReceipt<'a>) -> Self {
             match value {
-                BaseReceipt::Legacy(receipt) => Self::Legacy(receipt.into()),
-                BaseReceipt::Eip2930(receipt) => Self::Eip2930(receipt.into()),
-                BaseReceipt::Eip1559(receipt) => Self::Eip1559(receipt.into()),
-                BaseReceipt::Eip7702(receipt) => Self::Eip7702(receipt.into()),
-                BaseReceipt::Deposit(receipt) => Self::Deposit(receipt.into()),
+                UnstableReceipt::Legacy(receipt) => Self::Legacy(receipt.into()),
+                UnstableReceipt::Eip2930(receipt) => Self::Eip2930(receipt.into()),
+                UnstableReceipt::Eip1559(receipt) => Self::Eip1559(receipt.into()),
+                UnstableReceipt::Eip7702(receipt) => Self::Eip7702(receipt.into()),
+                UnstableReceipt::Deposit(receipt) => Self::Deposit(receipt.into()),
             }
         }
     }
 
-    impl SerializeAs<super::BaseReceipt> for BaseReceipt<'_> {
-        fn serialize_as<S>(source: &super::BaseReceipt, serializer: S) -> Result<S::Ok, S::Error>
+    impl SerializeAs<super::UnstableReceipt> for UnstableReceipt<'_> {
+        fn serialize_as<S>(source: &super::UnstableReceipt, serializer: S) -> Result<S::Ok, S::Error>
         where
             S: Serializer,
         {
-            BaseReceipt::<'_>::from(source).serialize(serializer)
+            UnstableReceipt::<'_>::from(source).serialize(serializer)
         }
     }
 
-    impl<'de> DeserializeAs<'de, super::BaseReceipt> for BaseReceipt<'de> {
-        fn deserialize_as<D>(deserializer: D) -> Result<super::BaseReceipt, D::Error>
+    impl<'de> DeserializeAs<'de, super::UnstableReceipt> for UnstableReceipt<'de> {
+        fn deserialize_as<D>(deserializer: D) -> Result<super::UnstableReceipt, D::Error>
         where
             D: Deserializer<'de>,
         {
-            BaseReceipt::<'_>::deserialize(deserializer).map(Into::into)
+            UnstableReceipt::<'_>::deserialize(deserializer).map(Into::into)
         }
     }
 
@@ -558,21 +558,21 @@ pub(super) mod serde_bincode_compat {
         use serde::{Deserialize, Serialize};
         use serde_with::serde_as;
 
-        use crate::BaseReceipt;
+        use crate::UnstableReceipt;
 
         #[test]
         fn test_tx_bincode_roundtrip() {
             #[serde_as]
             #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
             struct Data {
-                #[serde_as(as = "super::BaseReceipt<'_>")]
-                receipt: BaseReceipt,
+                #[serde_as(as = "super::UnstableReceipt<'_>")]
+                receipt: UnstableReceipt,
             }
 
             let mut bytes = [0u8; 1024];
             rand::rng().fill(bytes.as_mut_slice());
             let mut data = Data {
-                receipt: BaseReceipt::arbitrary(&mut arbitrary::Unstructured::new(&bytes)).unwrap(),
+                receipt: UnstableReceipt::arbitrary(&mut arbitrary::Unstructured::new(&bytes)).unwrap(),
             };
             let success = data.receipt.as_receipt_mut().status.coerce_status();
             // // ensure we don't have an invalid poststate variant
@@ -587,7 +587,7 @@ pub(super) mod serde_bincode_compat {
     }
 }
 
-impl<T> InMemorySize for BaseReceipt<T>
+impl<T> InMemorySize for UnstableReceipt<T>
 where
     Receipt<T>: InMemorySize,
     DepositReceipt<T>: InMemorySize,
@@ -622,7 +622,7 @@ mod tests {
 
         let mut data = Vec::with_capacity(expected.length());
         let receipt = ReceiptWithBloom {
-            receipt: BaseReceipt::Legacy(Receipt {
+            receipt: UnstableReceipt::Legacy(Receipt {
                 status: Eip658Value::Eip658(false),
                 cumulative_gas_used: 0x1,
                 logs: vec![Log::new_unchecked(
@@ -653,7 +653,7 @@ mod tests {
 
         // EIP658Receipt
         let expected = ReceiptWithBloom {
-            receipt: BaseReceipt::Legacy(Receipt {
+            receipt: UnstableReceipt::Legacy(Receipt {
                 status: Eip658Value::Eip658(false),
                 cumulative_gas_used: 0x1,
                 logs: vec![Log::new_unchecked(
@@ -679,8 +679,8 @@ mod tests {
         );
 
         // Deposit Receipt (post-regolith)
-        let expected: ReceiptWithBloom<BaseReceipt> = ReceiptWithBloom {
-            receipt: BaseReceipt::Deposit(DepositReceipt {
+        let expected: ReceiptWithBloom<UnstableReceipt> = ReceiptWithBloom {
+            receipt: UnstableReceipt::Deposit(DepositReceipt {
                 inner: Receipt {
                     status: Eip658Value::Eip658(true),
                     cumulative_gas_used: 46913,
@@ -707,8 +707,8 @@ mod tests {
         );
 
         // Deposit Receipt (post-canyon)
-        let expected: ReceiptWithBloom<BaseReceipt> = ReceiptWithBloom {
-            receipt: BaseReceipt::Deposit(DepositReceipt {
+        let expected: ReceiptWithBloom<UnstableReceipt> = ReceiptWithBloom {
+            receipt: UnstableReceipt::Deposit(DepositReceipt {
                 inner: Receipt {
                     status: Eip658Value::Eip658(true),
                     cumulative_gas_used: 46913,
@@ -730,7 +730,7 @@ mod tests {
 
     #[test]
     fn gigantic_receipt() {
-        let receipt = BaseReceipt::Legacy(Receipt {
+        let receipt = UnstableReceipt::Legacy(Receipt {
             status: Eip658Value::Eip658(true),
             cumulative_gas_used: 16747627,
             logs: vec![
@@ -755,14 +755,14 @@ mod tests {
         let mut encoded = vec![];
         receipt.encode(&mut encoded);
 
-        let decoded = BaseReceipt::decode(&mut &encoded[..]).unwrap();
+        let decoded = UnstableReceipt::decode(&mut &encoded[..]).unwrap();
         assert_eq!(decoded, receipt);
     }
 
     #[test]
     fn test_encode_2718_length() {
-        let receipt: ReceiptWithBloom<BaseReceipt> = ReceiptWithBloom {
-            receipt: BaseReceipt::Eip1559(Receipt {
+        let receipt: ReceiptWithBloom<UnstableReceipt> = ReceiptWithBloom {
+            receipt: UnstableReceipt::Eip1559(Receipt {
                 status: Eip658Value::Eip658(true),
                 cumulative_gas_used: 21000,
                 logs: vec![],
@@ -778,8 +778,8 @@ mod tests {
         );
 
         // Test for legacy receipt as well
-        let legacy_receipt: ReceiptWithBloom<BaseReceipt> = ReceiptWithBloom {
-            receipt: BaseReceipt::Legacy(Receipt {
+        let legacy_receipt: ReceiptWithBloom<UnstableReceipt> = ReceiptWithBloom {
+            receipt: UnstableReceipt::Legacy(Receipt {
                 status: Eip658Value::Eip658(true),
                 cumulative_gas_used: 21000,
                 logs: vec![],

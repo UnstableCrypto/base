@@ -1,6 +1,6 @@
 [package]
 name = "base-balance-monitor"
-description = "Periodic onchain balance monitoring for Base services"
+description = "Periodic onchain balance monitoring for Unstable services"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

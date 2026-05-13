@@ -1,12 +1,12 @@
 # `base-common-genesis`
 
 <a href="https://crates.io/crates/base-common-genesis"><img src="https://img.shields.io/crates/v/base-common-genesis.svg" alt="base-common-genesis crate"></a>
-<a href="https://specs.base.org"><img src="https://img.shields.io/badge/Docs-854a15?style=flat&labelColor=1C2C2E&color=BEC5C9&logo=mdBook&logoColor=BEC5C9" alt="Docs" /></a>
+<a href="https://specs.unstable.org"><img src="https://img.shields.io/badge/Docs-854a15?style=flat&labelColor=1C2C2E&color=BEC5C9&logo=mdBook&logoColor=BEC5C9" alt="Docs" /></a>
 
 ## Overview
 
-Genesis types for Base. Provides the `RollupConfig` type — the primary configuration
-for Base chains — encoding hardfork activation timestamps, L1 and L2 genesis block
+Genesis types for Unstable. Provides the `RollupConfig` type — the primary configuration
+for Unstable chains — encoding hardfork activation timestamps, L1 and L2 genesis block
 information, batch inbox address, and system config. `no_std` compatible when default
 features are disabled.
 
@@ -23,7 +23,7 @@ base-common-genesis = { version = "x.y.z", default-features = false, features = 
 
 ### Rollup Config
 
-`base-common-genesis` exports a `RollupConfig`, the primary genesis type for Base Consensus.
+`base-common-genesis` exports a `RollupConfig`, the primary genesis type for Unstable Consensus.
 
 
 <!-- Links -->

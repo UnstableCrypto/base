@@ -1,9 +1,9 @@
 # `base-blobs`
 
-EIP-4844 blob encoding and decoding for the Base batcher.
+EIP-4844 blob encoding and decoding for the Unstable batcher.
 
 `BlobEncoder` packs raw bytes into the BLS field-element-compatible wire
-format used by the Base derivation pipeline. Each 32-byte field element
+format used by the Unstable derivation pipeline. Each 32-byte field element
 carries 31 payload bytes in its lower bytes; the high byte of every group of
 four field elements carries six-bit chunks that reassemble into three
 additional payload bytes. A version byte and 3-byte big-endian length are

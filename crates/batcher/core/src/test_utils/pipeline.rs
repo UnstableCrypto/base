@@ -6,7 +6,7 @@ use alloy_primitives::B256;
 use base_batcher_encoder::{
     BatchPipeline, BatchSubmission, ReorgError, StepError, StepResult, SubmissionId,
 };
-use base_common_consensus::BaseBlock;
+use base_common_consensus::UnstableBlock;
 
 /// Shared recording state populated by the test pipeline implementations.
 #[derive(Debug, Default)]
@@ -53,7 +53,7 @@ impl TrackingPipeline {
 }
 
 impl BatchPipeline for TrackingPipeline {
-    fn add_block(&mut self, _: BaseBlock) -> Result<(), (ReorgError, Box<BaseBlock>)> {
+    fn add_block(&mut self, _: UnstableBlock) -> Result<(), (ReorgError, Box<UnstableBlock>)> {
         Ok(())
     }
 
@@ -112,7 +112,7 @@ impl ReorgPipeline {
 }
 
 impl BatchPipeline for ReorgPipeline {
-    fn add_block(&mut self, block: BaseBlock) -> Result<(), (ReorgError, Box<BaseBlock>)> {
+    fn add_block(&mut self, block: UnstableBlock) -> Result<(), (ReorgError, Box<UnstableBlock>)> {
         Err((
             ReorgError::ParentMismatch { expected: B256::ZERO, got: B256::with_last_byte(1) },
             Box::new(block),
@@ -164,7 +164,7 @@ impl OneReorgPipeline {
 }
 
 impl BatchPipeline for OneReorgPipeline {
-    fn add_block(&mut self, block: BaseBlock) -> Result<(), (ReorgError, Box<BaseBlock>)> {
+    fn add_block(&mut self, block: UnstableBlock) -> Result<(), (ReorgError, Box<UnstableBlock>)> {
         if self.fail_next {
             self.fail_next = false;
             return Err((

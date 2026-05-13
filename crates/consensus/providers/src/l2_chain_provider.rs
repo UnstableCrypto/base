@@ -13,9 +13,9 @@ use alloy_transport_http::{
     hyper_util::{client::legacy::Client, rt::TokioExecutor},
 };
 use async_trait::async_trait;
-use base_common_consensus::BaseBlock;
+use base_common_consensus::UnstableBlock;
 use base_common_genesis::{RollupConfig, SystemConfig};
-use base_common_network::Base;
+use base_common_network::Unstable;
 use base_consensus_derive::{L2ChainProvider, PipelineError, PipelineErrorKind, ResetError};
 use base_protocol::{BatchValidationProvider, L2BlockInfo, to_system_config};
 use http_body_util::Full;
@@ -29,13 +29,13 @@ use crate::Metrics;
 #[derive(Debug, Clone)]
 pub struct AlloyL2ChainProvider {
     /// The inner Ethereum JSON-RPC provider.
-    inner: RootProvider<Base>,
+    inner: RootProvider<Unstable>,
     /// Whether to trust the RPC without verification.
     trust_rpc: bool,
     /// The rollup configuration.
     rollup_config: Arc<RollupConfig>,
     /// The `block_by_number` LRU cache.
-    block_by_number_cache: LruCache<u64, BaseBlock>,
+    block_by_number_cache: LruCache<u64, UnstableBlock>,
 }
 
 impl AlloyL2ChainProvider {
@@ -44,7 +44,7 @@ impl AlloyL2ChainProvider {
     /// ## Panics
     /// - Panics if `cache_size` is zero.
     pub fn new(
-        inner: RootProvider<Base>,
+        inner: RootProvider<Unstable>,
         rollup_config: Arc<RollupConfig>,
         cache_size: usize,
     ) -> Self {
@@ -57,7 +57,7 @@ impl AlloyL2ChainProvider {
     /// ## Panics
     /// - Panics if `cache_size` is zero.
     pub fn new_with_trust(
-        inner: RootProvider<Base>,
+        inner: RootProvider<Unstable>,
         rollup_config: Arc<RollupConfig>,
         cache_size: usize,
         trust_rpc: bool,
@@ -178,7 +178,7 @@ impl AlloyL2ChainProvider {
         let http_hyper = Http::with_client(layer_transport, url);
         let rpc_client = RpcClient::new(http_hyper, false);
 
-        let rpc = RootProvider::<Base>::new(rpc_client);
+        let rpc = RootProvider::<Unstable>::new(rpc_client);
         Self::new(rpc, rollup_config, cache_size)
     }
 }
@@ -232,7 +232,7 @@ impl BatchValidationProvider for AlloyL2ChainProvider {
             .map_err(|_| AlloyL2ChainProviderError::L2BlockInfoConstruction(number))
     }
 
-    async fn block_by_number(&mut self, number: u64) -> Result<BaseBlock, Self::Error> {
+    async fn block_by_number(&mut self, number: u64) -> Result<UnstableBlock, Self::Error> {
         if let Some(block) = self.block_by_number_cache.get(&number) {
             return Ok(block.clone());
         }

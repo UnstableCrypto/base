@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository.workspace = true
-description = "EVM chain spec implementation for Base."
+description = "EVM chain spec implementation for Unstable."
 
 [lints]
 workspace = true

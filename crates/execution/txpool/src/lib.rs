@@ -8,17 +8,17 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod validator;
-pub use validator::{BaseL1BlockInfo, BaseTransactionValidator, BaseTxPoolError};
+pub use validator::{UnstableL1BlockInfo, UnstableTransactionValidator, UnstableTxPoolError};
 
 mod transaction;
 pub use transaction::{
-    BLOCK_TIME_SECS, BasePooledTransaction, BasePooledTx, BundleTransaction,
+    BLOCK_TIME_SECS, UnstablePooledTransaction, UnstablePooledTx, BundleTransaction,
     MAX_BUNDLE_ADVANCE_BLOCKS, MAX_BUNDLE_ADVANCE_MILLIS, MAX_BUNDLE_ADVANCE_SECS,
     TimestampedTransaction, unix_time_millis,
 };
 
 mod ordering;
-pub use ordering::{BaseOrdering, TimestampOrdering};
+pub use ordering::{UnstableOrdering, TimestampOrdering};
 
 mod consumer;
 pub use consumer::{Consumer, ConsumerConfig, ConsumerMetrics, RecentlySent, SpawnedConsumer};
@@ -45,6 +45,6 @@ pub mod estimated_da_size;
 
 use reth_transaction_pool::{Pool, TransactionValidationTaskExecutor};
 
-/// Type alias for default Base transaction pool
-pub type BaseTransactionPool<Client, S, Evm, T = BasePooledTransaction, O = BaseOrdering<T>> =
-    Pool<TransactionValidationTaskExecutor<BaseTransactionValidator<Client, T, Evm>>, O, S>;
+/// Type alias for default Unstable transaction pool
+pub type UnstableTransactionPool<Client, S, Evm, T = UnstablePooledTransaction, O = UnstableOrdering<T>> =
+    Pool<TransactionValidationTaskExecutor<UnstableTransactionValidator<Client, T, Evm>>, O, S>;

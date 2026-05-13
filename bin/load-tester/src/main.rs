@@ -1,4 +1,4 @@
-//! Base load tester binary entrypoint.
+//! Unstable load tester binary entrypoint.
 
 use clap::Parser as _;
 

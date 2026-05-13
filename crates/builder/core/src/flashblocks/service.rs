@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use base_builder_publish::WebSocketPublisher;
-use base_execution_evm::BaseEvmConfig;
+use base_execution_evm::UnstableEvmConfig;
 use base_node_core::{
-    BaseConsensusBuilder, BaseExecutorBuilder, BaseNetworkBuilder, node::BasePoolBuilder,
+    UnstableConsensusBuilder, UnstableExecutorBuilder, UnstableNetworkBuilder, node::UnstablePoolBuilder,
 };
 use base_node_runner::{
-    BaseNode, BaseNodeTypes, PayloadServiceBuilder as BasePayloadServiceBuilder,
+    UnstableNode, UnstableNodeTypes, PayloadServiceBuilder as UnstablePayloadServiceBuilder,
 };
 use derive_more::Debug;
 use reth_node_api::NodeTypes;
@@ -18,7 +18,7 @@ use reth_payload_builder::{PayloadBuilderHandle, PayloadBuilderService};
 use reth_provider::CanonStateSubscriptions;
 use tracing::info;
 
-use super::{PayloadHandler, generator::BlockPayloadJobGenerator, payload::BasePayloadBuilder};
+use super::{PayloadHandler, generator::BlockPayloadJobGenerator, payload::UnstablePayloadBuilder};
 use crate::{
     BuilderConfig, RejectedTxForwarder,
     traits::{NodeBounds, PoolBounds},
@@ -26,7 +26,7 @@ use crate::{
 
 /// Builder for the flashblocks payload service.
 ///
-/// Wraps [`BuilderConfig`] and implements [`BasePayloadServiceBuilder`] to spawn
+/// Wraps [`BuilderConfig`] and implements [`UnstablePayloadServiceBuilder`] to spawn
 /// the flashblocks payload builder service, which produces sub-block chunks
 /// (flashblocks) at sub-second intervals during block construction.
 #[derive(Debug)]
@@ -57,8 +57,8 @@ impl FlashblocksServiceBuilder {
 
         let ws_pub: Arc<WebSocketPublisher> =
             WebSocketPublisher::new(self.0.flashblocks_ws_addr)?.into();
-        let payload_builder = BasePayloadBuilder::new(
-            BaseEvmConfig::base(ctx.chain_spec()),
+        let payload_builder = UnstablePayloadBuilder::new(
+            UnstableEvmConfig::base(ctx.chain_spec()),
             pool,
             ctx.provider().clone(),
             self.0.clone(),
@@ -90,7 +90,7 @@ impl FlashblocksServiceBuilder {
     }
 }
 
-impl<Node, Pool> PayloadServiceBuilder<Node, Pool, BaseEvmConfig> for FlashblocksServiceBuilder
+impl<Node, Pool> PayloadServiceBuilder<Node, Pool, UnstableEvmConfig> for FlashblocksServiceBuilder
 where
     Node: NodeBounds,
     Pool: PoolBounds,
@@ -99,23 +99,23 @@ where
         self,
         ctx: &BuilderContext<Node>,
         pool: Pool,
-        _: BaseEvmConfig,
+        _: UnstableEvmConfig,
     ) -> eyre::Result<PayloadBuilderHandle<<Node::Types as NodeTypes>::Payload>> {
         self.spawn_payload_builder_service(ctx, pool)
     }
 }
 
-impl BasePayloadServiceBuilder for FlashblocksServiceBuilder {
+impl UnstablePayloadServiceBuilder for FlashblocksServiceBuilder {
     type ComponentsBuilder = ComponentsBuilder<
-        BaseNodeTypes,
-        BasePoolBuilder,
+        UnstableNodeTypes,
+        UnstablePoolBuilder,
         Self,
-        BaseNetworkBuilder,
-        BaseExecutorBuilder,
-        BaseConsensusBuilder,
+        UnstableNetworkBuilder,
+        UnstableExecutorBuilder,
+        UnstableConsensusBuilder,
     >;
 
-    fn build_components(self, base_node: &BaseNode) -> Self::ComponentsBuilder {
-        base_node.components::<BaseNodeTypes>().payload(self)
+    fn build_components(self, base_node: &UnstableNode) -> Self::ComponentsBuilder {
+        base_node.components::<UnstableNodeTypes>().payload(self)
     }
 }

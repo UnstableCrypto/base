@@ -40,7 +40,7 @@ pub(crate) struct Cli {
     metrics: MetricsArgs,
 }
 
-/// ZK prover service for proving Base blocks.
+/// ZK prover service for proving Unstable blocks.
 #[derive(Parser, Debug)]
 struct ZkArgs {
     #[arg(long, env = "BASE_CONSENSUS_ADDRESS")]

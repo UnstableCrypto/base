@@ -2,7 +2,7 @@
 
 use alloy_primitives::Address;
 use async_trait::async_trait;
-use base_common_rpc_types_engine::{BaseExecutionPayloadEnvelope, NetworkPayloadEnvelope};
+use base_common_rpc_types_engine::{UnstableExecutionPayloadEnvelope, NetworkPayloadEnvelope};
 use base_consensus_gossip::P2pRpcRequest;
 
 /// Abstracts the gossip and discovery networking backend used by the [`crate::NetworkActor`].
@@ -15,10 +15,10 @@ pub trait GossipTransport: Send + 'static {
     /// The error type for transport operations.
     type Error: std::fmt::Debug + Send + 'static;
 
-    /// Publishes an [`BaseExecutionPayloadEnvelope`] to the gossip network.
+    /// Publishes an [`UnstableExecutionPayloadEnvelope`] to the gossip network.
     ///
     /// Implementations are responsible for signing the payload before publishing it.
-    async fn publish(&mut self, payload: BaseExecutionPayloadEnvelope) -> Result<(), Self::Error>;
+    async fn publish(&mut self, payload: UnstableExecutionPayloadEnvelope) -> Result<(), Self::Error>;
 
     /// Drives the transport event loop and returns the next unsafe block received from peers.
     ///

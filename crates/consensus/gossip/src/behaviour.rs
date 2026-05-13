@@ -43,7 +43,7 @@ pub struct Behaviour {
     #[debug(skip)]
     pub identify: libp2p::identify::Behaviour,
     /// Enables the sync request/response protocol.
-    /// See `<https://specs.base.org/protocol/consensus/p2p#payload_by_number>`
+    /// See `<https://specs.unstable.org/protocol/consensus/p2p#payload_by_number>`
     #[debug(skip)]
     pub sync_req_resp: libp2p_stream::Behaviour,
 }

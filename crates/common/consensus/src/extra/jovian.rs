@@ -1,4 +1,4 @@
-use alloy_eips::eip1559::BaseFeeParams;
+use alloy_eips::eip1559::UnstableFeeParams;
 use alloy_primitives::{B64, Bytes};
 
 use super::{EIP1559ParamError, encode_eip_1559_params};
@@ -13,7 +13,7 @@ const VERSION_BYTE: u8 = 1;
 /// - 4 bytes `elasticity_multiplier` (big-endian u32)
 /// - 8 bytes `min_base_fee` (big-endian u64)
 ///
-/// See: <https://specs.base.org/upgrades/jovian/exec-engine>
+/// See: <https://specs.unstable.org/upgrades/jovian/exec-engine>
 #[derive(Debug)]
 pub struct JovianExtraData;
 
@@ -45,7 +45,7 @@ impl JovianExtraData {
     /// Produces a 17-byte encoding with a leading version byte of `1`.
     pub fn encode(
         eip_1559_params: B64,
-        default_base_fee_params: BaseFeeParams,
+        default_base_fee_params: UnstableFeeParams,
         min_base_fee: u64,
     ) -> Result<Bytes, EIP1559ParamError> {
         let mut extra_data = [0u8; 17];
@@ -60,7 +60,7 @@ impl JovianExtraData {
 mod tests {
     use core::str::FromStr;
 
-    use alloy_eips::eip1559::BaseFeeParams;
+    use alloy_eips::eip1559::UnstableFeeParams;
     use alloy_primitives::{B64, Bytes};
 
     use super::JovianExtraData;
@@ -69,7 +69,7 @@ mod tests {
     #[test]
     fn test_encode_with_explicit_params() {
         let eip_1559_params = B64::from_str("0x0000000800000008").unwrap();
-        let extra_data = JovianExtraData::encode(eip_1559_params, BaseFeeParams::new(80, 60), 257);
+        let extra_data = JovianExtraData::encode(eip_1559_params, UnstableFeeParams::new(80, 60), 257);
         assert_eq!(
             extra_data.unwrap(),
             Bytes::copy_from_slice(&[1, 0, 0, 0, 8, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 1, 1])
@@ -78,7 +78,7 @@ mod tests {
 
     #[test]
     fn test_encode_with_defaults() {
-        let extra_data = JovianExtraData::encode(B64::ZERO, BaseFeeParams::new(80, 60), 0);
+        let extra_data = JovianExtraData::encode(B64::ZERO, UnstableFeeParams::new(80, 60), 0);
         assert_eq!(
             extra_data.unwrap(),
             Bytes::copy_from_slice(&[1, 0, 0, 0, 80, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0])

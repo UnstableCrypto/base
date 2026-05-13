@@ -1,4 +1,4 @@
-//! Receipt envelope types for Base chains.
+//! Receipt envelope types for Unstable chains.
 
 use alloc::vec::Vec;
 
@@ -12,7 +12,7 @@ use alloy_rlp::{BufMut, Decodable, Encodable, length_of_length};
 
 use crate::{DepositReceipt, DepositReceiptWithBloom, OpTxType};
 
-/// Receipt envelope, as defined in [EIP-2718], modified for Base.
+/// Receipt envelope, as defined in [EIP-2718], modified for Unstable.
 ///
 /// This enum distinguishes between tagged and untagged legacy receipts, as the
 /// in-protocol merkle tree may commit to EITHER 0-prefixed or raw. Therefore
@@ -25,7 +25,7 @@ use crate::{DepositReceipt, DepositReceiptWithBloom, OpTxType};
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(tag = "type"))]
-pub enum BaseReceiptEnvelope {
+pub enum UnstableReceiptEnvelope {
     /// Receipt envelope with no type flag.
     #[cfg_attr(feature = "serde", serde(rename = "0x0", alias = "0x00"))]
     Legacy(ReceiptWithBloom<Receipt<Log>>),
@@ -46,13 +46,13 @@ pub enum BaseReceiptEnvelope {
     Eip7702(ReceiptWithBloom<Receipt<Log>>),
     /// Receipt envelope with type flag 126, containing a [deposit] receipt.
     ///
-    /// [deposit]: https://specs.base.org/protocol/bridging/deposits
+    /// [deposit]: https://specs.unstable.org/protocol/bridging/deposits
     #[cfg_attr(feature = "serde", serde(rename = "0x7e", alias = "0x7E"))]
     Deposit(ReceiptWithBloom<DepositReceipt>),
 }
 
-impl BaseReceiptEnvelope {
-    /// Creates a new [`BaseReceiptEnvelope`] from the given parts.
+impl UnstableReceiptEnvelope {
+    /// Creates a new [`UnstableReceiptEnvelope`] from the given parts.
     pub fn from_parts<'a>(
         status: bool,
         cumulative_gas_used: u64,
@@ -93,7 +93,7 @@ impl BaseReceiptEnvelope {
     }
 }
 
-impl BaseReceiptEnvelope {
+impl UnstableReceiptEnvelope {
     /// Return the [`OpTxType`] of the inner receipt.
     pub const fn tx_type(&self) -> OpTxType {
         match self {
@@ -186,7 +186,7 @@ impl BaseReceiptEnvelope {
     }
 }
 
-impl BaseReceiptEnvelope {
+impl UnstableReceiptEnvelope {
     /// Get the length of the inner receipt in the 2718 encoding.
     pub fn inner_length(&self) -> usize {
         match self {
@@ -205,7 +205,7 @@ impl BaseReceiptEnvelope {
     }
 }
 
-impl TxReceipt for BaseReceiptEnvelope {
+impl TxReceipt for UnstableReceiptEnvelope {
     type Log = Log;
 
     fn status_or_post_state(&self) -> Eip658Value {
@@ -236,7 +236,7 @@ impl TxReceipt for BaseReceiptEnvelope {
     }
 }
 
-impl Encodable for BaseReceiptEnvelope {
+impl Encodable for UnstableReceiptEnvelope {
     fn encode(&self, out: &mut dyn alloy_rlp::BufMut) {
         self.network_encode(out)
     }
@@ -250,14 +250,14 @@ impl Encodable for BaseReceiptEnvelope {
     }
 }
 
-impl Decodable for BaseReceiptEnvelope {
+impl Decodable for UnstableReceiptEnvelope {
     fn decode(buf: &mut &[u8]) -> alloy_rlp::Result<Self> {
         Self::network_decode(buf)
             .map_or_else(|_| Err(alloy_rlp::Error::Custom("Unexpected type")), Ok)
     }
 }
 
-impl Typed2718 for BaseReceiptEnvelope {
+impl Typed2718 for UnstableReceiptEnvelope {
     fn ty(&self) -> u8 {
         let ty = match self {
             Self::Legacy(_) => OpTxType::Legacy,
@@ -270,13 +270,13 @@ impl Typed2718 for BaseReceiptEnvelope {
     }
 }
 
-impl IsTyped2718 for BaseReceiptEnvelope {
+impl IsTyped2718 for UnstableReceiptEnvelope {
     fn is_type(type_id: u8) -> bool {
         <OpTxType as IsTyped2718>::is_type(type_id)
     }
 }
 
-impl Encodable2718 for BaseReceiptEnvelope {
+impl Encodable2718 for UnstableReceiptEnvelope {
     fn encode_2718_len(&self) -> usize {
         self.inner_length() + !self.is_legacy() as usize
     }
@@ -295,7 +295,7 @@ impl Encodable2718 for BaseReceiptEnvelope {
     }
 }
 
-impl Decodable2718 for BaseReceiptEnvelope {
+impl Decodable2718 for UnstableReceiptEnvelope {
     fn typed_decode(ty: u8, buf: &mut &[u8]) -> Eip2718Result<Self> {
         match ty.try_into().map_err(|_| Eip2718Error::UnexpectedType(ty))? {
             OpTxType::Legacy => {
@@ -314,20 +314,20 @@ impl Decodable2718 for BaseReceiptEnvelope {
     }
 }
 
-impl From<DepositReceiptWithBloom> for BaseReceiptEnvelope {
+impl From<DepositReceiptWithBloom> for UnstableReceiptEnvelope {
     fn from(value: DepositReceiptWithBloom) -> Self {
         Self::Deposit(value)
     }
 }
 
-impl From<BaseReceiptEnvelope> for Receipt<Log> {
-    fn from(receipt: BaseReceiptEnvelope) -> Self {
+impl From<UnstableReceiptEnvelope> for Receipt<Log> {
+    fn from(receipt: UnstableReceiptEnvelope) -> Self {
         receipt.into_receipt()
     }
 }
 
 #[cfg(all(test, feature = "arbitrary"))]
-impl<'a> arbitrary::Arbitrary<'a> for BaseReceiptEnvelope {
+impl<'a> arbitrary::Arbitrary<'a> for UnstableReceiptEnvelope {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         match u.int_in_range(0..=4)? {
             0 => Ok(Self::Legacy(ReceiptWithBloom::arbitrary(u)?)),
@@ -359,7 +359,7 @@ mod tests {
         );
 
         let mut data = vec![];
-        let receipt = BaseReceiptEnvelope::Legacy(ReceiptWithBloom {
+        let receipt = UnstableReceiptEnvelope::Legacy(ReceiptWithBloom {
             receipt: Receipt {
                 status: false.into(),
                 cumulative_gas_used: 0x1,
@@ -391,7 +391,7 @@ mod tests {
     #[test]
     fn legacy_receipt_from_parts() {
         let receipt =
-            BaseReceiptEnvelope::from_parts(true, 100, vec![], OpTxType::Legacy, None, None);
+            UnstableReceiptEnvelope::from_parts(true, 100, vec![], OpTxType::Legacy, None, None);
         assert!(receipt.status());
         assert_eq!(receipt.cumulative_gas_used(), 100);
         assert_eq!(receipt.logs().len(), 0);
@@ -401,7 +401,7 @@ mod tests {
     #[test]
     fn deposit_receipt_from_parts() {
         let receipt =
-            BaseReceiptEnvelope::from_parts(true, 100, vec![], OpTxType::Deposit, Some(1), Some(2));
+            UnstableReceiptEnvelope::from_parts(true, 100, vec![], OpTxType::Deposit, Some(1), Some(2));
         assert!(receipt.status());
         assert_eq!(receipt.cumulative_gas_used(), 100);
         assert_eq!(receipt.logs().len(), 0);

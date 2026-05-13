@@ -4,16 +4,16 @@ use alloy_primitives::{Address, B256, U256};
 use ambassador::{Delegate, delegatable_trait};
 
 use crate::info::{
-    L1BlockInfoBedrockBaseFields,
-    bedrock_base::{L1BlockInfoBedrockBase, ambassador_impl_L1BlockInfoBedrockBaseFields},
+    L1BlockInfoBedrockUnstableFields,
+    bedrock_base::{L1BlockInfoBedrockUnstable, ambassador_impl_L1BlockInfoBedrockUnstableFields},
 };
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Default, Copy, Delegate)]
-#[delegate(L1BlockInfoBedrockBaseFields, target = "base")]
+#[delegate(L1BlockInfoBedrockUnstableFields, target = "base")]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// The base fields shared by all L1 block info transactions from Ecotone onward.
-pub struct L1BlockInfoEcotoneBase {
-    base: L1BlockInfoBedrockBase,
+pub struct L1BlockInfoEcotoneUnstable {
+    base: L1BlockInfoBedrockUnstable,
     /// The current blob base fee on L1
     pub blob_base_fee: u128,
     /// The fee scalar for L1 blobspace data
@@ -22,7 +22,7 @@ pub struct L1BlockInfoEcotoneBase {
     pub base_fee_scalar: u32,
 }
 
-impl L1BlockInfoEcotoneBase {
+impl L1BlockInfoEcotoneUnstable {
     /// Construct new from all values.
     #[allow(clippy::too_many_arguments)]
     pub const fn new(
@@ -37,7 +37,7 @@ impl L1BlockInfoEcotoneBase {
         base_fee_scalar: u32,
     ) -> Self {
         Self {
-            base: L1BlockInfoBedrockBase::new(
+            base: L1BlockInfoBedrockUnstable::new(
                 number,
                 time,
                 base_fee,
@@ -52,24 +52,24 @@ impl L1BlockInfoEcotoneBase {
     }
     /// Construct from default values and `base_fee`.
     pub fn new_from_base_fee(base_fee: u64) -> Self {
-        Self { base: L1BlockInfoBedrockBase::new_from_base_fee(base_fee), ..Default::default() }
+        Self { base: L1BlockInfoBedrockUnstable::new_from_base_fee(base_fee), ..Default::default() }
     }
     /// Construct from default values and `block_hash`.
     pub fn new_from_block_hash(block_hash: B256) -> Self {
-        let base = L1BlockInfoBedrockBase::new_from_block_hash(block_hash);
+        let base = L1BlockInfoBedrockUnstable::new_from_block_hash(block_hash);
         Self { base, ..Default::default() }
     }
     /// Construct from default values and `sequence_number`.
     pub fn new_from_sequence_number(sequence_number: u64) -> Self {
         Self {
-            base: L1BlockInfoBedrockBase::new_from_sequence_number(sequence_number),
+            base: L1BlockInfoBedrockUnstable::new_from_sequence_number(sequence_number),
             ..Default::default()
         }
     }
     /// Construct from default values and `batcher_address`.
     pub fn new_from_batcher_address(batcher_address: Address) -> Self {
         Self {
-            base: L1BlockInfoBedrockBase::new_from_batcher_address(batcher_address),
+            base: L1BlockInfoBedrockUnstable::new_from_batcher_address(batcher_address),
             ..Default::default()
         }
     }
@@ -87,7 +87,7 @@ impl L1BlockInfoEcotoneBase {
     }
     /// Construct from default values, `number` and `block_hash`.
     pub fn new_from_number_and_block_hash(number: u64, block_hash: B256) -> Self {
-        let base = L1BlockInfoBedrockBase::new_from_number_and_block_hash(number, block_hash);
+        let base = L1BlockInfoBedrockUnstable::new_from_number_and_block_hash(number, block_hash);
         Self { base, ..Default::default() }
     }
 
@@ -172,7 +172,7 @@ impl L1BlockInfoEcotoneBase {
 }
 /// Accessors to fields in Ecotone and later.
 #[delegatable_trait]
-pub trait L1BlockInfoEcotoneBaseFields: L1BlockInfoBedrockBaseFields {
+pub trait L1BlockInfoEcotoneUnstableFields: L1BlockInfoBedrockUnstableFields {
     /// The current blob base fee on L1
     fn blob_base_fee(&self) -> u128;
     /// The fee scalar for L1 blobspace data
@@ -181,7 +181,7 @@ pub trait L1BlockInfoEcotoneBaseFields: L1BlockInfoBedrockBaseFields {
     fn base_fee_scalar(&self) -> u32;
 }
 
-impl L1BlockInfoEcotoneBaseFields for L1BlockInfoEcotoneBase {
+impl L1BlockInfoEcotoneUnstableFields for L1BlockInfoEcotoneUnstable {
     /// The current blob base fee on L1
     fn blob_base_fee(&self) -> u128 {
         self.blob_base_fee

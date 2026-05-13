@@ -30,7 +30,7 @@ pub enum SystemConfigUpdateError {
     UnsafeBlockSigner(UnsafeBlockSignerUpdateError),
     /// A min base fee parameter update error.
     #[error("Min base fee parameter update error: {0}")]
-    MinBaseFee(MinBaseFeeUpdateError),
+    MinUnstableFee(MinUnstableFeeUpdateError),
     /// A da footprint gas scalar update error.
     #[error("DA footprint gas scalar update error: {0}")]
     DaFootprintGasScalar(DaFootprintGasScalarUpdateError),
@@ -135,7 +135,7 @@ pub enum GasConfigUpdateError {
 /// An error for updating the min base fee on the [`crate::SystemConfig`].
 #[derive(Debug, thiserror::Error, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum MinBaseFeeUpdateError {
+pub enum MinUnstableFeeUpdateError {
     /// Invalid data length.
     #[error("Invalid config update log: invalid data length: {0}")]
     InvalidDataLen(usize),
@@ -153,7 +153,7 @@ pub enum MinBaseFeeUpdateError {
     InvalidDataLength(u64),
     /// Failed to decode the min base fee argument from the min base fee update log.
     #[error("Failed to decode min base fee update log: min base fee")]
-    MinBaseFeeDecodingError,
+    MinUnstableFeeDecodingError,
 }
 
 /// An error for updating the da footprint gas scalar on the [`crate::SystemConfig`].

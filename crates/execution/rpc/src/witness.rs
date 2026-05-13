@@ -1,12 +1,12 @@
-//! Support for Base-specific witness RPCs.
+//! Support for Unstable-specific witness RPCs.
 
 use std::{fmt::Debug, sync::Arc};
 
 use alloy_primitives::B256;
 use alloy_rpc_types_debug::ExecutionWitness;
 use base_common_chains::Upgrades;
-use base_execution_payload_builder::{Attributes, BasePayloadBuilder, PayloadPrimitives};
-use base_execution_txpool::BasePooledTx;
+use base_execution_payload_builder::{Attributes, UnstablePayloadBuilder, PayloadPrimitives};
+use base_execution_txpool::UnstablePooledTx;
 use jsonrpsee_core::{RpcResult, async_trait};
 use reth_chainspec::ChainSpecProvider;
 use reth_evm::ConfigureEvm;
@@ -23,24 +23,24 @@ use reth_transaction_pool::TransactionPool;
 use tokio::sync::{Semaphore, oneshot};
 
 /// An extension to the `debug_` namespace of the RPC API.
-pub struct BaseDebugWitnessApi<Pool, Provider, EvmConfig, Attrs> {
-    inner: Arc<BaseDebugWitnessApiInner<Pool, Provider, EvmConfig, Attrs>>,
+pub struct UnstableDebugWitnessApi<Pool, Provider, EvmConfig, Attrs> {
+    inner: Arc<UnstableDebugWitnessApiInner<Pool, Provider, EvmConfig, Attrs>>,
 }
 
-impl<Pool, Provider, EvmConfig, Attrs> BaseDebugWitnessApi<Pool, Provider, EvmConfig, Attrs> {
-    /// Creates a new instance of the `BaseDebugWitnessApi`.
+impl<Pool, Provider, EvmConfig, Attrs> UnstableDebugWitnessApi<Pool, Provider, EvmConfig, Attrs> {
+    /// Creates a new instance of the `UnstableDebugWitnessApi`.
     pub fn new(
         provider: Provider,
         task_spawner: Box<dyn TaskSpawner>,
-        builder: BasePayloadBuilder<Pool, Provider, EvmConfig, (), Attrs>,
+        builder: UnstablePayloadBuilder<Pool, Provider, EvmConfig, (), Attrs>,
     ) -> Self {
         let semaphore = Arc::new(Semaphore::new(3));
-        let inner = BaseDebugWitnessApiInner { provider, builder, task_spawner, semaphore };
+        let inner = UnstableDebugWitnessApiInner { provider, builder, task_spawner, semaphore };
         Self { inner: Arc::new(inner) }
     }
 }
 
-impl<Pool, Provider, EvmConfig, Attrs> BaseDebugWitnessApi<Pool, Provider, EvmConfig, Attrs>
+impl<Pool, Provider, EvmConfig, Attrs> UnstableDebugWitnessApi<Pool, Provider, EvmConfig, Attrs>
 where
     EvmConfig: ConfigureEvm,
     Provider: NodePrimitivesProvider<Primitives: NodePrimitives<BlockHeader = Provider::Header>>
@@ -60,10 +60,10 @@ where
 
 #[async_trait]
 impl<Pool, Provider, EvmConfig, Attrs> DebugExecutionWitnessApiServer<Attrs::RpcPayloadAttributes>
-    for BaseDebugWitnessApi<Pool, Provider, EvmConfig, Attrs>
+    for UnstableDebugWitnessApi<Pool, Provider, EvmConfig, Attrs>
 where
     Pool: TransactionPool<
-            Transaction: BasePooledTx<
+            Transaction: UnstablePooledTx<
                 Consensus = <Provider::Primitives as NodePrimitives>::SignedTx,
             >,
         > + 'static,
@@ -102,23 +102,23 @@ where
 }
 
 impl<Pool, Provider, EvmConfig, Attrs> Clone
-    for BaseDebugWitnessApi<Pool, Provider, EvmConfig, Attrs>
+    for UnstableDebugWitnessApi<Pool, Provider, EvmConfig, Attrs>
 {
     fn clone(&self) -> Self {
         Self { inner: Arc::clone(&self.inner) }
     }
 }
 impl<Pool, Provider, EvmConfig, Attrs> Debug
-    for BaseDebugWitnessApi<Pool, Provider, EvmConfig, Attrs>
+    for UnstableDebugWitnessApi<Pool, Provider, EvmConfig, Attrs>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("BaseDebugWitnessApi").finish_non_exhaustive()
+        f.debug_struct("UnstableDebugWitnessApi").finish_non_exhaustive()
     }
 }
 
-struct BaseDebugWitnessApiInner<Pool, Provider, EvmConfig, Attrs> {
+struct UnstableDebugWitnessApiInner<Pool, Provider, EvmConfig, Attrs> {
     provider: Provider,
-    builder: BasePayloadBuilder<Pool, Provider, EvmConfig, (), Attrs>,
+    builder: UnstablePayloadBuilder<Pool, Provider, EvmConfig, (), Attrs>,
     task_spawner: Box<dyn TaskSpawner>,
     semaphore: Arc<Semaphore>,
 }

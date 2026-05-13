@@ -1,6 +1,6 @@
 [package]
 name = "base-common-consensus"
-description = "Base alloy consensus types"
+description = "Unstable alloy consensus types"
 
 version.workspace = true
 edition.workspace = true

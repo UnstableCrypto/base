@@ -1,10 +1,10 @@
 # `basectl-cli`
 
-TUI-based CLI tool for Base infrastructure monitoring.
+TUI-based CLI tool for Unstable infrastructure monitoring.
 
 ## Overview
 
-Provides an interactive terminal UI for monitoring Base infrastructure: block production rates,
+Provides an interactive terminal UI for monitoring Unstable infrastructure: block production rates,
 node sync status, flashblock throughput, and system metrics. `run_app` launches the full TUI
 with configurable views. Also supports `run_flashblocks_json` for non-interactive JSON output,
 suitable for piping into other tools.

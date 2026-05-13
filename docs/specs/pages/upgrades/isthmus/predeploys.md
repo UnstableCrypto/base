@@ -22,7 +22,7 @@ The value returned by `getOperatorFee(uint256)` is capped at `U256` max value.
 
 ### OperatorFeeVault
 
-This vault implements `FeeVault`, like `BaseFeeVault`, `SequencerFeeVault`, and `L1FeeVault`.
+This vault implements `FeeVault`, like `UnstableFeeVault`, `SequencerFeeVault`, and `L1FeeVault`.
 No special logic is needed in order to insert or withdraw funds.
 
 Its address will be `0x420000000000000000000000000000000000001b`.

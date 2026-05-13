@@ -8,7 +8,7 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
 mod ext;
-pub use ext::{BaseApiExtServer, MeteringStoreExt};
+pub use ext::{UnstableApiExtServer, MeteringStoreExt};
 
 mod extension;
 pub use extension::MeteringStoreExtension;

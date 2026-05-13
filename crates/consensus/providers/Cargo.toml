@@ -32,7 +32,7 @@ alloy-rpc-types-engine = { workspace = true, features = ["std"] }
 alloy-provider = { workspace = true, features = ["ipc", "ws", "reqwest"] }
 alloy-transport-http = { workspace = true, features = ["reqwest", "reqwest-rustls-tls", "hyper", "hyper-tls", "jwt-auth"] }
 
-# Base Alloy
+# Unstable Alloy
 base-common-network.workspace = true
 base-common-consensus.workspace = true
 

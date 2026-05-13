@@ -1,4 +1,4 @@
-//! Base Chain configuration.
+//! Unstable Chain configuration.
 
 use alloy_chains::Chain;
 use alloy_eips::eip1898::BlockNumHash;
@@ -7,7 +7,7 @@ use base_common_genesis::{
     ChainGenesis, FeeConfig, HardForkConfig, HardforkConfig, RollupConfig, SystemConfig,
 };
 
-/// Complete configuration for a Base chain
+/// Complete configuration for a Unstable chain
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainConfig {
     // Identity
@@ -49,7 +49,7 @@ pub struct ChainConfig {
     pub isthmus_timestamp: u64,
     /// Jovian activation timestamp.
     pub jovian_timestamp: u64,
-    /// Base Azul activation timestamp (optional).
+    /// Unstable Azul activation timestamp (optional).
     pub azul_timestamp: Option<u64>,
     /// Beryl activation timestamp (optional).
     pub beryl_timestamp: Option<u64>,
@@ -74,7 +74,7 @@ pub struct ChainConfig {
     /// Genesis gas limit.
     pub genesis_gas_limit: u64,
 
-    // Base fee params
+    // Unstable fee params
     /// EIP-1559 elasticity multiplier.
     pub eip1559_elasticity: u64,
     /// EIP-1559 denominator (pre-Canyon).
@@ -137,17 +137,17 @@ impl Bootnodes {
 }
 
 impl ChainConfig {
-    /// CLI chain name for Base Mainnet.
+    /// CLI chain name for Unstable Mainnet.
     pub const MAINNET_NAME: &'static str = "base";
-    /// CLI chain name for Base Sepolia.
+    /// CLI chain name for Unstable Sepolia.
     pub const SEPOLIA_NAME: &'static str = "base-sepolia";
-    /// Legacy CLI chain name for Base Sepolia.
+    /// Legacy CLI chain name for Unstable Sepolia.
     pub const SEPOLIA_ALIAS: &'static str = "base_sepolia";
-    /// CLI chain name for Base Zeronet.
+    /// CLI chain name for Unstable Zeronet.
     pub const ZERONET_NAME: &'static str = "base-zeronet";
-    /// CLI chain name for the local Base devnet.
+    /// CLI chain name for the local Unstable devnet.
     pub const DEVNET_NAME: &'static str = "dev";
-    /// All chain names accepted by Base chain parsers.
+    /// All chain names accepted by Unstable chain parsers.
     pub const SUPPORTED_NAMES: &'static [&'static str] = &[
         Self::MAINNET_NAME,
         Self::SEPOLIA_ALIAS,
@@ -156,12 +156,12 @@ impl ChainConfig {
         Self::DEVNET_NAME,
     ];
 
-    /// Base Mainnet chain configuration.
+    /// Unstable Mainnet chain configuration.
     pub const fn mainnet() -> &'static Self {
         &MAINNET
     }
 
-    /// Base Sepolia chain configuration.
+    /// Unstable Sepolia chain configuration.
     pub const fn sepolia() -> &'static Self {
         &SEPOLIA
     }
@@ -171,7 +171,7 @@ impl ChainConfig {
         &DEVNET
     }
 
-    /// Base Zeronet chain configuration.
+    /// Unstable Zeronet chain configuration.
     pub const fn zeronet() -> &'static Self {
         &ZERONET
     }
@@ -211,7 +211,7 @@ impl ChainConfig {
         }
     }
 
-    /// Returns the [`HardForkConfig`] (Base upgrade activation timestamps) for this chain.
+    /// Returns the [`HardForkConfig`] (Unstable upgrade activation timestamps) for this chain.
     pub const fn hardfork_config(&self) -> HardForkConfig {
         HardForkConfig {
             regolith_time: Some(self.regolith_timestamp),

@@ -17,7 +17,7 @@ use alloy_provider::Provider;
 use alloy_rpc_types_engine::PayloadId;
 use alloy_sol_types::{SolConstructor, SolValue};
 use base_common_flashblocks::{
-    ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
+    ExecutionPayloadUnstableV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
 };
 use base_flashblocks_node::test_harness::FlashblocksHarness;
 use base_node_runner::test_utils::L1_BLOCK_INFO_DEPOSIT_TX;
@@ -74,7 +74,7 @@ impl Erc20TestSetup {
         Flashblock {
             payload_id: PayloadId::new([0; 8]),
             index: 0,
-            base: Some(ExecutionPayloadBaseV1 {
+            base: Some(ExecutionPayloadUnstableV1 {
                 parent_beacon_block_root: B256::default(),
                 parent_hash: B256::default(),
                 fee_recipient: Address::ZERO,

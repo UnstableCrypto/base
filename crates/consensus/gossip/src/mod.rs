@@ -1,7 +1,7 @@
-//! GossipSub-based consensus layer networking for Base.
+//! GossipSub-based consensus layer networking for Unstable.
 //!
-//! This module implements the networking layer for Base consensus using libp2p's GossipSub
-//! protocol. It handles the propagation and validation of Base network payload messages
+//! This module implements the networking layer for Unstable consensus using libp2p's GossipSub
+//! protocol. It handles the propagation and validation of Unstable network payload messages
 //! across the network mesh.
 //!
 //! ## Key Components

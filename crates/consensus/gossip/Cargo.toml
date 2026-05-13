@@ -1,7 +1,7 @@
 [package]
 name = "base-consensus-gossip"
 version.workspace = true
-description = "Gossip protocol implementation for Base"
+description = "Gossip protocol implementation for Unstable"
 
 edition.workspace = true
 license.workspace = true
@@ -25,7 +25,7 @@ alloy-consensus = { workspace = true, features = ["std"] }
 alloy-rpc-types-engine = { workspace = true, features = ["std"] }
 alloy-primitives = { workspace = true, features = ["k256", "getrandom"] }
 
-# Base Alloy
+# Unstable Alloy
 base-common-consensus = { workspace = true, features = ["k256"] }
 base-common-rpc-types-engine = { workspace = true, features = ["std", "serde"] }
 

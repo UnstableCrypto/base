@@ -1,11 +1,11 @@
 use core::convert::Infallible;
 
-use base_common_consensus::{BaseReceipt, BaseTxEnvelope};
+use base_common_consensus::{UnstableReceipt, UnstableTxEnvelope};
 use reth_rpc_convert::{TryFromReceiptResponse, TryFromTransactionResponse};
 
-use crate::Base;
+use crate::Unstable;
 
-impl TryFromTransactionResponse<Base> for BaseTxEnvelope {
+impl TryFromTransactionResponse<Unstable> for UnstableTxEnvelope {
     type Error = Infallible;
 
     fn from_transaction_response(
@@ -15,11 +15,11 @@ impl TryFromTransactionResponse<Base> for BaseTxEnvelope {
     }
 }
 
-impl TryFromReceiptResponse<Base> for BaseReceipt {
+impl TryFromReceiptResponse<Unstable> for UnstableReceipt {
     type Error = Infallible;
 
     fn from_receipt_response(
-        receipt_response: base_common_rpc_types::BaseTransactionReceipt,
+        receipt_response: base_common_rpc_types::UnstableTransactionReceipt,
     ) -> Result<Self, Self::Error> {
         Ok(receipt_response.inner.inner.into_components().0.map_logs(Into::into))
     }

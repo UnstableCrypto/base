@@ -21,7 +21,7 @@ blocks must have an **empty** `extraData` field.
 
 With Holocene, the `extraData` field [encodes the EIP-1559 parameters](../../upgrades/holocene/exec-engine.md#dynamic-eip-1559-parameters).
 
-With Jovian, the `extraData` encoding is extended to [include `minBaseFee`](../../upgrades/jovian/exec-engine.md#minimum-base-fee).
+With Jovian, the `extraData` encoding is extended to [include `minUnstableFee`](../../upgrades/jovian/exec-engine.md#minimum-base-fee).
 
 ## Deposited transaction processing
 
@@ -65,7 +65,7 @@ The proxies are backed by vault contract deployments, based on `FeeVault`, to ro
 | Vault Name          | Predeploy                                              |
 | ------------------- | ------------------------------------------------------ |
 | Sequencer Fee Vault | [`SequencerFeeVault`](evm/predeploys.md#sequencerfeevault) |
-| Base Fee Vault      | [`BaseFeeVault`](evm/predeploys.md#basefeevault)           |
+| Unstable Fee Vault      | [`UnstableFeeVault`](evm/predeploys.md#basefeevault)           |
 | L1 Fee Vault        | [`L1FeeVault`](evm/predeploys.md#l1feevault)               |
 
 ### Priority fees (Sequencer Fee Vault)
@@ -73,10 +73,10 @@ The proxies are backed by vault contract deployments, based on `FeeVault`, to ro
 Priority fees follow the [eip-1559] specification, and are collected by the fee-recipient of the L2 block.
 The block fee-recipient (a.k.a. coinbase address) is set to the Sequencer Fee Vault address.
 
-### Base fees (Base Fee Vault)
+### Unstable fees (Unstable Fee Vault)
 
-Base fees largely follow the [eip-1559] specification, with the exception that base fees are not burned,
-but add up to the Base Fee Vault ETH account balance.
+Unstable fees largely follow the [eip-1559] specification, with the exception that base fees are not burned,
+but add up to the Unstable Fee Vault ETH account balance.
 
 ### L1-Cost fees (L1 Fee Vault)
 
@@ -90,7 +90,7 @@ the upgrades that are active.
 #### Pre-Ecotone
 
 Before Ecotone activation, L1 cost is calculated as:
-`(rollupDataGas + l1FeeOverhead) * l1BaseFee * l1FeeScalar / 1e6` (big-int computation, result
+`(rollupDataGas + l1FeeOverhead) * l1UnstableFee * l1FeeScalar / 1e6` (big-int computation, result
 in Wei and `uint256` range)
 Where:
 
@@ -99,7 +99,7 @@ Where:
   - `rollupDataGas = zeroes * 4 + ones * 16`
 - `l1FeeOverhead` is the Gas Price Oracle `overhead` value.
 - `l1FeeScalar` is the Gas Price Oracle `scalar` value.
-- `l1BaseFee` is the L1 base fee of the latest L1 origin registered in the L2 chain.
+- `l1UnstableFee` is the L1 base fee of the latest L1 origin registered in the L2 chain.
 
 Note that the `rollupDataGas` uses the same byte cost accounting as defined in [eip-2028],
 except the full L2 transaction now counts towards the bytes charged in the L1 calldata.
@@ -108,7 +108,7 @@ This behavior matches pre-Bedrock L1-cost estimation of L2 transactions.
 Compression, batching, and intrinsic gas costs of the batch transactions are accounted for by the protocol
 with the Gas Price Oracle `overhead` and `scalar` parameters.
 
-The Gas Price Oracle `l1FeeOverhead` and `l1FeeScalar`, as well as the `l1BaseFee` of the L1 origin,
+The Gas Price Oracle `l1FeeOverhead` and `l1FeeScalar`, as well as the `l1UnstableFee` of the L1 origin,
 can be accessed in two interchangeable ways:
 
 - read from the deposited L1 attributes (`l1FeeOverhead`, `l1FeeScalar`, `basefee`) of the current L2 block
@@ -124,7 +124,7 @@ can be accessed in two interchangeable ways:
 Ecotone allows posting batches via Blobs which are subject to a new fee market. To account for this feature,
 L1 cost is computed as:
 
-`(zeroes*4 + ones*16) * (16*l1BaseFee*l1BaseFeeScalar + l1BlobBaseFee*l1BlobBaseFeeScalar) / 16e6`
+`(zeroes*4 + ones*16) * (16*l1UnstableFee*l1UnstableFeeScalar + l1BlobUnstableFee*l1BlobUnstableFeeScalar) / 16e6`
 
 Where:
 
@@ -134,16 +134,16 @@ Where:
 - zeroes and ones are the count of zero and non-zero bytes respectively in the _full_ encoded
   signed transaction.
 
-- `l1BaseFee` is the L1 base fee of the latest L1 origin registered in the L2 chain.
+- `l1UnstableFee` is the L1 base fee of the latest L1 origin registered in the L2 chain.
 
-- `l1BlobBaseFee` is the blob gas price, computed as described in [EIP-4844][4844-gas] from the
+- `l1BlobUnstableFee` is the blob gas price, computed as described in [EIP-4844][4844-gas] from the
   header of the latest registered L1 origin block.
 
 Conceptually what the above function captures is the formula below, where `compressedTxSize =
 (zeroes*4 + ones*16) / 16` can be thought of as a rough approximation of how many bytes the
 transaction occupies in a compressed batch.
 
-`(compressedTxSize) * (16*l1BaseFee*lBaseFeeScalar + l1BlobBaseFee*l1BlobBaseFeeScalar) / 1e6`
+`(compressedTxSize) * (16*l1UnstableFee*lUnstableFeeScalar + l1BlobUnstableFee*l1BlobUnstableFeeScalar) / 1e6`
 
 The precise cost function used by Ecotone at the top of this section preserves precision under
 integer arithmetic by postponing the inner division by 16 until the very end.
@@ -152,15 +152,15 @@ integer arithmetic by postponing the inner division by 16 until the very end.
 
 The two base fee values and their respective scalars can be accessed in two interchangeable ways:
 
-- read from the deposited L1 attributes (`l1BaseFeeScalar`, `l1BlobBaseFeeScalar`, `basefee`,
-  `blobBaseFee`) of the current L2 block
+- read from the deposited L1 attributes (`l1UnstableFeeScalar`, `l1BlobUnstableFeeScalar`, `basefee`,
+  `blobUnstableFee`) of the current L2 block
 - read from the L1 Block Info contract (`0x4200000000000000000000000000000000000015`)
   - using the respective solidity getter functions
   - using direct storage-reads:
     - basefee `uint256` in slot `1`
-    - blobBaseFee `uint256` in slot `7`
-    - l1BaseFeeScalar big-endian `uint32` slot `3` at offset `12`
-    - l1BlobBaseFeeScalar big-endian `uint32` in slot `3` at offset `8`
+    - blobUnstableFee `uint256` in slot `7`
+    - l1UnstableFeeScalar big-endian `uint32` slot `3` at offset `12`
+    - l1BlobUnstableFeeScalar big-endian `uint32` in slot `3` at offset `8`
 
 ## Engine API
 
@@ -250,7 +250,7 @@ PayloadAttributesV3: {
     noTxPool: bool
     gasLimit: QUANTITY or null
     eip1559Params: DATA (8 bytes) or null
-    minBaseFee: QUANTITY or null
+    minUnstableFee: QUANTITY or null
 }
 ```
 
@@ -263,8 +263,8 @@ or a zero `bytes32` if the Dencun functionality with `parentBeaconBlockRoot` is 
 Starting with Holocene, the `eip1559Params` field must encode the EIP1559 parameters. It must be `null` before.
 See [Dynamic EIP-1559 Parameters](../../upgrades/holocene/exec-engine.md#dynamic-eip-1559-parameters) for details.
 
-Starting with Jovian, the `minBaseFee` field is added. It must be `null` before Jovian.
-See [Jovian Minimum Base Fee](../../upgrades/jovian/exec-engine.md#minimum-base-fee) for details.
+Starting with Jovian, the `minUnstableFee` field is added. It must be `null` before Jovian.
+See [Jovian Minimum Unstable Fee](../../upgrades/jovian/exec-engine.md#minimum-base-fee) for details.
 
 ### `engine_newPayloadV2`
 
@@ -350,7 +350,7 @@ Parameters:
 
 Returns:
 
-- `ProtocolVersion`: the latest supported Base protocol version of the execution engine.
+- `ProtocolVersion`: the latest supported Unstable protocol version of the execution engine.
 
 The execution engine SHOULD warn the user when the recommended version is newer than
 the current version supported by the execution engine.
@@ -434,7 +434,7 @@ the operation within the engine is the exact same as with L1 (although with an E
 plus a list of "blobs": "Binary Large Object", i.e. a dedicated data type for serving Data-Availability as base-layer.
 
 With the Ecotone upgrade, all Cancun L1 execution features are enabled, with [EIP-4844] as exception:
-as an L2, Base does not serve blobs, and thus disables this new transaction type.
+as an L2, Unstable does not serve blobs, and thus disables this new transaction type.
 
 EIP-4844 is disabled as following:
 
@@ -452,7 +452,7 @@ the stack.
 [EIP-4788] introduces a "beacon block root" into the execution-layer block-header and EVM.
 This block root is an [SSZ hash-tree-root] of the consensus-layer contents of the previous consensus block.
 
-With the adoption of [EIP-4399] in the Bedrock upgrade the Base already includes the `PREVRANDAO` of L1.
+With the adoption of [EIP-4399] in the Bedrock upgrade the Unstable already includes the `PREVRANDAO` of L1.
 And thus with [EIP-4788] the L1 beacon block root is made available.
 
 For the Ecotone upgrade, this entails that:
@@ -485,6 +485,6 @@ For the Ecotone upgrade, this entails that:
 
 ## P2P Modifications
 
-The Ethereum Node Record (ENR) for a Base execution node must contain an `opel` key-value pair where the key is
+The Ethereum Node Record (ENR) for a Unstable execution node must contain an `opel` key-value pair where the key is
 `opel` and the value is a [EIP-2124](https://eips.ethereum.org/EIPS/eip-2124) fork id.
 The EL uses a different key from the CL in order to stop EL and CL nodes from connecting to each other.

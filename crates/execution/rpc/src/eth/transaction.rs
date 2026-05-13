@@ -1,4 +1,4 @@
-//! Loads and formats Base transaction RPC response.
+//! Loads and formats Unstable transaction RPC response.
 
 use std::{
     fmt::{Debug, Formatter},
@@ -8,7 +8,7 @@ use std::{
 
 use alloy_primitives::{B256, Bytes};
 use alloy_rpc_types_eth::TransactionInfo;
-use base_common_consensus::{BaseTransaction, BaseTransactionInfo, DepositInfo, DepositReceiptExt};
+use base_common_consensus::{UnstableTransaction, UnstableTransactionInfo, DepositInfo, DepositReceiptExt};
 use futures::StreamExt;
 use reth_chain_state::CanonStateSubscriptions;
 use reth_primitives_traits::{Recovered, SignedTransaction, SignerRecoverable, WithEncoded};
@@ -24,13 +24,13 @@ use reth_transaction_pool::{
 };
 use tracing::{debug, warn};
 
-use crate::{BaseEthApi, BaseEthApiError, SequencerClient};
+use crate::{UnstableEthApi, UnstableEthApiError, SequencerClient};
 
-impl<N, Rpc> EthTransactions for BaseEthApi<N, Rpc>
+impl<N, Rpc> EthTransactions for UnstableEthApi<N, Rpc>
 where
     N: RpcNodeCore,
-    BaseEthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = BaseEthApiError>,
+    UnstableEthApiError: FromEvmError<N::Evm>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Error = UnstableEthApiError>,
 {
     fn signers(&self) -> &SignersForRpc<Self::Provider, Self::NetworkTypes> {
         self.inner.eth_api.signers()
@@ -52,7 +52,7 @@ where
 
         let pool_transaction = <Self::Pool as TransactionPool>::Transaction::from_pooled(recovered);
 
-        // On Base, transactions are forwarded directly to the sequencer to be included in
+        // On Unstable, transactions are forwarded directly to the sequencer to be included in
         // blocks that it builds.
         if let Some(client) = self.raw_tx_forwarder().as_ref() {
             debug!(target: "rpc::eth", hash = %pool_transaction.hash(), "forwarding raw transaction to sequencer");
@@ -139,11 +139,11 @@ where
     }
 }
 
-impl<N, Rpc> LoadTransaction for BaseEthApi<N, Rpc>
+impl<N, Rpc> LoadTransaction for UnstableEthApi<N, Rpc>
 where
     N: RpcNodeCore,
-    BaseEthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = BaseEthApiError>,
+    UnstableEthApiError: FromEvmError<N::Evm>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Error = UnstableEthApiError>,
 {
     async fn transaction_by_hash(
         &self,
@@ -180,7 +180,7 @@ where
     }
 }
 
-impl<N, Rpc> BaseEthApi<N, Rpc>
+impl<N, Rpc> UnstableEthApi<N, Rpc>
 where
     N: RpcNodeCore,
     Rpc: RpcConvert<Primitives = N::Primitives>,
@@ -191,39 +191,39 @@ where
     }
 }
 
-/// Base implementation of [`TxInfoMapper`].
+/// Unstable implementation of [`TxInfoMapper`].
 ///
 /// For deposits, receipt is fetched to extract `deposit_nonce` and `deposit_receipt_version`.
 /// Otherwise, it works like regular Ethereum implementation, i.e. uses [`TransactionInfo`].
-pub struct BaseTxInfoMapper<Provider> {
+pub struct UnstableTxInfoMapper<Provider> {
     provider: Provider,
 }
 
-impl<Provider: Clone> Clone for BaseTxInfoMapper<Provider> {
+impl<Provider: Clone> Clone for UnstableTxInfoMapper<Provider> {
     fn clone(&self) -> Self {
         Self { provider: self.provider.clone() }
     }
 }
 
-impl<Provider> Debug for BaseTxInfoMapper<Provider> {
+impl<Provider> Debug for UnstableTxInfoMapper<Provider> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("BaseTxInfoMapper").finish()
+        f.debug_struct("UnstableTxInfoMapper").finish()
     }
 }
 
-impl<Provider> BaseTxInfoMapper<Provider> {
-    /// Creates [`BaseTxInfoMapper`] that uses [`ReceiptProvider`] borrowed from given `eth_api`.
+impl<Provider> UnstableTxInfoMapper<Provider> {
+    /// Creates [`UnstableTxInfoMapper`] that uses [`ReceiptProvider`] borrowed from given `eth_api`.
     pub const fn new(provider: Provider) -> Self {
         Self { provider }
     }
 }
 
-impl<T, Provider> TxInfoMapper<T> for BaseTxInfoMapper<Provider>
+impl<T, Provider> TxInfoMapper<T> for UnstableTxInfoMapper<Provider>
 where
-    T: BaseTransaction + SignedTransaction,
+    T: UnstableTransaction + SignedTransaction,
     Provider: ReceiptProvider<Receipt: DepositReceiptExt>,
 {
-    type Out = BaseTransactionInfo;
+    type Out = UnstableTransactionInfo;
     type Err = ProviderError;
 
     fn try_map(&self, tx: &T, tx_info: TransactionInfo) -> Result<Self::Out, ProviderError> {
@@ -239,6 +239,6 @@ where
         }
         .unwrap_or_default();
 
-        Ok(BaseTransactionInfo::new(tx_info, deposit_meta))
+        Ok(UnstableTransactionInfo::new(tx_info, deposit_meta))
     }
 }

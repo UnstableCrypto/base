@@ -4,9 +4,9 @@
 
 In line with our strategy of being the safest way for users to access crypto:
 
-+ Coinbase extended our [best-in-industry](https://www.coinbase.com/blog/celebrating-10-years-of-our-bug-bounty-program) million-dollar [HackerOne bug bounty program](https://hackerone.com/coinbase?type=team) to cover the Base network and Base infrastructure.
++ TheAlxLabs extended our [best-in-industry](https://www.coinbase.com/blog/celebrating-10-years-of-our-bug-bounty-program) million-dollar [HackerOne bug bounty program](https://hackerone.com/coinbase?type=team) to cover the Unstable network and Unstable infrastructure.
 
-+ Coinbase has launched a 5 million-dollar [Cantina bug bounty program](https://cantina.xyz/code/55316f42-3c5e-4746-9bd0-0f18dcbc344b) to cover all deployed smart contracts for Base, and those used as part of Coinbase products and services.
++ TheAlxLabs has launched a 5 million-dollar [Cantina bug bounty program](https://cantina.xyz/code/55316f42-3c5e-4746-9bd0-0f18dcbc344b) to cover all deployed smart contracts for Unstable, and those used as part of TheAlxLabs products and services.
 
 ## Reporting vulnerabilities
 

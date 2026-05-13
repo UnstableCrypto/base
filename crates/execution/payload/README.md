@@ -1,15 +1,15 @@
 # `base-execution-payload-builder`
 
-Payload builder for Base.
+Payload builder for Unstable.
 
 ## Overview
 
-Implements Base payload building and validation for the Base execution node. The
-`BasePayloadBuilder` assembles new execution payloads from transaction pool contents and
-`BasePayloadBuilderAttributes` received from the consensus layer. `BaseExecutionPayloadValidator`
+Implements Unstable payload building and validation for the Unstable execution node. The
+`UnstablePayloadBuilder` assembles new execution payloads from transaction pool contents and
+`UnstablePayloadBuilderAttributes` received from the consensus layer. `UnstableExecutionPayloadValidator`
 verifies
 built payloads against consensus rules. Also provides data availability configuration via
-`BaseDAConfig` for fee calculation.
+`UnstableDAConfig` for fee calculation.
 
 ## Usage
 
@@ -21,9 +21,9 @@ base-execution-payload-builder = { workspace = true }
 ```
 
 ```rust,ignore
-use base_execution_payload_builder::BasePayloadBuilder;
+use base_execution_payload_builder::UnstablePayloadBuilder;
 
-let builder = BasePayloadBuilder::new(evm_config, payload_validator);
+let builder = UnstablePayloadBuilder::new(evm_config, payload_validator);
 let payload = builder.build_payload(attrs, best_payload)?;
 ```
 

@@ -1,6 +1,6 @@
 # `base-proof-client`
 
-Oracle-backed derivation and execution orchestration for the Base ZK proof program.
+Oracle-backed derivation and execution orchestration for the Unstable ZK proof program.
 
 ## Overview
 
@@ -17,7 +17,7 @@ error immediately so the caller can exit cleanly. Otherwise it hands off a fully
 `FaultProofDriver` ready to run.
 
 The driver advances the derivation pipeline to the claimed L2 block number, builds a
-`BaseExecutor` over the oracle-backed trie, and returns an `Epilogue` containing the safe head
+`UnstableExecutor` over the oracle-backed trie, and returns an `Epilogue` containing the safe head
 block, the computed output root, and the claimed output root.
 
 The epilogue performs the final comparison. If the two output roots match it logs the result

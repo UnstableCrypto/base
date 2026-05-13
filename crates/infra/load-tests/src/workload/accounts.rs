@@ -3,7 +3,7 @@ use alloy_primitives::{Address, U256};
 use alloy_signer_local::{MnemonicBuilder, PrivateKeySigner, coins_bip39::English};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 
-use crate::utils::{BaselineError, Result};
+use crate::utils::{UnstablelineError, Result};
 
 /// An account with funding and signing capability.
 #[derive(Debug, Clone)]
@@ -78,7 +78,7 @@ impl AccountPool {
             rng.fill(&mut key_bytes);
 
             let signer = PrivateKeySigner::from_bytes(&key_bytes.into()).map_err(|e| {
-                BaselineError::Account { address: Address::ZERO, message: e.to_string() }
+                UnstablelineError::Account { address: Address::ZERO, message: e.to_string() }
             })?;
 
             accounts.push(FundedAccount::new(signer));
@@ -93,14 +93,14 @@ impl AccountPool {
 
         for i in 0..count {
             let index = u32::try_from(offset + i).map_err(|_| {
-                BaselineError::Config(format!("mnemonic index {} exceeds u32::MAX", offset + i))
+                UnstablelineError::Config(format!("mnemonic index {} exceeds u32::MAX", offset + i))
             })?;
             let signer = MnemonicBuilder::<English>::default()
                 .phrase(mnemonic)
                 .index(index)
-                .map_err(|e| BaselineError::Config(format!("invalid mnemonic index {index}: {e}")))?
+                .map_err(|e| UnstablelineError::Config(format!("invalid mnemonic index {index}: {e}")))?
                 .build()
-                .map_err(|e| BaselineError::Config(format!("failed to derive key: {e}")))?;
+                .map_err(|e| UnstablelineError::Config(format!("failed to derive key: {e}")))?;
 
             accounts.push(FundedAccount::new(signer));
         }

@@ -1,4 +1,4 @@
-//! Base fee related utilities for Base chains.
+//! Unstable fee related utilities for Unstable chains.
 
 use core::cmp::max;
 
@@ -6,20 +6,20 @@ use alloy_consensus::BlockHeader;
 use alloy_eips::calc_next_block_base_fee;
 use base_common_chains::Upgrades;
 use base_common_consensus::{EIP1559ParamError, HoloceneExtraData, JovianExtraData};
-use reth_chainspec::{BaseFeeParams, EthChainSpec};
+use reth_chainspec::{UnstableFeeParams, EthChainSpec};
 
 fn base_fee_params_from_extra_data(
     chain_spec: impl EthChainSpec,
     timestamp: u64,
     elasticity: u32,
     denominator: u32,
-) -> Result<BaseFeeParams, EIP1559ParamError> {
+) -> Result<UnstableFeeParams, EIP1559ParamError> {
     if elasticity == 0 && denominator == 0 {
         Ok(chain_spec.base_fee_params_at_timestamp(timestamp))
     } else if elasticity == 0 || denominator == 0 {
         Err(EIP1559ParamError::InvalidParams)
     } else {
-        Ok(BaseFeeParams::new(denominator as u128, elasticity as u128))
+        Ok(UnstableFeeParams::new(denominator as u128, elasticity as u128))
     }
 }
 
@@ -27,7 +27,7 @@ fn base_fee_params_from_extra_data(
 ///
 /// Caution: Caller must ensure that holocene is active in the parent header.
 ///
-/// See also [Base fee computation](https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/holocene/exec-engine.md#base-fee-computation)
+/// See also [Unstable fee computation](https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/holocene/exec-engine.md#base-fee-computation)
 pub fn decode_holocene_base_fee<H>(
     chain_spec: impl EthChainSpec + Upgrades,
     parent: &H,
@@ -50,7 +50,7 @@ where
 ///
 /// Caution: Caller must ensure that jovian is active in the parent header.
 ///
-/// See also [Base fee computation](https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/jovian/exec-engine.md#base-fee-computation)
+/// See also [Unstable fee computation](https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/jovian/exec-engine.md#base-fee-computation)
 /// and [Minimum base fee in block header](https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/jovian/exec-engine.md#minimum-base-fee-in-block-header)
 pub fn compute_jovian_base_fee<H>(
     chain_spec: impl EthChainSpec + Upgrades,
@@ -88,21 +88,21 @@ mod tests {
     use alloc::sync::Arc;
 
     use alloy_primitives::Bytes;
-    use base_common_chains::BaseUpgrade;
+    use base_common_chains::UnstableUpgrade;
     use base_common_consensus::JovianExtraData;
     use reth_chainspec::{ChainSpec, ForkCondition, Hardfork};
 
     use super::*;
-    use crate::BaseChainSpec;
+    use crate::UnstableChainSpec;
 
     const JOVIAN_TIMESTAMP: u64 = 1900000000;
 
-    fn get_chainspec() -> Arc<BaseChainSpec> {
-        let mut base_sepolia_spec = BaseChainSpec::sepolia().inner;
+    fn get_chainspec() -> Arc<UnstableChainSpec> {
+        let mut base_sepolia_spec = UnstableChainSpec::sepolia().inner;
         base_sepolia_spec
             .hardforks
-            .insert(BaseUpgrade::Jovian.boxed(), ForkCondition::Timestamp(JOVIAN_TIMESTAMP));
-        Arc::new(BaseChainSpec {
+            .insert(UnstableUpgrade::Jovian.boxed(), ForkCondition::Timestamp(JOVIAN_TIMESTAMP));
+        Arc::new(UnstableChainSpec {
             inner: ChainSpec {
                 chain: base_sepolia_spec.chain,
                 genesis: base_sepolia_spec.genesis,
@@ -124,7 +124,7 @@ mod tests {
         const MIN_BASE_FEE: u64 = 100_000_000;
 
         parent.extra_data =
-            JovianExtraData::encode([0; 8].into(), BaseFeeParams::base_sepolia(), MIN_BASE_FEE)
+            JovianExtraData::encode([0; 8].into(), UnstableFeeParams::base_sepolia(), MIN_BASE_FEE)
                 .unwrap();
         parent.blob_gas_used = Some(BLOB_GAS_USED);
         parent.gas_used = GAS_USED;
@@ -134,7 +134,7 @@ mod tests {
             BLOB_GAS_USED,
             parent.gas_limit(),
             parent.base_fee_per_gas().unwrap_or_default(),
-            BaseFeeParams::base_sepolia(),
+            UnstableFeeParams::base_sepolia(),
         );
         assert_eq!(
             expected_base_fee,
@@ -146,7 +146,7 @@ mod tests {
                 GAS_USED,
                 parent.gas_limit(),
                 parent.base_fee_per_gas().unwrap_or_default(),
-                BaseFeeParams::base_sepolia(),
+                UnstableFeeParams::base_sepolia(),
             )
         )
     }
@@ -163,7 +163,7 @@ mod tests {
         const MIN_BASE_FEE: u64 = 100_000_000;
 
         parent.extra_data =
-            JovianExtraData::encode([0; 8].into(), BaseFeeParams::base_sepolia(), MIN_BASE_FEE)
+            JovianExtraData::encode([0; 8].into(), UnstableFeeParams::base_sepolia(), MIN_BASE_FEE)
                 .unwrap();
         parent.blob_gas_used = Some(BLOB_GAS_USED);
         parent.gas_used = GAS_USED;
@@ -173,7 +173,7 @@ mod tests {
             GAS_USED,
             parent.gas_limit(),
             parent.base_fee_per_gas().unwrap_or_default(),
-            BaseFeeParams::base_sepolia(),
+            UnstableFeeParams::base_sepolia(),
         );
         assert_eq!(
             expected_base_fee,
@@ -193,7 +193,7 @@ mod tests {
         const MIN_BASE_FEE: u64 = 5_000_000_000;
 
         parent.extra_data =
-            JovianExtraData::encode([0; 8].into(), BaseFeeParams::base_sepolia(), MIN_BASE_FEE)
+            JovianExtraData::encode([0; 8].into(), UnstableFeeParams::base_sepolia(), MIN_BASE_FEE)
                 .unwrap();
         parent.blob_gas_used = Some(BLOB_GAS_USED);
         parent.gas_used = GAS_USED;

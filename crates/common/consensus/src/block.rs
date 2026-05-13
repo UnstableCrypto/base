@@ -1,6 +1,6 @@
-//! Block type for Base chains.
+//! Block type for Unstable chains.
 
-use crate::BaseTxEnvelope;
+use crate::UnstableTxEnvelope;
 
-/// A block type for Base chains.
-pub type BaseBlock = alloy_consensus::Block<BaseTxEnvelope>;
+/// A block type for Unstable chains.
+pub type UnstableBlock = alloy_consensus::Block<UnstableTxEnvelope>;

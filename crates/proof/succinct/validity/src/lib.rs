@@ -1,4 +1,4 @@
-//! Validity proof proposer for Base using SP1 zero-knowledge proofs.
+//! Validity proof proposer for Unstable using SP1 zero-knowledge proofs.
 
 #![recursion_limit = "256"]
 

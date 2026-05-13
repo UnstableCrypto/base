@@ -8,11 +8,11 @@ use alloy_provider::{Provider, RootProvider};
 use alloy_rpc_client::RpcClient;
 use alloy_rpc_types::BlockNumberOrTag;
 use alloy_rpc_types_engine::PayloadAttributes;
-use base_common_consensus::BaseBlock;
-use base_common_network::Base;
+use base_common_consensus::UnstableBlock;
+use base_common_network::Unstable;
 use base_common_rpc_types::GenesisInfo;
-use base_common_rpc_types_engine::BasePayloadAttributes;
-use base_execution_chainspec::BaseChainSpec;
+use base_common_rpc_types_engine::UnstablePayloadAttributes;
+use base_execution_chainspec::UnstableChainSpec;
 use base_test_utils::build_test_genesis;
 use eyre::{Result, eyre};
 use reth_primitives_traits::{Block as BlockT, RecoveredBlock};
@@ -20,7 +20,7 @@ use reth_provider::{BlockNumReader, BlockReader, ChainSpecProvider};
 use tokio::time::sleep;
 
 use crate::{
-    BaseNodeExtension, FromExtensionConfig,
+    UnstableNodeExtension, FromExtensionConfig,
     test_utils::{
         BLOCK_BUILD_DELAY_MS, BLOCK_TIME_SECONDS, GAS_LIMIT, L1_BLOCK_INFO_DEPOSIT_TX,
         NODE_STARTUP_DELAY_MS,
@@ -43,8 +43,8 @@ pub struct PreparedBlock {
 /// Builder for configuring and launching a test harness.
 #[derive(Debug, Default)]
 pub struct TestHarnessBuilder {
-    extensions: Vec<Box<dyn BaseNodeExtension>>,
-    chain_spec: Option<Arc<BaseChainSpec>>,
+    extensions: Vec<Box<dyn UnstableNodeExtension>>,
+    chain_spec: Option<Arc<UnstableChainSpec>>,
 }
 
 impl TestHarnessBuilder {
@@ -62,7 +62,7 @@ impl TestHarnessBuilder {
     /// Add a pre-constructed extension to be applied during node launch.
     ///
     /// Prefer [`with_ext`](Self::with_ext) for simpler configuration.
-    pub fn with_extension(mut self, ext: impl BaseNodeExtension + 'static) -> Self {
+    pub fn with_extension(mut self, ext: impl UnstableNodeExtension + 'static) -> Self {
         self.extensions.push(Box::new(ext));
         self
     }
@@ -70,7 +70,7 @@ impl TestHarnessBuilder {
     /// Set a custom chain spec for the test harness.
     ///
     /// If not provided, the default genesis is built programmatically.
-    pub fn with_chain_spec(mut self, chain_spec: Arc<BaseChainSpec>) -> Self {
+    pub fn with_chain_spec(mut self, chain_spec: Arc<UnstableChainSpec>) -> Self {
         self.chain_spec = Some(chain_spec);
         self
     }
@@ -81,7 +81,7 @@ impl TestHarnessBuilder {
 
         let chain_spec = self.chain_spec.unwrap_or_else(|| {
             let genesis = build_test_genesis();
-            Arc::new(BaseChainSpec::from_genesis(genesis))
+            Arc::new(UnstableChainSpec::from_genesis(genesis))
         });
 
         let node = LocalNode::new(self.extensions, chain_spec).await?;
@@ -118,8 +118,8 @@ impl TestHarness {
         Self { node, engine }
     }
 
-    /// Return a Base JSON-RPC provider connected to the harness node.
-    pub fn provider(&self) -> RootProvider<Base> {
+    /// Return a Unstable JSON-RPC provider connected to the harness node.
+    pub fn provider(&self) -> RootProvider<Unstable> {
         self.node.provider().expect("provider should always be available after node initialization")
     }
 
@@ -180,7 +180,7 @@ impl TestHarness {
         let eip_1559_params = ((base_fee_params.max_change_denominator as u64) << 32)
             | (base_fee_params.elasticity_multiplier as u64);
 
-        let payload_attributes = BasePayloadAttributes {
+        let payload_attributes = UnstablePayloadAttributes {
             payload_attributes: PayloadAttributes {
                 timestamp: next_timestamp,
                 parent_beacon_block_root: Some(parent_beacon_block_root),
@@ -258,7 +258,7 @@ impl TestHarness {
     }
 
     /// Return the latest recovered block as seen by the local blockchain provider.
-    pub fn latest_block(&self) -> RecoveredBlock<BaseBlock> {
+    pub fn latest_block(&self) -> RecoveredBlock<UnstableBlock> {
         let provider = self.blockchain_provider();
         let best_number = provider.best_block_number().expect("able to read best block number");
         let block = provider
@@ -269,7 +269,7 @@ impl TestHarness {
     }
 
     /// Return the chain specification used by the harness.
-    pub fn chain_spec(&self) -> Arc<BaseChainSpec> {
+    pub fn chain_spec(&self) -> Arc<UnstableChainSpec> {
         self.node.blockchain_provider().chain_spec()
     }
 

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use alloy_genesis::ChainConfig;
 use alloy_provider::RootProvider;
 use base_common_genesis::RollupConfig;
-use base_common_network::Base;
+use base_common_network::Unstable;
 use base_consensus_providers::{OnlineBeaconClient, OnlineBlobProvider};
 use base_proof_primitives::ProofRequest;
 use serde::Serialize;
@@ -16,7 +16,7 @@ pub struct HostProviders {
     /// The L1 beacon node provider.
     pub blobs: OnlineBlobProvider<OnlineBeaconClient>,
     /// The L2 EL provider.
-    pub l2: RootProvider<Base>,
+    pub l2: RootProvider<Unstable>,
 }
 
 /// Static infrastructure config — set once at startup, reused across proofs.

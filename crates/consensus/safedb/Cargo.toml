@@ -1,6 +1,6 @@
 [package]
 name = "base-consensus-safedb"
-description = "Persistent safe head tracking for Base"
+description = "Persistent safe head tracking for Unstable"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -13,8 +13,8 @@ use alloy_rpc_types_engine::{ForkchoiceUpdated, PayloadId, PayloadStatus, Payloa
 use alloy_rpc_types_eth::Block as RpcBlock;
 use async_trait::async_trait;
 use base_common_genesis::RollupConfig;
-use base_common_rpc_types::Transaction as BaseTransaction;
-use base_common_rpc_types_engine::BasePayloadAttributes;
+use base_common_rpc_types::Transaction as UnstableTransaction;
+use base_common_rpc_types_engine::UnstablePayloadAttributes;
 use base_consensus_engine::{
     DelegatedForkchoiceUpdate, Engine, EngineQueries,
     test_utils::{TestEngineStateBuilder, test_block_info, test_engine_client_builder},
@@ -69,8 +69,8 @@ const fn syncing_fcu() -> ForkchoiceUpdated {
     }
 }
 
-fn mismatched_block(number: u64) -> RpcBlock<BaseTransaction> {
-    let mut block = RpcBlock::<BaseTransaction>::default();
+fn mismatched_block(number: u64) -> RpcBlock<UnstableTransaction> {
+    let mut block = RpcBlock::<UnstableTransaction>::default();
     block.header.hash = B256::from([0xabu8; 32]);
     block.header.inner.number = number;
     block.header.inner.timestamp = number * 2;
@@ -222,7 +222,7 @@ async fn full_public_rpc_queue_does_not_block_engine_processing_requests() {
 
     let (payload_id_tx, mut payload_id_rx) = mpsc::channel(1);
     let attributes = AttributesWithParent::new(
-        BasePayloadAttributes::default(),
+        UnstablePayloadAttributes::default(),
         L2BlockInfo::default(),
         None,
         true,

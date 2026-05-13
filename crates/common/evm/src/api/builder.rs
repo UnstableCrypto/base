@@ -1,4 +1,4 @@
-//! [`Builder`] trait for constructing a [`BaseEvm`] directly from a [`BaseContext`].
+//! [`Builder`] trait for constructing a [`UnstableEvm`] directly from a [`UnstableContext`].
 use alloy_evm::Database;
 use revm::{
     context::FrameStack,
@@ -6,53 +6,53 @@ use revm::{
     interpreter::interpreter::EthInterpreter,
 };
 
-use crate::{BaseContext, BaseEvm, BasePrecompiles, BaseSpecId};
+use crate::{UnstableContext, UnstableEvm, UnstablePrecompiles, UnstableSpecId};
 
-/// Trait that allows constructing a [`BaseEvm`] from a [`BaseContext`].
+/// Trait that allows constructing a [`UnstableEvm`] from a [`UnstableContext`].
 ///
-/// Implemented for [`BaseContext<DB>`] of any database. The resulting [`BaseEvm`]
-/// uses [`BasePrecompiles`] for the active [`BaseSpecId`]; call
-/// [`BaseEvm::with_precompiles`] afterwards to substitute a custom precompile set.
+/// Implemented for [`UnstableContext<DB>`] of any database. The resulting [`UnstableEvm`]
+/// uses [`UnstablePrecompiles`] for the active [`UnstableSpecId`]; call
+/// [`UnstableEvm::with_precompiles`] afterwards to substitute a custom precompile set.
 pub trait Builder: Sized {
     /// The database type of the context.
     type Db: Database;
 
-    /// Builds a [`BaseEvm`] with a `()` inspector. The inspect flag is `false`,
+    /// Builds a [`UnstableEvm`] with a `()` inspector. The inspect flag is `false`,
     /// so [`Inspector`][revm::Inspector] callbacks are never invoked via
     /// [`alloy_evm::Evm::transact`].
-    fn build_base(self) -> BaseEvm<Self::Db, ()>;
+    fn build_base(self) -> UnstableEvm<Self::Db, ()>;
 
-    /// Builds a [`BaseEvm`] with the given inspector. The inspect flag is `true`,
+    /// Builds a [`UnstableEvm`] with the given inspector. The inspect flag is `true`,
     /// so [`Inspector`][revm::Inspector] callbacks are invoked on every
     /// [`alloy_evm::Evm::transact`] call.
-    fn build_with_inspector<INSP>(self, inspector: INSP) -> BaseEvm<Self::Db, INSP>;
+    fn build_with_inspector<INSP>(self, inspector: INSP) -> UnstableEvm<Self::Db, INSP>;
 }
 
-impl<DB: Database> Builder for BaseContext<DB> {
+impl<DB: Database> Builder for UnstableContext<DB> {
     type Db = DB;
 
-    fn build_base(self) -> BaseEvm<DB, ()> {
-        let spec: BaseSpecId = self.cfg.spec;
-        BaseEvm::new(
+    fn build_base(self) -> UnstableEvm<DB, ()> {
+        let spec: UnstableSpecId = self.cfg.spec;
+        UnstableEvm::new(
             revm::context::Evm {
                 ctx: self,
                 inspector: (),
                 instruction: EthInstructions::new_mainnet_with_spec(spec.into()),
-                precompiles: BasePrecompiles::new_with_spec(spec),
+                precompiles: UnstablePrecompiles::new_with_spec(spec),
                 frame_stack: FrameStack::<EthFrame<EthInterpreter>>::new_prealloc(8),
             },
             false,
         )
     }
 
-    fn build_with_inspector<INSP>(self, inspector: INSP) -> BaseEvm<DB, INSP> {
-        let spec: BaseSpecId = self.cfg.spec;
-        BaseEvm::new(
+    fn build_with_inspector<INSP>(self, inspector: INSP) -> UnstableEvm<DB, INSP> {
+        let spec: UnstableSpecId = self.cfg.spec;
+        UnstableEvm::new(
             revm::context::Evm {
                 ctx: self,
                 inspector,
                 instruction: EthInstructions::new_mainnet_with_spec(spec.into()),
-                precompiles: BasePrecompiles::new_with_spec(spec),
+                precompiles: UnstablePrecompiles::new_with_spec(spec),
                 frame_stack: FrameStack::<EthFrame<EthInterpreter>>::new_prealloc(8),
             },
             true,

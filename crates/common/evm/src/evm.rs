@@ -23,59 +23,59 @@ use revm::{
 };
 
 use crate::{
-    BaseContext, BaseHaltReason, BasePrecompiles, BaseSpecId, BaseTransaction,
-    BaseTransactionError, handler::BaseHandler,
+    UnstableContext, UnstableHaltReason, UnstablePrecompiles, UnstableSpecId, UnstableTransaction,
+    UnstableTransactionError, handler::UnstableHandler,
 };
 
-/// Type alias for the inner [`RevmEvm`] parameterized with Base-specific context and fixed
-/// [`EthInstructions`] / [`EthFrame`], keeping [`BaseEvm`] field and constructor signatures tidy.
+/// Type alias for the inner [`RevmEvm`] parameterized with Unstable-specific context and fixed
+/// [`EthInstructions`] / [`EthFrame`], keeping [`UnstableEvm`] field and constructor signatures tidy.
 type InnerEvm<DB, I, P> = RevmEvm<
-    BaseContext<DB>,
+    UnstableContext<DB>,
     I,
-    EthInstructions<EthInterpreter, BaseContext<DB>>,
+    EthInstructions<EthInterpreter, UnstableContext<DB>>,
     P,
     EthFrame<EthInterpreter>,
 >;
 
-/// The Base EVM, wrapping [`RevmEvm`] with a [`BaseContext`] and an optional [`Inspector`].
+/// The Unstable EVM, wrapping [`RevmEvm`] with a [`UnstableContext`] and an optional [`Inspector`].
 ///
 /// Parameterized over a database [`DB`], inspector [`I`], and precompile set [`P`]
-/// (defaulting to [`BasePrecompiles`]). All Base-specific context configuration —
-/// [`BaseSpecId`], [`BaseTransaction`], and [`crate::L1BlockInfo`] — is fixed by [`BaseContext`].
+/// (defaulting to [`UnstablePrecompiles`]). All Unstable-specific context configuration —
+/// [`UnstableSpecId`], [`UnstableTransaction`], and [`crate::L1BlockInfo`] — is fixed by [`UnstableContext`].
 ///
 /// The `inspect` flag controls whether [`Inspector`] callbacks are invoked during
 /// [`Evm::transact`]. When `false`, the inspector is present in the type but silent,
 /// enabling zero-cost tracing toggling at runtime without type changes.
 #[allow(missing_debug_implementations)] // revm::Context does not implement Debug
-pub struct BaseEvm<DB: Database, I, P = BasePrecompiles> {
-    /// Inner revm EVM with Base-specific context, fixed [`EthInstructions`] and
+pub struct UnstableEvm<DB: Database, I, P = UnstablePrecompiles> {
+    /// Inner revm EVM with Unstable-specific context, fixed [`EthInstructions`] and
     /// [`EthFrame`], and generic precompile set [`P`].
     pub(crate) inner: InnerEvm<DB, I, P>,
     /// Whether to invoke the [`Inspector`] on each [`Evm::transact`] call.
     pub(crate) inspect: bool,
 }
 
-impl<DB: Database, I, P> BaseEvm<DB, I, P> {
-    /// Constructs a [`BaseEvm`] from a pre-built [`RevmEvm`] and an inspect flag.
+impl<DB: Database, I, P> UnstableEvm<DB, I, P> {
+    /// Constructs a [`UnstableEvm`] from a pre-built [`RevmEvm`] and an inspect flag.
     ///
     /// Prefer [`crate::Builder::build_base`] or [`crate::Builder::build_with_inspector`]
-    /// to construct from a [`BaseContext`] directly.
+    /// to construct from a [`UnstableContext`] directly.
     pub const fn new(inner: InnerEvm<DB, I, P>, inspect: bool) -> Self {
         Self { inner, inspect }
     }
 
-    /// Returns a reference to the underlying [`BaseContext`].
-    pub const fn ctx(&self) -> &BaseContext<DB> {
+    /// Returns a reference to the underlying [`UnstableContext`].
+    pub const fn ctx(&self) -> &UnstableContext<DB> {
         &self.inner.ctx
     }
 
-    /// Returns a mutable reference to the underlying [`BaseContext`].
-    pub const fn ctx_mut(&mut self) -> &mut BaseContext<DB> {
+    /// Returns a mutable reference to the underlying [`UnstableContext`].
+    pub const fn ctx_mut(&mut self) -> &mut UnstableContext<DB> {
         &mut self.inner.ctx
     }
 
-    /// Consumes `self` and returns the underlying [`BaseContext`].
-    pub fn into_context(self) -> BaseContext<DB> {
+    /// Consumes `self` and returns the underlying [`UnstableContext`].
+    pub fn into_context(self) -> UnstableContext<DB> {
         self.inner.ctx
     }
 
@@ -84,22 +84,22 @@ impl<DB: Database, I, P> BaseEvm<DB, I, P> {
         self.inner.inspector
     }
 
-    /// Consumes `self` and returns a new [`BaseEvm`] with the given inspector, preserving
+    /// Consumes `self` and returns a new [`UnstableEvm`] with the given inspector, preserving
     /// the inspect flag. Used to swap inspectors without rebuilding from context.
-    pub fn with_inspector<J>(self, inspector: J) -> BaseEvm<DB, J, P> {
-        BaseEvm { inner: self.inner.with_inspector(inspector), inspect: self.inspect }
+    pub fn with_inspector<J>(self, inspector: J) -> UnstableEvm<DB, J, P> {
+        UnstableEvm { inner: self.inner.with_inspector(inspector), inspect: self.inspect }
     }
 
-    /// Consumes `self` and returns a new [`BaseEvm`] with the given precompile set,
-    /// preserving the inspect flag. Used to substitute [`BasePrecompiles`] with
+    /// Consumes `self` and returns a new [`UnstableEvm`] with the given precompile set,
+    /// preserving the inspect flag. Used to substitute [`UnstablePrecompiles`] with
     /// custom implementations such as FPVM-accelerated precompiles in the proof system.
-    pub fn with_precompiles<Q>(self, precompiles: Q) -> BaseEvm<DB, I, Q> {
-        BaseEvm { inner: self.inner.with_precompiles(precompiles), inspect: self.inspect }
+    pub fn with_precompiles<Q>(self, precompiles: Q) -> UnstableEvm<DB, I, Q> {
+        UnstableEvm { inner: self.inner.with_precompiles(precompiles), inspect: self.inspect }
     }
 }
 
-impl<DB: Database, I, P> Deref for BaseEvm<DB, I, P> {
-    type Target = BaseContext<DB>;
+impl<DB: Database, I, P> Deref for UnstableEvm<DB, I, P> {
+    type Target = UnstableContext<DB>;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -107,20 +107,20 @@ impl<DB: Database, I, P> Deref for BaseEvm<DB, I, P> {
     }
 }
 
-impl<DB: Database, I, P> DerefMut for BaseEvm<DB, I, P> {
+impl<DB: Database, I, P> DerefMut for UnstableEvm<DB, I, P> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.ctx_mut()
     }
 }
 
-impl<DB, I, P> EvmTr for BaseEvm<DB, I, P>
+impl<DB, I, P> EvmTr for UnstableEvm<DB, I, P>
 where
     DB: Database,
-    P: PrecompileProvider<BaseContext<DB>, Output = InterpreterResult>,
+    P: PrecompileProvider<UnstableContext<DB>, Output = InterpreterResult>,
 {
-    type Context = BaseContext<DB>;
-    type Instructions = EthInstructions<EthInterpreter, BaseContext<DB>>;
+    type Context = UnstableContext<DB>;
+    type Instructions = EthInstructions<EthInterpreter, UnstableContext<DB>>;
     type Precompiles = P;
     type Frame = EthFrame<EthInterpreter>;
 
@@ -165,12 +165,12 @@ where
     }
 }
 
-impl<DB, I, P> InspectorEvmTr for BaseEvm<DB, I, P>
+impl<DB, I, P> InspectorEvmTr for UnstableEvm<DB, I, P>
 where
     DB: Database,
-    BaseContext<DB>: ContextTr<Journal: JournalExt> + ContextSetters,
-    I: Inspector<BaseContext<DB>>,
-    P: PrecompileProvider<BaseContext<DB>, Output = InterpreterResult>,
+    UnstableContext<DB>: ContextTr<Journal: JournalExt> + ContextSetters,
+    I: Inspector<UnstableContext<DB>>,
+    P: PrecompileProvider<UnstableContext<DB>, Output = InterpreterResult>,
 {
     type Inspector = I;
 
@@ -201,19 +201,19 @@ where
     }
 }
 
-impl<DB, I, P> ExecuteEvm for BaseEvm<DB, I, P>
+impl<DB, I, P> ExecuteEvm for UnstableEvm<DB, I, P>
 where
     DB: Database,
-    BaseContext<DB>: crate::BaseContextTr
+    UnstableContext<DB>: crate::UnstableContextTr
         + ContextSetters
-        + ContextTr<Db = DB, Tx = BaseTransaction<TxEnv>, Block = BlockEnv>,
-    P: PrecompileProvider<BaseContext<DB>, Output = InterpreterResult>,
+        + ContextTr<Db = DB, Tx = UnstableTransaction<TxEnv>, Block = BlockEnv>,
+    P: PrecompileProvider<UnstableContext<DB>, Output = InterpreterResult>,
 {
-    type Tx = BaseTransaction<TxEnv>;
+    type Tx = UnstableTransaction<TxEnv>;
     type Block = BlockEnv;
     type State = EvmState;
-    type Error = EVMError<DB::Error, BaseTransactionError>;
-    type ExecutionResult = ExecutionResult<BaseHaltReason>;
+    type Error = EVMError<DB::Error, UnstableTransactionError>;
+    type ExecutionResult = ExecutionResult<UnstableHaltReason>;
 
     fn set_block(&mut self, block: Self::Block) {
         self.inner.ctx.set_block(block);
@@ -221,7 +221,7 @@ where
 
     fn transact_one(&mut self, tx: Self::Tx) -> Result<Self::ExecutionResult, Self::Error> {
         self.inner.ctx.set_tx(tx);
-        let mut h = BaseHandler::<_, _, EthFrame<EthInterpreter>>::new();
+        let mut h = UnstableHandler::<_, _, EthFrame<EthInterpreter>>::new();
         h.run(self)
     }
 
@@ -232,7 +232,7 @@ where
     fn replay(
         &mut self,
     ) -> Result<ExecResultAndState<Self::ExecutionResult, Self::State>, Self::Error> {
-        let mut h = BaseHandler::<_, _, EthFrame<EthInterpreter>>::new();
+        let mut h = UnstableHandler::<_, _, EthFrame<EthInterpreter>>::new();
         h.run(self).map(|result| {
             let state = self.finalize();
             ExecResultAndState::new(result, state)
@@ -240,27 +240,27 @@ where
     }
 }
 
-impl<DB, I, P> ExecuteCommitEvm for BaseEvm<DB, I, P>
+impl<DB, I, P> ExecuteCommitEvm for UnstableEvm<DB, I, P>
 where
     DB: Database + DatabaseCommit,
-    BaseContext<DB>: crate::BaseContextTr
+    UnstableContext<DB>: crate::UnstableContextTr
         + ContextSetters
-        + ContextTr<Db = DB, Tx = BaseTransaction<TxEnv>, Block = BlockEnv>,
-    P: PrecompileProvider<BaseContext<DB>, Output = InterpreterResult>,
+        + ContextTr<Db = DB, Tx = UnstableTransaction<TxEnv>, Block = BlockEnv>,
+    P: PrecompileProvider<UnstableContext<DB>, Output = InterpreterResult>,
 {
     fn commit(&mut self, state: Self::State) {
         self.inner.ctx.db_mut().commit(state);
     }
 }
 
-impl<DB, I, P> InspectEvm for BaseEvm<DB, I, P>
+impl<DB, I, P> InspectEvm for UnstableEvm<DB, I, P>
 where
     DB: Database,
-    BaseContext<DB>: crate::BaseContextTr<Journal: JournalExt>
+    UnstableContext<DB>: crate::UnstableContextTr<Journal: JournalExt>
         + ContextSetters
-        + ContextTr<Db = DB, Tx = BaseTransaction<TxEnv>, Block = BlockEnv>,
-    I: Inspector<BaseContext<DB>>,
-    P: PrecompileProvider<BaseContext<DB>, Output = InterpreterResult>,
+        + ContextTr<Db = DB, Tx = UnstableTransaction<TxEnv>, Block = BlockEnv>,
+    I: Inspector<UnstableContext<DB>>,
+    P: PrecompileProvider<UnstableContext<DB>, Output = InterpreterResult>,
 {
     type Inspector = I;
 
@@ -270,29 +270,29 @@ where
 
     fn inspect_one_tx(&mut self, tx: Self::Tx) -> Result<Self::ExecutionResult, Self::Error> {
         self.inner.ctx.set_tx(tx);
-        let mut h = BaseHandler::<_, _, EthFrame<EthInterpreter>>::new();
+        let mut h = UnstableHandler::<_, _, EthFrame<EthInterpreter>>::new();
         h.inspect_run(self)
     }
 }
 
-impl<DB, I, P> InspectCommitEvm for BaseEvm<DB, I, P>
+impl<DB, I, P> InspectCommitEvm for UnstableEvm<DB, I, P>
 where
     DB: Database + DatabaseCommit,
-    BaseContext<DB>: crate::BaseContextTr<Journal: JournalExt>
+    UnstableContext<DB>: crate::UnstableContextTr<Journal: JournalExt>
         + ContextSetters
-        + ContextTr<Db = DB, Tx = BaseTransaction<TxEnv>, Block = BlockEnv>,
-    I: Inspector<BaseContext<DB>>,
-    P: PrecompileProvider<BaseContext<DB>, Output = InterpreterResult>,
+        + ContextTr<Db = DB, Tx = UnstableTransaction<TxEnv>, Block = BlockEnv>,
+    I: Inspector<UnstableContext<DB>>,
+    P: PrecompileProvider<UnstableContext<DB>, Output = InterpreterResult>,
 {
 }
 
-impl<DB, I, P> SystemCallEvm for BaseEvm<DB, I, P>
+impl<DB, I, P> SystemCallEvm for UnstableEvm<DB, I, P>
 where
     DB: Database,
-    BaseContext<DB>: crate::BaseContextTr<Tx: SystemCallTx>
+    UnstableContext<DB>: crate::UnstableContextTr<Tx: SystemCallTx>
         + ContextSetters
-        + ContextTr<Db = DB, Tx = BaseTransaction<TxEnv>, Block = BlockEnv>,
-    P: PrecompileProvider<BaseContext<DB>, Output = InterpreterResult>,
+        + ContextTr<Db = DB, Tx = UnstableTransaction<TxEnv>, Block = BlockEnv>,
+    P: PrecompileProvider<UnstableContext<DB>, Output = InterpreterResult>,
 {
     fn system_call_one_with_caller(
         &mut self,
@@ -300,12 +300,12 @@ where
         system_contract_address: Address,
         data: Bytes,
     ) -> Result<Self::ExecutionResult, Self::Error> {
-        self.inner.ctx.set_tx(<BaseContext<DB> as ContextTr>::Tx::new_system_tx_with_caller(
+        self.inner.ctx.set_tx(<UnstableContext<DB> as ContextTr>::Tx::new_system_tx_with_caller(
             caller,
             system_contract_address,
             data,
         ));
-        let mut h = BaseHandler::<_, _, EthFrame<EthInterpreter>>::new();
+        let mut h = UnstableHandler::<_, _, EthFrame<EthInterpreter>>::new();
 
         // load caller account into the journal (necessary for Geth proofs compatibility)
         // remove once https://github.com/bluealloy/revm/issues/3484 is fixed
@@ -315,14 +315,14 @@ where
     }
 }
 
-impl<DB, I, P> InspectSystemCallEvm for BaseEvm<DB, I, P>
+impl<DB, I, P> InspectSystemCallEvm for UnstableEvm<DB, I, P>
 where
     DB: Database,
-    BaseContext<DB>: crate::BaseContextTr<Journal: JournalExt, Tx: SystemCallTx>
+    UnstableContext<DB>: crate::UnstableContextTr<Journal: JournalExt, Tx: SystemCallTx>
         + ContextSetters
-        + ContextTr<Db = DB, Tx = BaseTransaction<TxEnv>, Block = BlockEnv>,
-    I: Inspector<BaseContext<DB>>,
-    P: PrecompileProvider<BaseContext<DB>, Output = InterpreterResult>,
+        + ContextTr<Db = DB, Tx = UnstableTransaction<TxEnv>, Block = BlockEnv>,
+    I: Inspector<UnstableContext<DB>>,
+    P: PrecompileProvider<UnstableContext<DB>, Output = InterpreterResult>,
 {
     fn inspect_one_system_call_with_caller(
         &mut self,
@@ -330,12 +330,12 @@ where
         system_contract_address: Address,
         data: Bytes,
     ) -> Result<Self::ExecutionResult, Self::Error> {
-        self.inner.ctx.set_tx(<BaseContext<DB> as ContextTr>::Tx::new_system_tx_with_caller(
+        self.inner.ctx.set_tx(<UnstableContext<DB> as ContextTr>::Tx::new_system_tx_with_caller(
             caller,
             system_contract_address,
             data,
         ));
-        let mut h = BaseHandler::<_, _, EthFrame<EthInterpreter>>::new();
+        let mut h = UnstableHandler::<_, _, EthFrame<EthInterpreter>>::new();
 
         // load caller account into the journal (necessary for Geth proofs compatibility)
         // remove once https://github.com/bluealloy/revm/issues/3484 is fixed
@@ -345,20 +345,20 @@ where
     }
 }
 
-impl<DB, I, P> Evm for BaseEvm<DB, I, P>
+impl<DB, I, P> Evm for UnstableEvm<DB, I, P>
 where
     DB: Database,
-    I: Inspector<BaseContext<DB>>,
-    P: PrecompileProvider<BaseContext<DB>, Output = InterpreterResult>,
-    BaseContext<DB>: crate::BaseContextTr
+    I: Inspector<UnstableContext<DB>>,
+    P: PrecompileProvider<UnstableContext<DB>, Output = InterpreterResult>,
+    UnstableContext<DB>: crate::UnstableContextTr
         + ContextSetters
-        + ContextTr<Db = DB, Tx = BaseTransaction<TxEnv>, Block = BlockEnv, Journal: JournalExt>,
+        + ContextTr<Db = DB, Tx = UnstableTransaction<TxEnv>, Block = BlockEnv, Journal: JournalExt>,
 {
     type DB = DB;
-    type Tx = BaseTransaction<TxEnv>;
-    type Error = EVMError<DB::Error, BaseTransactionError>;
-    type HaltReason = BaseHaltReason;
-    type Spec = BaseSpecId;
+    type Tx = UnstableTransaction<TxEnv>;
+    type Error = EVMError<DB::Error, UnstableTransactionError>;
+    type HaltReason = UnstableHaltReason;
+    type Spec = UnstableSpecId;
     type BlockEnv = BlockEnv;
     type Precompiles = P;
     type Inspector = I;

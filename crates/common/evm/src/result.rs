@@ -1,29 +1,29 @@
-//! Contains the `[BaseHaltReason]` type.
+//! Contains the `[UnstableHaltReason]` type.
 use revm::context_interface::result::HaltReason;
 
-/// Base halt reason.
+/// Unstable halt reason.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum BaseHaltReason {
-    /// Base halt reason.
-    Base(HaltReason),
+pub enum UnstableHaltReason {
+    /// Unstable halt reason.
+    Unstable(HaltReason),
     /// Failed deposit halt reason.
     FailedDeposit,
 }
 
-impl From<HaltReason> for BaseHaltReason {
+impl From<HaltReason> for UnstableHaltReason {
     fn from(value: HaltReason) -> Self {
-        Self::Base(value)
+        Self::Unstable(value)
     }
 }
 
-impl TryFrom<BaseHaltReason> for HaltReason {
-    type Error = BaseHaltReason;
+impl TryFrom<UnstableHaltReason> for HaltReason {
+    type Error = UnstableHaltReason;
 
-    fn try_from(value: BaseHaltReason) -> Result<Self, BaseHaltReason> {
+    fn try_from(value: UnstableHaltReason) -> Result<Self, UnstableHaltReason> {
         match value {
-            BaseHaltReason::Base(reason) => Ok(reason),
-            BaseHaltReason::FailedDeposit => Err(value),
+            UnstableHaltReason::Unstable(reason) => Ok(reason),
+            UnstableHaltReason::FailedDeposit => Err(value),
         }
     }
 }
@@ -36,9 +36,9 @@ mod tests {
 
     #[test]
     fn test_serialize_json_base_halt_reason() {
-        let response = r#"{"Base":{"OutOfGas":"Basic"}}"#;
+        let response = r#"{"Unstable":{"OutOfGas":"Basic"}}"#;
 
-        let base_halt_reason: BaseHaltReason = serde_json::from_str(response).unwrap();
+        let base_halt_reason: UnstableHaltReason = serde_json::from_str(response).unwrap();
         assert_eq!(base_halt_reason, HaltReason::OutOfGas(OutOfGasError::Basic).into());
     }
 }

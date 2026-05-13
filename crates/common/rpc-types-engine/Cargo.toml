@@ -1,6 +1,6 @@
 [package]
 name = "base-common-rpc-types-engine"
-description = "Base RPC types for the `engine` namespace"
+description = "Unstable RPC types for the `engine` namespace"
 
 version.workspace = true
 edition.workspace = true

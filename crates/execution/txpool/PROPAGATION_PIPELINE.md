@@ -21,7 +21,7 @@ to builder nodes via a custom RPC, replacing P2P propagation.
 ```
 
 Mempool nodes use `TimestampOrdering` (FIFO) for the consumer iterator.
-Builder nodes use `CoinbaseTipOrdering` (priority fee) for block building.
+Builder nodes use `TheAlxLabsTipOrdering` (priority fee) for block building.
 
 ---
 
@@ -119,7 +119,7 @@ RPC endpoint on builder nodes to receive forwarded transactions.
 
 ```rust
 #[rpc(server, namespace = "base")]
-pub trait BaseTxApi {
+pub trait UnstableTxApi {
     #[method(name = "insertValidatedTransaction")]
     async fn insert_validated_transaction(
         &self,
@@ -143,7 +143,7 @@ pub trait BaseTxApi {
 
 **Crate:** New `crates/execution/tx-forwarding/` extension crate
 
-Wires consumer + forwarder into the node using the `BaseNodeExtension` pattern.
+Wires consumer + forwarder into the node using the `UnstableNodeExtension` pattern.
 
 ### CLI Flags
 
@@ -158,7 +158,7 @@ Wires consumer + forwarder into the node using the `BaseNodeExtension` pattern.
 ### Extension Pattern
 
 ```rust
-impl BaseNodeExtension for TxForwardingExtension {
+impl UnstableNodeExtension for TxForwardingExtension {
     fn apply(self: Box<Self>, hooks: NodeHooks) -> NodeHooks {
         hooks.add_rpc_module(move |ctx| {
             let pool = ctx.pool().clone();

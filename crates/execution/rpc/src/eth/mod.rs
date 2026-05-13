@@ -1,4 +1,4 @@
-//! Base `eth_` endpoint implementation.
+//! Unstable `eth_` endpoint implementation.
 
 pub mod proofs;
 pub mod receipt;
@@ -15,9 +15,9 @@ use std::{
 };
 
 use alloy_primitives::U256;
-use base_common_network::Base;
+use base_common_network::Unstable;
 use eyre::WrapErr;
-pub use receipt::{BaseReceiptBuilder, ReceiptFieldsBuilder};
+pub use receipt::{UnstableReceiptBuilder, ReceiptFieldsBuilder};
 use reth_chainspec::{EthereumHardforks, Hardforks};
 use reth_evm::ConfigureEvm;
 use reth_node_api::{FullNodeComponents, FullNodeTypes, HeaderTy, NodeTypes};
@@ -39,49 +39,49 @@ use reth_tasks::{
 };
 
 use crate::{
-    BaseEthApiError, SequencerClient,
-    eth::{receipt::BaseReceiptConverter, transaction::BaseTxInfoMapper},
+    UnstableEthApiError, SequencerClient,
+    eth::{receipt::UnstableReceiptConverter, transaction::UnstableTxInfoMapper},
 };
 
 /// Adapter for [`EthApiInner`], which holds all the data required to serve core `eth_` API.
 pub type EthApiNodeBackend<N, Rpc> = EthApiInner<N, Rpc>;
 
-/// Base `Eth` API implementation.
+/// Unstable `Eth` API implementation.
 ///
 /// This type provides the functionality for handling `eth_` related requests.
 ///
 /// This wraps a default `Eth` implementation, and provides additional functionality where the
-/// Base spec deviates from the default (ethereum) spec, e.g. transaction forwarding to the
+/// Unstable spec deviates from the default (ethereum) spec, e.g. transaction forwarding to the
 /// sequencer, receipts, additional RPC fields for transaction receipts.
 ///
 /// This type implements the [`FullEthApi`](reth_rpc_eth_api::helpers::FullEthApi) by implemented
 /// all the `Eth` helper traits and prerequisite traits.
-pub struct BaseEthApi<N: RpcNodeCore, Rpc: RpcConvert> {
+pub struct UnstableEthApi<N: RpcNodeCore, Rpc: RpcConvert> {
     /// Gateway to node's core components.
-    inner: Arc<BaseEthApiInner<N, Rpc>>,
+    inner: Arc<UnstableEthApiInner<N, Rpc>>,
 }
 
-impl<N: RpcNodeCore, Rpc: RpcConvert> Clone for BaseEthApi<N, Rpc> {
+impl<N: RpcNodeCore, Rpc: RpcConvert> Clone for UnstableEthApi<N, Rpc> {
     fn clone(&self) -> Self {
         Self { inner: Arc::clone(&self.inner) }
     }
 }
 
-impl<N: RpcNodeCore, Rpc: RpcConvert> BaseEthApi<N, Rpc> {
-    /// Creates a new `BaseEthApi`.
+impl<N: RpcNodeCore, Rpc: RpcConvert> UnstableEthApi<N, Rpc> {
+    /// Creates a new `UnstableEthApi`.
     pub fn new(
         eth_api: EthApiNodeBackend<N, Rpc>,
         sequencer_client: Option<SequencerClient>,
         min_suggested_priority_fee: U256,
     ) -> Self {
         let inner =
-            Arc::new(BaseEthApiInner { eth_api, sequencer_client, min_suggested_priority_fee });
+            Arc::new(UnstableEthApiInner { eth_api, sequencer_client, min_suggested_priority_fee });
         Self { inner }
     }
 
-    /// Build a [`BaseEthApi`] using [`BaseEthApiBuilder`].
-    pub const fn builder() -> BaseEthApiBuilder<Rpc> {
-        BaseEthApiBuilder::new()
+    /// Build a [`UnstableEthApi`] using [`UnstableEthApiBuilder`].
+    pub const fn builder() -> UnstableEthApiBuilder<Rpc> {
+        UnstableEthApiBuilder::new()
     }
 
     /// Returns a reference to the [`EthApiNodeBackend`].
@@ -94,12 +94,12 @@ impl<N: RpcNodeCore, Rpc: RpcConvert> BaseEthApi<N, Rpc> {
     }
 }
 
-impl<N, Rpc> EthApiTypes for BaseEthApi<N, Rpc>
+impl<N, Rpc> EthApiTypes for UnstableEthApi<N, Rpc>
 where
     N: RpcNodeCore,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = BaseEthApiError>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Error = UnstableEthApiError>,
 {
-    type Error = BaseEthApiError;
+    type Error = UnstableEthApiError;
     type NetworkTypes = Rpc::Network;
     type RpcConvert = Rpc;
 
@@ -108,7 +108,7 @@ where
     }
 }
 
-impl<N, Rpc> RpcNodeCore for BaseEthApi<N, Rpc>
+impl<N, Rpc> RpcNodeCore for UnstableEthApi<N, Rpc>
 where
     N: RpcNodeCore,
     Rpc: RpcConvert<Primitives = N::Primitives>,
@@ -140,7 +140,7 @@ where
     }
 }
 
-impl<N, Rpc> RpcNodeCoreExt for BaseEthApi<N, Rpc>
+impl<N, Rpc> RpcNodeCoreExt for UnstableEthApi<N, Rpc>
 where
     N: RpcNodeCore,
     Rpc: RpcConvert<Primitives = N::Primitives>,
@@ -151,10 +151,10 @@ where
     }
 }
 
-impl<N, Rpc> EthApiSpec for BaseEthApi<N, Rpc>
+impl<N, Rpc> EthApiSpec for UnstableEthApi<N, Rpc>
 where
     N: RpcNodeCore,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = BaseEthApiError>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Error = UnstableEthApiError>,
 {
     #[inline]
     fn starting_block(&self) -> U256 {
@@ -162,10 +162,10 @@ where
     }
 }
 
-impl<N, Rpc> SpawnBlocking for BaseEthApi<N, Rpc>
+impl<N, Rpc> SpawnBlocking for UnstableEthApi<N, Rpc>
 where
     N: RpcNodeCore,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = BaseEthApiError>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Error = UnstableEthApiError>,
 {
     #[inline]
     fn io_task_spawner(&self) -> impl TaskSpawner {
@@ -188,11 +188,11 @@ where
     }
 }
 
-impl<N, Rpc> LoadFee for BaseEthApi<N, Rpc>
+impl<N, Rpc> LoadFee for UnstableEthApi<N, Rpc>
 where
     N: RpcNodeCore,
-    BaseEthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = BaseEthApiError>,
+    UnstableEthApiError: FromEvmError<N::Evm>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Error = UnstableEthApiError>,
 {
     #[inline]
     fn gas_oracle(&self) -> &GasPriceOracle<Self::Provider> {
@@ -214,7 +214,7 @@ where
     }
 }
 
-impl<N, Rpc> LoadState for BaseEthApi<N, Rpc>
+impl<N, Rpc> LoadState for UnstableEthApi<N, Rpc>
 where
     N: RpcNodeCore,
     Rpc: RpcConvert<Primitives = N::Primitives>,
@@ -222,10 +222,10 @@ where
 {
 }
 
-impl<N, Rpc> EthState for BaseEthApi<N, Rpc>
+impl<N, Rpc> EthState for UnstableEthApi<N, Rpc>
 where
     N: RpcNodeCore,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = BaseEthApiError>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Error = UnstableEthApiError>,
     Self: LoadPendingBlock,
 {
     #[inline]
@@ -234,34 +234,34 @@ where
     }
 }
 
-impl<N, Rpc> EthFees for BaseEthApi<N, Rpc>
+impl<N, Rpc> EthFees for UnstableEthApi<N, Rpc>
 where
     N: RpcNodeCore,
-    BaseEthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = BaseEthApiError>,
+    UnstableEthApiError: FromEvmError<N::Evm>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Error = UnstableEthApiError>,
 {
 }
 
-impl<N, Rpc> Trace for BaseEthApi<N, Rpc>
+impl<N, Rpc> Trace for UnstableEthApi<N, Rpc>
 where
     N: RpcNodeCore,
-    BaseEthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = BaseEthApiError, Evm = N::Evm>,
+    UnstableEthApiError: FromEvmError<N::Evm>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Error = UnstableEthApiError, Evm = N::Evm>,
 {
 }
 
-impl<N: RpcNodeCore, Rpc: RpcConvert> fmt::Debug for BaseEthApi<N, Rpc> {
+impl<N: RpcNodeCore, Rpc: RpcConvert> fmt::Debug for UnstableEthApi<N, Rpc> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("BaseEthApi").finish_non_exhaustive()
+        f.debug_struct("UnstableEthApi").finish_non_exhaustive()
     }
 }
 
-/// Container type `BaseEthApi`
-pub struct BaseEthApiInner<N: RpcNodeCore, Rpc: RpcConvert> {
+/// Container type `UnstableEthApi`
+pub struct UnstableEthApiInner<N: RpcNodeCore, Rpc: RpcConvert> {
     /// Gateway to node's core components.
     eth_api: EthApiNodeBackend<N, Rpc>,
     /// Sequencer client, configured to forward submitted transactions to sequencer of the given
-    /// Base network.
+    /// Unstable network.
     sequencer_client: Option<SequencerClient>,
     /// Minimum priority fee enforced by rollup-specific logic.
     ///
@@ -269,13 +269,13 @@ pub struct BaseEthApiInner<N: RpcNodeCore, Rpc: RpcConvert> {
     min_suggested_priority_fee: U256,
 }
 
-impl<N: RpcNodeCore, Rpc: RpcConvert> fmt::Debug for BaseEthApiInner<N, Rpc> {
+impl<N: RpcNodeCore, Rpc: RpcConvert> fmt::Debug for UnstableEthApiInner<N, Rpc> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("BaseEthApiInner").finish()
+        f.debug_struct("UnstableEthApiInner").finish()
     }
 }
 
-impl<N: RpcNodeCore, Rpc: RpcConvert> BaseEthApiInner<N, Rpc> {
+impl<N: RpcNodeCore, Rpc: RpcConvert> UnstableEthApiInner<N, Rpc> {
     /// Returns a reference to the [`EthApiNodeBackend`].
     const fn eth_api(&self) -> &EthApiNodeBackend<N, Rpc> {
         &self.eth_api
@@ -287,20 +287,20 @@ impl<N: RpcNodeCore, Rpc: RpcConvert> BaseEthApiInner<N, Rpc> {
     }
 }
 
-/// Converter for Base RPC types.
-pub type BaseRpcConvert<N, NetworkT> = RpcConverter<
+/// Converter for Unstable RPC types.
+pub type UnstableRpcConvert<N, NetworkT> = RpcConverter<
     NetworkT,
     <N as FullNodeComponents>::Evm,
-    BaseReceiptConverter<<N as FullNodeTypes>::Provider>,
+    UnstableReceiptConverter<<N as FullNodeTypes>::Provider>,
     (),
-    BaseTxInfoMapper<<N as FullNodeTypes>::Provider>,
+    UnstableTxInfoMapper<<N as FullNodeTypes>::Provider>,
 >;
 
-/// Builds [`BaseEthApi`] for Base.
+/// Builds [`UnstableEthApi`] for Unstable.
 #[derive(Debug)]
-pub struct BaseEthApiBuilder<NetworkT = Base> {
+pub struct UnstableEthApiBuilder<NetworkT = Unstable> {
     /// Sequencer client, configured to forward submitted transactions to sequencer of the given
-    /// Base network.
+    /// Unstable network.
     sequencer_url: Option<String>,
     /// Headers to use for the sequencer client requests.
     sequencer_headers: Vec<String>,
@@ -310,7 +310,7 @@ pub struct BaseEthApiBuilder<NetworkT = Base> {
     _nt: PhantomData<NetworkT>,
 }
 
-impl<NetworkT> Default for BaseEthApiBuilder<NetworkT> {
+impl<NetworkT> Default for UnstableEthApiBuilder<NetworkT> {
     fn default() -> Self {
         Self {
             sequencer_url: None,
@@ -321,8 +321,8 @@ impl<NetworkT> Default for BaseEthApiBuilder<NetworkT> {
     }
 }
 
-impl<NetworkT> BaseEthApiBuilder<NetworkT> {
-    /// Creates a [`BaseEthApiBuilder`] instance from core components.
+impl<NetworkT> UnstableEthApiBuilder<NetworkT> {
+    /// Creates a [`UnstableEthApiBuilder`] instance from core components.
     pub const fn new() -> Self {
         Self {
             sequencer_url: None,
@@ -351,24 +351,24 @@ impl<NetworkT> BaseEthApiBuilder<NetworkT> {
     }
 }
 
-impl<N, NetworkT> EthApiBuilder<N> for BaseEthApiBuilder<NetworkT>
+impl<N, NetworkT> EthApiBuilder<N> for UnstableEthApiBuilder<NetworkT>
 where
     N: FullNodeComponents<
             Evm: ConfigureEvm<NextBlockEnvCtx: BuildPendingEnv<HeaderTy<N::Types>>>,
             Types: NodeTypes<ChainSpec: Hardforks + EthereumHardforks>,
         >,
     NetworkT: RpcTypes,
-    BaseRpcConvert<N, NetworkT>: RpcConvert<Network = NetworkT>,
-    BaseEthApi<N, BaseRpcConvert<N, NetworkT>>:
+    UnstableRpcConvert<N, NetworkT>: RpcConvert<Network = NetworkT>,
+    UnstableEthApi<N, UnstableRpcConvert<N, NetworkT>>:
         FullEthApiServer<Provider = N::Provider, Pool = N::Pool>,
 {
-    type EthApi = BaseEthApi<N, BaseRpcConvert<N, NetworkT>>;
+    type EthApi = UnstableEthApi<N, UnstableRpcConvert<N, NetworkT>>;
 
     async fn build_eth_api(self, ctx: EthApiCtx<'_, N>) -> eyre::Result<Self::EthApi> {
         let Self { sequencer_url, sequencer_headers, min_suggested_priority_fee, .. } = self;
         let rpc_converter =
-            RpcConverter::new(BaseReceiptConverter::new(ctx.components.provider().clone()))
-                .with_mapper(BaseTxInfoMapper::new(ctx.components.provider().clone()));
+            RpcConverter::new(UnstableReceiptConverter::new(ctx.components.provider().clone()))
+                .with_mapper(UnstableTxInfoMapper::new(ctx.components.provider().clone()));
 
         let sequencer_client = if let Some(url) = sequencer_url {
             Some(
@@ -382,6 +382,6 @@ where
 
         let eth_api = ctx.eth_api_builder().with_rpc_converter(rpc_converter).build_inner();
 
-        Ok(BaseEthApi::new(eth_api, sequencer_client, U256::from(min_suggested_priority_fee)))
+        Ok(UnstableEthApi::new(eth_api, sequencer_client, U256::from(min_suggested_priority_fee)))
     }
 }

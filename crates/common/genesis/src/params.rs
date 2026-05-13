@@ -1,8 +1,8 @@
 //! Module containing fee parameters.
 
-use alloy_eips::eip1559::BaseFeeParams;
+use alloy_eips::eip1559::UnstableFeeParams;
 
-/// Base Fee Config.
+/// Unstable Fee Config.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -28,7 +28,7 @@ pub struct FeeConfig {
 }
 
 impl FeeConfig {
-    /// The Base Mainnet EIP-1559 fee parameters.
+    /// The Unstable Mainnet EIP-1559 fee parameters.
     ///
     /// These values match `base_common_chains::ChainConfig::mainnet().fee_config()`. Kept here as
     /// hardcoded constants so this crate need not depend on `base-common-chains` (which would
@@ -36,22 +36,22 @@ impl FeeConfig {
     pub const BASE_MAINNET: Self =
         Self { eip1559_elasticity: 6, eip1559_denominator: 50, eip1559_denominator_canyon: 250 };
 
-    /// Returns the Base Mainnet base fee config (used as serde default).
+    /// Returns the Unstable Mainnet base fee config (used as serde default).
     pub const fn base_mainnet() -> Self {
         Self::BASE_MAINNET
     }
 
-    /// Returns the [`BaseFeeParams`] before Canyon hardfork.
-    pub const fn pre_canyon_params(&self) -> BaseFeeParams {
-        BaseFeeParams {
+    /// Returns the [`UnstableFeeParams`] before Canyon hardfork.
+    pub const fn pre_canyon_params(&self) -> UnstableFeeParams {
+        UnstableFeeParams {
             max_change_denominator: self.eip1559_denominator as u128,
             elasticity_multiplier: self.eip1559_elasticity as u128,
         }
     }
 
-    /// Returns the [`BaseFeeParams`] since Canyon hardfork.
-    pub const fn post_canyon_params(&self) -> BaseFeeParams {
-        BaseFeeParams {
+    /// Returns the [`UnstableFeeParams`] since Canyon hardfork.
+    pub const fn post_canyon_params(&self) -> UnstableFeeParams {
+        UnstableFeeParams {
             max_change_denominator: self.eip1559_denominator_canyon as u128,
             elasticity_multiplier: self.eip1559_elasticity as u128,
         }

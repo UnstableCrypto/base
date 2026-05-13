@@ -1,5 +1,5 @@
 //! Contains the `[L1BlockInfo]` type and its implementation.
-use base_common_chains::BaseUpgrade;
+use base_common_chains::UnstableUpgrade;
 use base_common_consensus::Predeploys;
 use base_common_flz::{NON_ZERO_BYTE_COST, tx_estimated_size_fjord as estimate_tx_compressed_size};
 use revm::{
@@ -9,7 +9,7 @@ use revm::{
     primitives::{U256, uint},
 };
 
-use crate::{BaseSpecId, transaction::BaseTxTr};
+use crate::{UnstableSpecId, transaction::UnstableTxTr};
 
 /// L1 block info
 ///
@@ -55,7 +55,7 @@ impl L1BlockInfo {
     /// attribute.
     pub const BASE_FEE_SCALAR_OFFSET: usize = 16;
     /// The two 4-byte Ecotone fee scalar values are packed into the same storage slot as the
-    /// 8-byte sequence number. Byte offset within the storage slot of the 4-byte blobBaseFeeScalar
+    /// 8-byte sequence number. Byte offset within the storage slot of the 4-byte blobUnstableFeeScalar
     /// attribute.
     pub const BLOB_BASE_FEE_SCALAR_OFFSET: usize = 20;
     /// The Isthmus operator fee scalar values are similarly packed. Byte offset within the storage
@@ -78,9 +78,9 @@ impl L1BlockInfo {
     pub const L1_OVERHEAD_SLOT: U256 = uint!(5_U256);
     /// The L1 scalar storage slot.
     pub const L1_SCALAR_SLOT: U256 = uint!(6_U256);
-    /// Added in Ecotone; stores the L1 blobBaseFee attribute.
+    /// Added in Ecotone; stores the L1 blobUnstableFee attribute.
     pub const ECOTONE_L1_BLOB_BASE_FEE_SLOT: U256 = uint!(7_U256);
-    /// As of Ecotone, stores the 32-bit basefeeScalar and blobBaseFeeScalar attributes at offsets
+    /// As of Ecotone, stores the 32-bit basefeeScalar and blobUnstableFeeScalar attributes at offsets
     /// [`Self::BASE_FEE_SCALAR_OFFSET`] and [`Self::BLOB_BASE_FEE_SCALAR_OFFSET`] respectively.
     pub const ECOTONE_L1_FEE_SCALARS_SLOT: U256 = uint!(3_U256);
     /// Stores the 32-bit operatorFeeScalar and operatorFeeConstant attributes at offsets
@@ -176,7 +176,7 @@ impl L1BlockInfo {
     pub fn try_fetch<DB: Database>(
         db: &mut DB,
         l2_block: U256,
-        spec_id: BaseSpecId,
+        spec_id: UnstableSpecId,
     ) -> Result<Self, DB::Error> {
         // Ensure the L1 Block account is loaded into the cache.
         let _ = db.basic(Predeploys::L1_BLOCK_INFO)?;
@@ -188,7 +188,7 @@ impl L1BlockInfo {
         };
 
         // Post-Ecotone
-        if !spec_id.is_enabled_in(BaseUpgrade::Ecotone) {
+        if !spec_id.is_enabled_in(UnstableUpgrade::Ecotone) {
             out.l1_base_fee_scalar = db.storage(Predeploys::L1_BLOCK_INFO, Self::L1_SCALAR_SLOT)?;
             out.l1_fee_overhead =
                 Some(db.storage(Predeploys::L1_BLOCK_INFO, Self::L1_OVERHEAD_SLOT)?);
@@ -199,12 +199,12 @@ impl L1BlockInfo {
         out.try_fetch_ecotone(db)?;
 
         // Post-Isthmus L1 block info
-        if spec_id.is_enabled_in(BaseUpgrade::Isthmus) {
+        if spec_id.is_enabled_in(UnstableUpgrade::Isthmus) {
             out.try_fetch_isthmus(db)?;
         }
 
         // Pre-Jovian
-        if spec_id.is_enabled_in(BaseUpgrade::Jovian) {
+        if spec_id.is_enabled_in(UnstableUpgrade::Jovian) {
             out.try_fetch_jovian(db)?;
         }
 
@@ -214,7 +214,7 @@ impl L1BlockInfo {
     /// Calculate the operator fee for executing this transaction.
     ///
     /// Introduced in isthmus. Prior to isthmus, the operator fee is always zero.
-    pub fn operator_fee_charge(&self, input: &[u8], gas_limit: U256, spec_id: BaseSpecId) -> U256 {
+    pub fn operator_fee_charge(&self, input: &[u8], gas_limit: U256, spec_id: UnstableSpecId) -> U256 {
         // If the input is a deposit transaction or empty, the default value is zero.
         if input.is_empty() || input.first() == Some(&0x7E) {
             return U256::ZERO;
@@ -224,13 +224,13 @@ impl L1BlockInfo {
     }
 
     /// Calculate the operator fee for the given `gas`.
-    fn operator_fee_charge_inner(&self, gas: U256, spec_id: BaseSpecId) -> U256 {
+    fn operator_fee_charge_inner(&self, gas: U256, spec_id: UnstableSpecId) -> U256 {
         let operator_fee_scalar =
             self.operator_fee_scalar.expect("Missing operator fee scalar for isthmus L1 Block");
         let operator_fee_constant =
             self.operator_fee_constant.expect("Missing operator fee constant for isthmus L1 Block");
 
-        let product = if spec_id.is_enabled_in(BaseUpgrade::Jovian) {
+        let product = if spec_id.is_enabled_in(UnstableUpgrade::Jovian) {
             gas.saturating_mul(operator_fee_scalar)
                 .saturating_mul(U256::from(Self::OPERATOR_FEE_JOVIAN_MULTIPLIER))
         } else {
@@ -243,8 +243,8 @@ impl L1BlockInfo {
     /// Calculate the operator fee for executing this transaction.
     ///
     /// Introduced in isthmus. Prior to isthmus, the operator fee is always zero.
-    pub fn operator_fee_refund(&self, gas: &Gas, spec_id: BaseSpecId) -> U256 {
-        if !spec_id.is_enabled_in(BaseUpgrade::Isthmus) {
+    pub fn operator_fee_refund(&self, gas: &Gas, spec_id: UnstableSpecId) -> U256 {
+        if !spec_id.is_enabled_in(UnstableUpgrade::Isthmus) {
             return U256::ZERO;
         }
 
@@ -265,8 +265,8 @@ impl L1BlockInfo {
     ///
     /// Prior to regolith, an extra 68 non-zero bytes were included in the rollup data costs to
     /// account for the empty signature.
-    pub fn data_gas(&self, input: &[u8], spec_id: BaseSpecId) -> U256 {
-        if spec_id.is_enabled_in(BaseUpgrade::Fjord) {
+    pub fn data_gas(&self, input: &[u8], spec_id: UnstableSpecId) -> U256 {
+        if spec_id.is_enabled_in(UnstableUpgrade::Fjord) {
             let estimated_size = self.tx_estimated_size_fjord(input);
 
             return estimated_size
@@ -278,7 +278,7 @@ impl L1BlockInfo {
         let mut tokens_in_transaction_data = get_tokens_in_calldata_istanbul(input);
 
         // Prior to regolith, an extra 68 non zero bytes were included in the rollup data costs.
-        if !spec_id.is_enabled_in(BaseUpgrade::Regolith) {
+        if !spec_id.is_enabled_in(UnstableUpgrade::Regolith) {
             tokens_in_transaction_data += 68 * NON_ZERO_BYTE_MULTIPLIER_ISTANBUL;
         }
 
@@ -297,10 +297,10 @@ impl L1BlockInfo {
         self.tx_l1_cost = None;
     }
 
-    /// Calculate additional transaction cost with `BaseTxTr`.
+    /// Calculate additional transaction cost with `UnstableTxTr`.
     ///
     /// Internally calls [`L1BlockInfo::tx_cost`].
-    pub fn tx_cost_with_tx(&mut self, tx: impl BaseTxTr, spec: BaseSpecId) -> Option<U256> {
+    pub fn tx_cost_with_tx(&mut self, tx: impl UnstableTxTr, spec: UnstableSpecId) -> Option<U256> {
         // account for additional cost of l1 fee and operator fee
         let enveloped_tx = tx.enveloped_tx()?;
         let gas_limit = U256::from(tx.gas_limit());
@@ -309,12 +309,12 @@ impl L1BlockInfo {
 
     /// Calculate additional transaction cost.
     #[inline]
-    pub fn tx_cost(&mut self, enveloped_tx: &[u8], gas_limit: U256, spec: BaseSpecId) -> U256 {
+    pub fn tx_cost(&mut self, enveloped_tx: &[u8], gas_limit: U256, spec: UnstableSpecId) -> U256 {
         // compute L1 cost
         let mut additional_cost = self.calculate_tx_l1_cost(enveloped_tx, spec);
 
         // compute operator fee
-        if spec.is_enabled_in(BaseUpgrade::Isthmus) {
+        if spec.is_enabled_in(UnstableUpgrade::Isthmus) {
             let operator_fee_charge = self.operator_fee_charge(enveloped_tx, gas_limit, spec);
             additional_cost = additional_cost.saturating_add(operator_fee_charge);
         }
@@ -322,17 +322,17 @@ impl L1BlockInfo {
         additional_cost
     }
 
-    /// Calculate the gas cost of a transaction based on L1 block data posted on L2, depending on the [`BaseSpecId`] passed.
-    pub fn calculate_tx_l1_cost(&mut self, input: &[u8], spec_id: BaseSpecId) -> U256 {
+    /// Calculate the gas cost of a transaction based on L1 block data posted on L2, depending on the [`UnstableSpecId`] passed.
+    pub fn calculate_tx_l1_cost(&mut self, input: &[u8], spec_id: UnstableSpecId) -> U256 {
         if let Some(tx_l1_cost) = self.tx_l1_cost {
             return tx_l1_cost;
         }
         // If the input is a deposit transaction or empty, the default value is zero.
         let tx_l1_cost = if input.is_empty() || input.first() == Some(&0x7E) {
             return U256::ZERO;
-        } else if spec_id.is_enabled_in(BaseUpgrade::Fjord) {
+        } else if spec_id.is_enabled_in(UnstableUpgrade::Fjord) {
             self.calculate_tx_l1_cost_fjord(input)
-        } else if spec_id.is_enabled_in(BaseUpgrade::Ecotone) {
+        } else if spec_id.is_enabled_in(UnstableUpgrade::Ecotone) {
             self.calculate_tx_l1_cost_ecotone(input, spec_id)
         } else {
             self.calculate_tx_l1_cost_bedrock(input, spec_id)
@@ -343,7 +343,7 @@ impl L1BlockInfo {
     }
 
     /// Calculate the gas cost of a transaction based on L1 block data posted on L2, pre-Ecotone.
-    fn calculate_tx_l1_cost_bedrock(&self, input: &[u8], spec_id: BaseSpecId) -> U256 {
+    fn calculate_tx_l1_cost_bedrock(&self, input: &[u8], spec_id: UnstableSpecId) -> U256 {
         let rollup_data_gas_cost = self.data_gas(input, spec_id);
         rollup_data_gas_cost
             .saturating_add(self.l1_fee_overhead.unwrap_or_default())
@@ -355,14 +355,14 @@ impl L1BlockInfo {
     /// Calculate the gas cost of a transaction based on L1 block data posted on L2, post-Ecotone.
     ///
     /// Ecotone L1 cost function:
-    /// `(calldataGas/16)*(l1BaseFee*16*l1BaseFeeScalar + l1BlobBaseFee*l1BlobBaseFeeScalar)/1e6`
+    /// `(calldataGas/16)*(l1UnstableFee*16*l1UnstableFeeScalar + l1BlobUnstableFee*l1BlobUnstableFeeScalar)/1e6`
     ///
     /// We divide "calldataGas" by 16 to change from units of calldata gas to "estimated # of bytes when compressed".
     /// Known as "compressedTxSize" in the spec.
     ///
     /// Function is actually computed as follows for better precision under integer arithmetic:
-    /// `calldataGas*(l1BaseFee*16*l1BaseFeeScalar + l1BlobBaseFee*l1BlobBaseFeeScalar)/16e6`
-    fn calculate_tx_l1_cost_ecotone(&self, input: &[u8], spec_id: BaseSpecId) -> U256 {
+    /// `calldataGas*(l1UnstableFee*16*l1UnstableFeeScalar + l1BlobUnstableFee*l1BlobUnstableFeeScalar)/16e6`
+    fn calculate_tx_l1_cost_ecotone(&self, input: &[u8], spec_id: UnstableSpecId) -> U256 {
         // There is an edgecase where, for the very first Ecotone block (unless it is activated at Genesis), we must
         // use the Bedrock cost function. To determine if this is the case, we can check if the Ecotone parameters are
         // unset.
@@ -381,7 +381,7 @@ impl L1BlockInfo {
     /// Calculate the gas cost of a transaction based on L1 block data posted on L2, post-Fjord.
     ///
     /// Fjord L1 cost function:
-    /// `estimatedSize*(baseFeeScalar*l1BaseFee*16 + blobFeeScalar*l1BlobBaseFee)/1e12`
+    /// `estimatedSize*(baseFeeScalar*l1UnstableFee*16 + blobFeeScalar*l1BlobUnstableFee)/1e12`
     fn calculate_tx_l1_cost_fjord(&self, input: &[u8]) -> U256 {
         let l1_fee_scaled = self.calculate_l1_fee_scaled_ecotone();
         if l1_fee_scaled.is_zero() {
@@ -393,7 +393,7 @@ impl L1BlockInfo {
         estimated_size.saturating_mul(l1_fee_scaled).wrapping_div(U256::from(1_000_000_000_000u64))
     }
 
-    // l1BaseFee*16*l1BaseFeeScalar + l1BlobBaseFee*l1BlobBaseFeeScalar
+    // l1UnstableFee*16*l1UnstableFeeScalar + l1BlobUnstableFee*l1BlobUnstableFeeScalar
     fn calculate_l1_fee_scaled_ecotone(&self) -> U256 {
         let calldata_cost_per_byte = self
             .l1_base_fee
@@ -431,18 +431,18 @@ mod tests {
         // gas cost = 3 * 16 + 68 * 16 = 1136
         let input = bytes!("FACADE");
         let bedrock_data_gas =
-            l1_block_info.data_gas(&input, BaseSpecId::new(BaseUpgrade::Bedrock));
+            l1_block_info.data_gas(&input, UnstableSpecId::new(UnstableUpgrade::Bedrock));
         assert_eq!(bedrock_data_gas, U256::from(1136));
 
         // Regolith has no added 68 non zero bytes
         // gas cost = 3 * 16 = 48
         let regolith_data_gas =
-            l1_block_info.data_gas(&input, BaseSpecId::new(BaseUpgrade::Regolith));
+            l1_block_info.data_gas(&input, UnstableSpecId::new(UnstableUpgrade::Regolith));
         assert_eq!(regolith_data_gas, U256::from(48));
 
         // Fjord has a minimum compressed size of 100 bytes
         // gas cost = 100 * 16 = 1600
-        let fjord_data_gas = l1_block_info.data_gas(&input, BaseSpecId::new(BaseUpgrade::Fjord));
+        let fjord_data_gas = l1_block_info.data_gas(&input, UnstableSpecId::new(UnstableUpgrade::Fjord));
         assert_eq!(fjord_data_gas, U256::from(1600));
     }
 
@@ -463,18 +463,18 @@ mod tests {
         // gas cost = 3 * 16 + 2 * 4 + 68 * 16 = 1144
         let input = bytes!("FA00CA00DE");
         let bedrock_data_gas =
-            l1_block_info.data_gas(&input, BaseSpecId::new(BaseUpgrade::Bedrock));
+            l1_block_info.data_gas(&input, UnstableSpecId::new(UnstableUpgrade::Bedrock));
         assert_eq!(bedrock_data_gas, U256::from(1144));
 
         // Regolith has no added 68 non zero bytes
         // gas cost = 3 * 16 + 2 * 4 = 56
         let regolith_data_gas =
-            l1_block_info.data_gas(&input, BaseSpecId::new(BaseUpgrade::Regolith));
+            l1_block_info.data_gas(&input, UnstableSpecId::new(UnstableUpgrade::Regolith));
         assert_eq!(regolith_data_gas, U256::from(56));
 
         // Fjord has a minimum compressed size of 100 bytes
         // gas cost = 100 * 16 = 1600
-        let fjord_data_gas = l1_block_info.data_gas(&input, BaseSpecId::new(BaseUpgrade::Fjord));
+        let fjord_data_gas = l1_block_info.data_gas(&input, UnstableSpecId::new(UnstableUpgrade::Fjord));
         assert_eq!(fjord_data_gas, U256::from(1600));
     }
 
@@ -489,21 +489,21 @@ mod tests {
 
         let input = bytes!("FACADE");
         let gas_cost =
-            l1_block_info.calculate_tx_l1_cost(&input, BaseSpecId::new(BaseUpgrade::Regolith));
+            l1_block_info.calculate_tx_l1_cost(&input, UnstableSpecId::new(UnstableUpgrade::Regolith));
         assert_eq!(gas_cost, U256::from(1048));
         l1_block_info.clear_tx_l1_cost();
 
         // Zero rollup data gas cost should result in zero
         let input = bytes!("");
         let gas_cost =
-            l1_block_info.calculate_tx_l1_cost(&input, BaseSpecId::new(BaseUpgrade::Regolith));
+            l1_block_info.calculate_tx_l1_cost(&input, UnstableSpecId::new(UnstableUpgrade::Regolith));
         assert_eq!(gas_cost, U256::ZERO);
         l1_block_info.clear_tx_l1_cost();
 
         // Deposit transactions with the EIP-2718 type of 0x7E should result in zero
         let input = bytes!("7EFACADE");
         let gas_cost =
-            l1_block_info.calculate_tx_l1_cost(&input, BaseSpecId::new(BaseUpgrade::Regolith));
+            l1_block_info.calculate_tx_l1_cost(&input, UnstableSpecId::new(UnstableUpgrade::Regolith));
         assert_eq!(gas_cost, U256::ZERO);
     }
 
@@ -518,26 +518,26 @@ mod tests {
             ..Default::default()
         };
 
-        // calldataGas * (l1BaseFee * 16 * l1BaseFeeScalar + l1BlobBaseFee * l1BlobBaseFeeScalar) / (16 * 1e6)
+        // calldataGas * (l1UnstableFee * 16 * l1UnstableFeeScalar + l1BlobUnstableFee * l1BlobUnstableFeeScalar) / (16 * 1e6)
         // = (16 * 3) * (1000 * 16 * 1000 + 1000 * 1000) / (16 * 1e6)
         // = 51
         let input = bytes!("FACADE");
         let gas_cost =
-            l1_block_info.calculate_tx_l1_cost(&input, BaseSpecId::new(BaseUpgrade::Ecotone));
+            l1_block_info.calculate_tx_l1_cost(&input, UnstableSpecId::new(UnstableUpgrade::Ecotone));
         assert_eq!(gas_cost, U256::from(51));
         l1_block_info.clear_tx_l1_cost();
 
         // Zero rollup data gas cost should result in zero
         let input = bytes!("");
         let gas_cost =
-            l1_block_info.calculate_tx_l1_cost(&input, BaseSpecId::new(BaseUpgrade::Ecotone));
+            l1_block_info.calculate_tx_l1_cost(&input, UnstableSpecId::new(UnstableUpgrade::Ecotone));
         assert_eq!(gas_cost, U256::ZERO);
         l1_block_info.clear_tx_l1_cost();
 
         // Deposit transactions with the EIP-2718 type of 0x7E should result in zero
         let input = bytes!("7EFACADE");
         let gas_cost =
-            l1_block_info.calculate_tx_l1_cost(&input, BaseSpecId::new(BaseUpgrade::Ecotone));
+            l1_block_info.calculate_tx_l1_cost(&input, UnstableSpecId::new(UnstableUpgrade::Ecotone));
         assert_eq!(gas_cost, U256::ZERO);
         l1_block_info.clear_tx_l1_cost();
 
@@ -545,7 +545,7 @@ mod tests {
         l1_block_info.empty_ecotone_scalars = true;
         let input = bytes!("FACADE");
         let gas_cost =
-            l1_block_info.calculate_tx_l1_cost(&input, BaseSpecId::new(BaseUpgrade::Ecotone));
+            l1_block_info.calculate_tx_l1_cost(&input, UnstableSpecId::new(UnstableUpgrade::Ecotone));
         assert_eq!(gas_cost, U256::from(1048));
     }
 
@@ -586,19 +586,19 @@ mod tests {
 
         // test
 
-        let gas_used = l1_block_info.data_gas(TX, BaseSpecId::new(BaseUpgrade::Ecotone));
+        let gas_used = l1_block_info.data_gas(TX, UnstableSpecId::new(UnstableUpgrade::Ecotone));
 
         assert_eq!(gas_used, expected_l1_gas_used);
 
         let l1_fee =
-            l1_block_info.calculate_tx_l1_cost_ecotone(TX, BaseSpecId::new(BaseUpgrade::Ecotone));
+            l1_block_info.calculate_tx_l1_cost_ecotone(TX, UnstableSpecId::new(UnstableUpgrade::Ecotone));
 
         assert_eq!(l1_fee, expected_l1_fee)
     }
 
     #[test]
     fn test_calculate_tx_l1_cost_fjord() {
-        // l1FeeScaled = baseFeeScalar*l1BaseFee*16 + blobFeeScalar*l1BlobBaseFee
+        // l1FeeScaled = baseFeeScalar*l1UnstableFee*16 + blobFeeScalar*l1BlobUnstableFee
         //             = 1000 * 1000 * 16 + 1000 * 1000
         //             = 17e6
         let mut l1_block_info = L1BlockInfo {
@@ -618,7 +618,7 @@ mod tests {
         //        = 100e6 * 17 / 1e6
         //        = 1700
         let gas_cost =
-            l1_block_info.calculate_tx_l1_cost(&input, BaseSpecId::new(BaseUpgrade::Fjord));
+            l1_block_info.calculate_tx_l1_cost(&input, UnstableSpecId::new(UnstableUpgrade::Fjord));
         assert_eq!(gas_cost, U256::from(1700));
         l1_block_info.clear_tx_l1_cost();
 
@@ -633,21 +633,21 @@ mod tests {
         //        = 126387400 * 17 / 1e6
         //        = 2148
         let gas_cost =
-            l1_block_info.calculate_tx_l1_cost(&input, BaseSpecId::new(BaseUpgrade::Fjord));
+            l1_block_info.calculate_tx_l1_cost(&input, UnstableSpecId::new(UnstableUpgrade::Fjord));
         assert_eq!(gas_cost, U256::from(2148));
         l1_block_info.clear_tx_l1_cost();
 
         // Zero rollup data gas cost should result in zero
         let input = bytes!("");
         let gas_cost =
-            l1_block_info.calculate_tx_l1_cost(&input, BaseSpecId::new(BaseUpgrade::Fjord));
+            l1_block_info.calculate_tx_l1_cost(&input, UnstableSpecId::new(UnstableUpgrade::Fjord));
         assert_eq!(gas_cost, U256::ZERO);
         l1_block_info.clear_tx_l1_cost();
 
         // Deposit transactions with the EIP-2718 type of 0x7E should result in zero
         let input = bytes!("7EFACADE");
         let gas_cost =
-            l1_block_info.calculate_tx_l1_cost(&input, BaseSpecId::new(BaseUpgrade::Fjord));
+            l1_block_info.calculate_tx_l1_cost(&input, UnstableSpecId::new(UnstableUpgrade::Fjord));
         assert_eq!(gas_cost, U256::ZERO);
     }
 
@@ -680,7 +680,7 @@ mod tests {
 
         // test
 
-        let data_gas = l1_block_info.data_gas(TX, BaseSpecId::new(BaseUpgrade::Fjord));
+        let data_gas = l1_block_info.data_gas(TX, UnstableSpecId::new(UnstableUpgrade::Fjord));
 
         assert_eq!(data_gas, expected_data_gas);
 
@@ -702,14 +702,14 @@ mod tests {
         let isthmus_fee = l1_block_info.operator_fee_charge(
             &input,
             U256::from(1_000u64),
-            BaseSpecId::new(BaseUpgrade::Isthmus),
+            UnstableSpecId::new(UnstableUpgrade::Isthmus),
         );
         assert_eq!(isthmus_fee, U256::from(11u64));
 
         let jovian_fee = l1_block_info.operator_fee_charge(
             &input,
             U256::from(1_000u64),
-            BaseSpecId::new(BaseUpgrade::Jovian),
+            UnstableSpecId::new(UnstableUpgrade::Jovian),
         );
         assert_eq!(jovian_fee, U256::from(100_000_010u64));
     }
@@ -727,7 +727,7 @@ mod tests {
         };
 
         let refunded =
-            l1_block_info.operator_fee_refund(&gas, BaseSpecId::new(BaseUpgrade::Isthmus));
+            l1_block_info.operator_fee_refund(&gas, UnstableSpecId::new(UnstableUpgrade::Isthmus));
 
         assert_eq!(refunded, U256::from(100))
     }

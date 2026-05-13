@@ -1,9 +1,9 @@
 use std::{fmt, sync::Arc};
 
-use base_execution_chainspec::BaseChainSpec;
-use base_execution_consensus::BaseBeaconConsensus;
-use base_execution_evm::BaseExecutorProvider;
-use base_node_core::BaseNode;
+use base_execution_chainspec::UnstableChainSpec;
+use base_execution_consensus::UnstableBeaconConsensus;
+use base_execution_evm::UnstableExecutorProvider;
+use base_node_core::UnstableNode;
 use eyre::{Result, eyre};
 use reth_cli_commands::launcher::Launcher;
 use reth_cli_runner::CliRunner;
@@ -55,7 +55,7 @@ where
     /// [`NodeCommand`](reth_cli_commands::node::NodeCommand).
     pub fn run(
         mut self,
-        launcher: impl Launcher<crate::chainspec::BaseChainSpecParser, Ext>,
+        launcher: impl Launcher<crate::chainspec::UnstableChainSpecParser, Ext>,
     ) -> Result<()> {
         let runner = match self.runner.take() {
             Some(runner) => runner,
@@ -74,10 +74,10 @@ where
         // Install the prometheus recorder to be sure to record all metrics
         install_prometheus_recorder();
 
-        let components = |spec: Arc<BaseChainSpec>| {
+        let components = |spec: Arc<UnstableChainSpec>| {
             (
-                BaseExecutorProvider::base(Arc::clone(&spec)),
-                Arc::new(BaseBeaconConsensus::new(spec)),
+                UnstableExecutorProvider::base(Arc::clone(&spec)),
+                Arc::new(UnstableBeaconConsensus::new(spec)),
             )
         };
 
@@ -94,30 +94,30 @@ where
                 runner.run_command_until_exit(|ctx| command.execute(ctx, launcher))
             }
             Commands::Init(command) => {
-                runner.run_blocking_until_ctrl_c(command.execute::<BaseNode>())
+                runner.run_blocking_until_ctrl_c(command.execute::<UnstableNode>())
             }
             Commands::InitState(command) => {
-                runner.run_blocking_until_ctrl_c(command.execute::<BaseNode>())
+                runner.run_blocking_until_ctrl_c(command.execute::<UnstableNode>())
             }
             Commands::DumpGenesis(command) => runner.run_blocking_until_ctrl_c(command.execute()),
             Commands::Db(command) => {
-                runner.run_blocking_command_until_exit(|ctx| command.execute::<BaseNode>(ctx))
+                runner.run_blocking_command_until_exit(|ctx| command.execute::<UnstableNode>(ctx))
             }
             Commands::Stage(command) => {
-                runner.run_command_until_exit(|ctx| command.execute::<BaseNode, _>(ctx, components))
+                runner.run_command_until_exit(|ctx| command.execute::<UnstableNode, _>(ctx, components))
             }
-            Commands::P2P(command) => runner.run_until_ctrl_c(command.execute::<BaseNode>()),
+            Commands::P2P(command) => runner.run_until_ctrl_c(command.execute::<UnstableNode>()),
             Commands::Config(command) => runner.run_until_ctrl_c(command.execute()),
             Commands::Prune(command) => {
-                runner.run_command_until_exit(|ctx| command.execute::<BaseNode>(ctx))
+                runner.run_command_until_exit(|ctx| command.execute::<UnstableNode>(ctx))
             }
             #[cfg(feature = "dev")]
             Commands::TestVectors(command) => runner.run_until_ctrl_c(command.execute()),
             Commands::ReExecute(command) => {
-                runner.run_until_ctrl_c(command.execute::<BaseNode>(components))
+                runner.run_until_ctrl_c(command.execute::<UnstableNode>(components))
             }
-            Commands::BaseProofs(command) => {
-                runner.run_blocking_until_ctrl_c(command.execute::<BaseNode>())
+            Commands::UnstableProofs(command) => {
+                runner.run_blocking_until_ctrl_c(command.execute::<UnstableNode>())
             }
         }
     }

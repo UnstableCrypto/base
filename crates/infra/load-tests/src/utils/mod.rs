@@ -1,4 +1,4 @@
 //! Utility types, error handling, and tracing setup.
 
 mod errors;
-pub use errors::{BaselineError, Result};
+pub use errors::{UnstablelineError, Result};

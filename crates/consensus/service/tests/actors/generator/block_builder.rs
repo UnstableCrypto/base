@@ -4,8 +4,8 @@ use alloy_consensus::{Block, EMPTY_OMMER_ROOT_HASH};
 use alloy_eips::Encodable2718;
 use alloy_primitives::Bytes;
 use arbitrary::{Arbitrary, Unstructured};
-use base_common_consensus::BaseTxEnvelope;
-use base_common_rpc_types_engine::{BaseExecutionPayload, BaseExecutionPayloadEnvelope};
+use base_common_consensus::UnstableTxEnvelope;
+use base_common_rpc_types_engine::{UnstableExecutionPayload, UnstableExecutionPayloadEnvelope};
 use libp2p::bytes::BufMut;
 
 use crate::actors::generator::seed::SeedGenerator;
@@ -22,29 +22,29 @@ pub(crate) enum PayloadVersion {
 }
 
 impl SeedGenerator {
-    /// Generate a random Base execution payload.
+    /// Generate a random Unstable execution payload.
     pub(crate) fn random_valid_payload(
         &mut self,
         version: PayloadVersion,
-    ) -> anyhow::Result<BaseExecutionPayloadEnvelope> {
-        let block: Block<BaseTxEnvelope> = match version {
+    ) -> anyhow::Result<UnstableExecutionPayloadEnvelope> {
+        let block: Block<UnstableTxEnvelope> = match version {
             PayloadVersion::V1 => self.v1_valid_block(),
             PayloadVersion::V2 => self.v2_valid_block(),
             PayloadVersion::V3 => self.v3_valid_block(),
             PayloadVersion::V4 => self.v4_valid_block(),
         };
 
-        let (payload, _) = BaseExecutionPayload::from_block_slow(&block);
+        let (payload, _) = UnstableExecutionPayload::from_block_slow(&block);
 
         let parent_beacon_block_root = block.header.parent_beacon_block_root;
 
         let envelope =
-            BaseExecutionPayloadEnvelope { parent_beacon_block_root, execution_payload: payload };
+            UnstableExecutionPayloadEnvelope { parent_beacon_block_root, execution_payload: payload };
 
         Ok(envelope)
     }
 
-    fn valid_block(&mut self) -> Block<BaseTxEnvelope> {
+    fn valid_block(&mut self) -> Block<UnstableTxEnvelope> {
         // Simulate some random data
         let data = self.random_bytes(1024 * 1024);
 
@@ -52,7 +52,7 @@ impl SeedGenerator {
         let u = Unstructured::new(&data);
 
         // Generate a random instance of MyStruct
-        let mut block: Block<BaseTxEnvelope> = Block::arbitrary_take_rest(u).unwrap();
+        let mut block: Block<UnstableTxEnvelope> = Block::arbitrary_take_rest(u).unwrap();
 
         let transactions: Vec<Bytes> =
             block.body.transactions().map(|tx| tx.encoded_2718().into()).collect();
@@ -77,7 +77,7 @@ impl SeedGenerator {
     }
 
     /// Make the block v1 compatible
-    fn v1_valid_block(&mut self) -> Block<BaseTxEnvelope> {
+    fn v1_valid_block(&mut self) -> Block<UnstableTxEnvelope> {
         let mut block = self.valid_block();
         block.header.withdrawals_root = None;
         block.header.blob_gas_used = None;
@@ -92,7 +92,7 @@ impl SeedGenerator {
     }
 
     /// Make the block v2 compatible
-    pub(crate) fn v2_valid_block(&mut self) -> Block<BaseTxEnvelope> {
+    pub(crate) fn v2_valid_block(&mut self) -> Block<UnstableTxEnvelope> {
         let mut block = self.v1_valid_block();
 
         block.body.withdrawals = Some(vec![].into());
@@ -106,7 +106,7 @@ impl SeedGenerator {
     }
 
     /// Make the block v3 compatible
-    pub(crate) fn v3_valid_block(&mut self) -> Block<BaseTxEnvelope> {
+    pub(crate) fn v3_valid_block(&mut self) -> Block<UnstableTxEnvelope> {
         let mut block = self.valid_block();
 
         block.body.withdrawals = Some(vec![].into());
@@ -129,7 +129,7 @@ impl SeedGenerator {
     }
 
     /// Make the block v4 compatible
-    pub(crate) fn v4_valid_block(&mut self) -> Block<BaseTxEnvelope> {
+    pub(crate) fn v4_valid_block(&mut self) -> Block<UnstableTxEnvelope> {
         self.v3_valid_block()
     }
 }

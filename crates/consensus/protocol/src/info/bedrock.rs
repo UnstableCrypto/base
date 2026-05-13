@@ -8,8 +8,8 @@ use ambassador::Delegate;
 use crate::{
     DecodeError,
     info::{
-        L1BlockInfoBedrockBaseFields,
-        bedrock_base::{L1BlockInfoBedrockBase, ambassador_impl_L1BlockInfoBedrockBaseFields},
+        L1BlockInfoBedrockUnstableFields,
+        bedrock_base::{L1BlockInfoBedrockUnstable, ambassador_impl_L1BlockInfoBedrockUnstableFields},
     },
 };
 /// Represents the fields within a Bedrock L1 block info transaction.
@@ -21,7 +21,7 @@ use crate::{
 // | 4       | Function signature       |
 // | 32      | Number                   |
 // | 32      | Time                     |
-// | 32      | BaseFee                  |
+// | 32      | UnstableFee                  |
 // | 32      | BlockHash                |
 // | 32      | SequenceNumber           |
 // | 32      | BatcherHash              |
@@ -29,11 +29,11 @@ use crate::{
 // | 32      | L1FeeScalar              |
 // +---------+--------------------------+
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Default, Copy, Delegate)]
-#[delegate(L1BlockInfoBedrockBaseFields, target = "base")]
+#[delegate(L1BlockInfoBedrockUnstableFields, target = "base")]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct L1BlockInfoBedrock {
     #[cfg_attr(feature = "serde", serde(flatten))]
-    base: L1BlockInfoBedrockBase,
+    base: L1BlockInfoBedrockUnstable,
     /// The fee overhead for L1 data. Deprecated in Ecotone.
     pub l1_fee_overhead: U256,
     /// The fee scalar for L1 data. Deprecated in Ecotone.
@@ -61,7 +61,7 @@ impl L1BlockInfoBedrockOnlyFields for L1BlockInfoBedrock {
 
 /// Accessors trait for all fields on [`L1BlockInfoBedrock`].
 pub trait L1BlockInfoBedrockFields:
-    L1BlockInfoBedrockBaseFields + L1BlockInfoBedrockOnlyFields
+    L1BlockInfoBedrockUnstableFields + L1BlockInfoBedrockOnlyFields
 {
 }
 
@@ -149,7 +149,7 @@ impl L1BlockInfoBedrock {
         l1_fee_scalar: U256,
     ) -> Self {
         Self {
-            base: L1BlockInfoBedrockBase::new(
+            base: L1BlockInfoBedrockUnstable::new(
                 number,
                 time,
                 base_fee,
@@ -163,23 +163,23 @@ impl L1BlockInfoBedrock {
     }
     /// Construct from default values and `base_fee`.
     pub fn new_from_base_fee(base_fee: u64) -> Self {
-        Self { base: L1BlockInfoBedrockBase::new_from_base_fee(base_fee), ..Default::default() }
+        Self { base: L1BlockInfoBedrockUnstable::new_from_base_fee(base_fee), ..Default::default() }
     }
     /// Construct from default values and `block_hash`.
     pub fn new_from_block_hash(block_hash: B256) -> Self {
-        Self { base: L1BlockInfoBedrockBase::new_from_block_hash(block_hash), ..Default::default() }
+        Self { base: L1BlockInfoBedrockUnstable::new_from_block_hash(block_hash), ..Default::default() }
     }
     /// Construct from default values and `sequence_number`.
     pub fn new_from_sequence_number(sequence_number: u64) -> Self {
         Self {
-            base: L1BlockInfoBedrockBase::new_from_sequence_number(sequence_number),
+            base: L1BlockInfoBedrockUnstable::new_from_sequence_number(sequence_number),
             ..Default::default()
         }
     }
     /// Construct from default values and `batcher_address`.
     pub fn new_from_batcher_address(batcher_address: Address) -> Self {
         Self {
-            base: L1BlockInfoBedrockBase::new_from_batcher_address(batcher_address),
+            base: L1BlockInfoBedrockUnstable::new_from_batcher_address(batcher_address),
             ..Default::default()
         }
     }
@@ -194,7 +194,7 @@ impl L1BlockInfoBedrock {
     /// Construct from default values, `number` and `block_hash`.
     pub fn new_from_number_and_block_hash(number: u64, block_hash: B256) -> Self {
         Self {
-            base: L1BlockInfoBedrockBase::new_from_number_and_block_hash(number, block_hash),
+            base: L1BlockInfoBedrockUnstable::new_from_number_and_block_hash(number, block_hash),
             ..Default::default()
         }
     }

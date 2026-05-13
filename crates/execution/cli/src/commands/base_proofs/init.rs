@@ -1,11 +1,11 @@
-//! Command that initializes the Base Proofs storage with the current state of the chain.
+//! Command that initializes the Unstable Proofs storage with the current state of the chain.
 
 use std::{path::PathBuf, sync::Arc};
 
-use base_common_consensus::BasePrimitives;
-use base_execution_chainspec::BaseChainSpec;
+use base_common_consensus::UnstablePrimitives;
+use base_execution_chainspec::UnstableChainSpec;
 use base_execution_trie::{
-    BaseProofsStorage, BaseProofsStore, InitializationJob, db::MdbxProofsStorage,
+    UnstableProofsStorage, UnstableProofsStore, InitializationJob, db::MdbxProofsStorage,
 };
 use clap::Parser;
 use reth_chainspec::ChainInfo;
@@ -36,19 +36,19 @@ pub struct InitCommand<C: ChainSpecParser> {
     pub storage_path: PathBuf,
 }
 
-impl<C: ChainSpecParser<ChainSpec = BaseChainSpec>> InitCommand<C> {
+impl<C: ChainSpecParser<ChainSpec = UnstableChainSpec>> InitCommand<C> {
     /// Execute the `proofs init` command.
-    pub async fn execute<N: CliNodeTypes<ChainSpec = C::ChainSpec, Primitives = BasePrimitives>>(
+    pub async fn execute<N: CliNodeTypes<ChainSpec = C::ChainSpec, Primitives = UnstablePrimitives>>(
         self,
     ) -> eyre::Result<()> {
         info!(target: "reth::cli", version = %version_metadata().short_version, "reth starting");
-        info!(target: "reth::cli", path = ?self.storage_path, "Initializing Base proofs storage");
+        info!(target: "reth::cli", path = ?self.storage_path, "Initializing Unstable proofs storage");
 
         // Initialize the environment with read-only access
         let Environment { provider_factory, .. } = self.env.init::<N>(AccessRights::RO)?;
 
         // Create the proofs storage
-        let storage: BaseProofsStorage<Arc<MdbxProofsStorage>> = Arc::new(
+        let storage: UnstableProofsStorage<Arc<MdbxProofsStorage>> = Arc::new(
             MdbxProofsStorage::new(&self.storage_path)
                 .map_err(|e| eyre::eyre!("Failed to create MdbxProofsStorage: {e}"))?,
         )

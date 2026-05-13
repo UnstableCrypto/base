@@ -4,7 +4,7 @@ use std::{fmt::Debug, sync::Arc};
 
 use alloy_consensus::{Block, BlockHeader};
 use alloy_eips::{
-    eip1559::BaseFeeParams, eip2718::Decodable2718, eip4895::Withdrawals, eip7685::Requests,
+    eip1559::UnstableFeeParams, eip2718::Decodable2718, eip4895::Withdrawals, eip7685::Requests,
 };
 use alloy_primitives::{Address, B64, B256, Bytes, U256, keccak256};
 use alloy_rlp::Encodable;
@@ -14,13 +14,13 @@ use alloy_rpc_types_engine::{
 };
 use base_common_chains::Upgrades;
 use base_common_consensus::{
-    BasePrimitives, EIP1559ParamError, HoloceneExtraData, JovianExtraData,
+    UnstablePrimitives, EIP1559ParamError, HoloceneExtraData, JovianExtraData,
 };
 use base_common_rpc_types_engine::{
-    BaseExecutionPayloadEnvelopeV3, BaseExecutionPayloadEnvelopeV4, BaseExecutionPayloadEnvelopeV5,
-    BaseExecutionPayloadV4, BasePayloadAttributes,
+    UnstableExecutionPayloadEnvelopeV3, UnstableExecutionPayloadEnvelopeV4, UnstableExecutionPayloadEnvelopeV5,
+    UnstableExecutionPayloadV4, UnstablePayloadAttributes,
 };
-use base_execution_evm::BaseNextBlockEnvAttributes;
+use base_execution_evm::UnstableNextBlockEnvAttributes;
 use reth_chainspec::EthChainSpec;
 use reth_payload_builder::{EthPayloadBuilderAttributes, PayloadBuilderError};
 use reth_payload_primitives::{
@@ -30,9 +30,9 @@ use reth_primitives_traits::{
     NodePrimitives, SealedBlock, SealedHeader, SignedTransaction, WithEncoded,
 };
 
-/// Base Payload Builder Attributes
+/// Unstable Payload Builder Attributes
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BasePayloadBuilderAttributes<T> {
+pub struct UnstablePayloadBuilderAttributes<T> {
     /// Inner ethereum payload builder attributes
     pub payload_attributes: EthPayloadBuilderAttributes,
     /// `NoTxPool` option for the generated payload
@@ -48,7 +48,7 @@ pub struct BasePayloadBuilderAttributes<T> {
     pub min_base_fee: Option<u64>,
 }
 
-impl<T> Default for BasePayloadBuilderAttributes<T> {
+impl<T> Default for UnstablePayloadBuilderAttributes<T> {
     fn default() -> Self {
         Self {
             payload_attributes: Default::default(),
@@ -61,12 +61,12 @@ impl<T> Default for BasePayloadBuilderAttributes<T> {
     }
 }
 
-impl<T> BasePayloadBuilderAttributes<T> {
+impl<T> UnstablePayloadBuilderAttributes<T> {
     /// Extracts the extra data parameters post-Holocene hardfork.
     /// In Holocene, those parameters are the EIP-1559 base fee parameters.
     pub fn get_holocene_extra_data(
         &self,
-        default_base_fee_params: BaseFeeParams,
+        default_base_fee_params: UnstableFeeParams,
     ) -> Result<Bytes, EIP1559ParamError> {
         self.eip_1559_params
             .map(|params| HoloceneExtraData::encode(params, default_base_fee_params))
@@ -77,9 +77,9 @@ impl<T> BasePayloadBuilderAttributes<T> {
     /// Those parameters are the EIP-1559 parameters from Holocene and the minimum base fee.
     pub fn get_jovian_extra_data(
         &self,
-        default_base_fee_params: BaseFeeParams,
+        default_base_fee_params: UnstableFeeParams,
     ) -> Result<Bytes, EIP1559ParamError> {
-        let min_base_fee = self.min_base_fee.ok_or(EIP1559ParamError::MinBaseFeeNotSet)?;
+        let min_base_fee = self.min_base_fee.ok_or(EIP1559ParamError::MinUnstableFeeNotSet)?;
         self.eip_1559_params
             .map(|params| JovianExtraData::encode(params, default_base_fee_params, min_base_fee))
             .ok_or(EIP1559ParamError::NoEIP1559Params)?
@@ -87,9 +87,9 @@ impl<T> BasePayloadBuilderAttributes<T> {
 }
 
 impl<T: Decodable2718 + Send + Sync + Debug + Unpin + 'static> PayloadBuilderAttributes
-    for BasePayloadBuilderAttributes<T>
+    for UnstablePayloadBuilderAttributes<T>
 {
-    type RpcPayloadAttributes = BasePayloadAttributes;
+    type RpcPayloadAttributes = UnstablePayloadAttributes;
     type Error = alloy_rlp::Error;
 
     /// Creates a new payload builder for the given parent block and the attributes.
@@ -97,7 +97,7 @@ impl<T: Decodable2718 + Send + Sync + Debug + Unpin + 'static> PayloadBuilderAtt
     /// Derives the unique [`PayloadId`] for the given parent and attributes
     fn try_new(
         parent: B256,
-        attributes: BasePayloadAttributes,
+        attributes: UnstablePayloadAttributes,
         version: u8,
     ) -> Result<Self, Self::Error> {
         let id = payload_id(&parent, &attributes, version);
@@ -160,8 +160,8 @@ impl<T: Decodable2718 + Send + Sync + Debug + Unpin + 'static> PayloadBuilderAtt
     }
 }
 
-impl<BaseTransactionSigned> From<EthPayloadBuilderAttributes>
-    for BasePayloadBuilderAttributes<BaseTransactionSigned>
+impl<UnstableTransactionSigned> From<EthPayloadBuilderAttributes>
+    for UnstablePayloadBuilderAttributes<UnstableTransactionSigned>
 {
     fn from(value: EthPayloadBuilderAttributes) -> Self {
         Self { payload_attributes: value, ..Default::default() }
@@ -170,7 +170,7 @@ impl<BaseTransactionSigned> From<EthPayloadBuilderAttributes>
 
 /// Contains the built payload.
 #[derive(Debug, Clone)]
-pub struct BaseBuiltPayload<N: NodePrimitives = BasePrimitives> {
+pub struct UnstableBuiltPayload<N: NodePrimitives = UnstablePrimitives> {
     /// Identifier of the payload
     pub id: PayloadId,
     /// Sealed block
@@ -183,7 +183,7 @@ pub struct BaseBuiltPayload<N: NodePrimitives = BasePrimitives> {
 
 // === impl BuiltPayload ===
 
-impl<N: NodePrimitives> BaseBuiltPayload<N> {
+impl<N: NodePrimitives> UnstableBuiltPayload<N> {
     /// Initializes the payload with the given initial block.
     pub const fn new(
         id: PayloadId,
@@ -215,7 +215,7 @@ impl<N: NodePrimitives> BaseBuiltPayload<N> {
     }
 }
 
-impl<N: NodePrimitives> BuiltPayload for BaseBuiltPayload<N> {
+impl<N: NodePrimitives> BuiltPayload for UnstableBuiltPayload<N> {
     type Primitives = N;
 
     fn block(&self) -> &SealedBlock<N::Block> {
@@ -236,12 +236,12 @@ impl<N: NodePrimitives> BuiltPayload for BaseBuiltPayload<N> {
 }
 
 // V1 engine_getPayloadV1 response
-impl<T, N> From<BaseBuiltPayload<N>> for ExecutionPayloadV1
+impl<T, N> From<UnstableBuiltPayload<N>> for ExecutionPayloadV1
 where
     T: SignedTransaction,
     N: NodePrimitives<Block = Block<T>>,
 {
-    fn from(value: BaseBuiltPayload<N>) -> Self {
+    fn from(value: UnstableBuiltPayload<N>) -> Self {
         Self::from_block_unchecked(
             value.block().hash(),
             &Arc::unwrap_or_clone(value.block).into_block(),
@@ -250,13 +250,13 @@ where
 }
 
 // V2 engine_getPayloadV2 response
-impl<T, N> From<BaseBuiltPayload<N>> for ExecutionPayloadEnvelopeV2
+impl<T, N> From<UnstableBuiltPayload<N>> for ExecutionPayloadEnvelopeV2
 where
     T: SignedTransaction,
     N: NodePrimitives<Block = Block<T>>,
 {
-    fn from(value: BaseBuiltPayload<N>) -> Self {
-        let BaseBuiltPayload { block, fees, .. } = value;
+    fn from(value: UnstableBuiltPayload<N>) -> Self {
+        let UnstableBuiltPayload { block, fees, .. } = value;
 
         Self {
             block_value: fees,
@@ -268,13 +268,13 @@ where
     }
 }
 
-impl<T, N> From<BaseBuiltPayload<N>> for BaseExecutionPayloadEnvelopeV3
+impl<T, N> From<UnstableBuiltPayload<N>> for UnstableExecutionPayloadEnvelopeV3
 where
     T: SignedTransaction,
     N: NodePrimitives<Block = Block<T>>,
 {
-    fn from(value: BaseBuiltPayload<N>) -> Self {
-        let BaseBuiltPayload { block, fees, .. } = value;
+    fn from(value: UnstableBuiltPayload<N>) -> Self {
+        let UnstableBuiltPayload { block, fees, .. } = value;
 
         let parent_beacon_block_root = block.parent_beacon_block_root.unwrap_or_default();
 
@@ -293,20 +293,20 @@ where
             // Spec:
             // <https://github.com/ethereum/execution-apis/blob/fe8e13c288c592ec154ce25c534e26cb7ce0530d/src/engine/cancun.md#specification-2>
             should_override_builder: false,
-            // No blobs for Base execution payloads.
+            // No blobs for Unstable execution payloads.
             blobs_bundle: BlobsBundleV1 { blobs: vec![], commitments: vec![], proofs: vec![] },
             parent_beacon_block_root,
         }
     }
 }
 
-impl<T, N> From<BaseBuiltPayload<N>> for BaseExecutionPayloadEnvelopeV4
+impl<T, N> From<UnstableBuiltPayload<N>> for UnstableExecutionPayloadEnvelopeV4
 where
     T: SignedTransaction,
     N: NodePrimitives<Block = Block<T>>,
 {
-    fn from(value: BaseBuiltPayload<N>) -> Self {
-        let BaseBuiltPayload { block, fees, .. } = value;
+    fn from(value: UnstableBuiltPayload<N>) -> Self {
+        let UnstableBuiltPayload { block, fees, .. } = value;
 
         let parent_beacon_block_root = block.parent_beacon_block_root.unwrap_or_default();
 
@@ -317,7 +317,7 @@ where
         );
 
         Self {
-            execution_payload: BaseExecutionPayloadV4::from_v3_with_withdrawals_root(
+            execution_payload: UnstableExecutionPayloadV4::from_v3_with_withdrawals_root(
                 payload_v3,
                 l2_withdrawals_root,
             ),
@@ -331,7 +331,7 @@ where
             // Spec:
             // <https://github.com/ethereum/execution-apis/blob/fe8e13c288c592ec154ce25c534e26cb7ce0530d/src/engine/cancun.md#specification-2>
             should_override_builder: false,
-            // No blobs for Base execution payloads.
+            // No blobs for Unstable execution payloads.
             blobs_bundle: BlobsBundleV1 { blobs: vec![], commitments: vec![], proofs: vec![] },
             parent_beacon_block_root,
             execution_requests: vec![],
@@ -339,13 +339,13 @@ where
     }
 }
 
-impl<T, N> From<BaseBuiltPayload<N>> for BaseExecutionPayloadEnvelopeV5
+impl<T, N> From<UnstableBuiltPayload<N>> for UnstableExecutionPayloadEnvelopeV5
 where
     T: SignedTransaction,
     N: NodePrimitives<Block = Block<T>>,
 {
-    fn from(value: BaseBuiltPayload<N>) -> Self {
-        let BaseBuiltPayload { block, fees, .. } = value;
+    fn from(value: UnstableBuiltPayload<N>) -> Self {
+        let UnstableBuiltPayload { block, fees, .. } = value;
 
         let l2_withdrawals_root = block.withdrawals_root.unwrap_or_default();
         let payload_v3 = ExecutionPayloadV3::from_block_unchecked(
@@ -354,12 +354,12 @@ where
         );
 
         Self {
-            execution_payload: BaseExecutionPayloadV4::from_v3_with_withdrawals_root(
+            execution_payload: UnstableExecutionPayloadV4::from_v3_with_withdrawals_root(
                 payload_v3,
                 l2_withdrawals_root,
             ),
             block_value: fees,
-            // No blobs for Base.
+            // No blobs for Unstable.
             blobs_bundle: BlobsBundleV2::default(),
             // From the engine API spec:
             //
@@ -375,15 +375,15 @@ where
     }
 }
 
-/// Generates the payload id for the configured payload from the [`BasePayloadAttributes`].
+/// Generates the payload id for the configured payload from the [`UnstablePayloadAttributes`].
 ///
 /// Returns an 8-byte identifier by hashing the payload components with sha256 hash.
 ///
-/// Note: This must be updated whenever the [`BasePayloadAttributes`] changes for a hardfork.
+/// Note: This must be updated whenever the [`UnstablePayloadAttributes`] changes for a hardfork.
 /// See also <https://github.com/ethereum-optimism/op-geth/blob/d401af16f2dd94b010a72eaef10e07ac10b31931/miner/payload_building.go#L59-L59>
 pub fn payload_id(
     parent: &B256,
-    attributes: &BasePayloadAttributes,
+    attributes: &UnstablePayloadAttributes,
     payload_version: u8,
 ) -> PayloadId {
     use sha2::Digest;
@@ -437,15 +437,15 @@ pub fn payload_id(
     PayloadId::new(out.as_slice()[..8].try_into().expect("sufficient length"))
 }
 
-impl<H, T, ChainSpec> BuildNextEnv<BasePayloadBuilderAttributes<T>, H, ChainSpec>
-    for BaseNextBlockEnvAttributes
+impl<H, T, ChainSpec> BuildNextEnv<UnstablePayloadBuilderAttributes<T>, H, ChainSpec>
+    for UnstableNextBlockEnvAttributes
 where
     H: BlockHeader,
     T: SignedTransaction,
     ChainSpec: EthChainSpec + Upgrades,
 {
     fn build_next_env(
-        attributes: &BasePayloadBuilderAttributes<T>,
+        attributes: &UnstablePayloadBuilderAttributes<T>,
         parent: &SealedHeader<H>,
         chain_spec: &ChainSpec,
     ) -> Result<Self, PayloadBuilderError> {
@@ -482,8 +482,8 @@ mod tests {
 
     use alloy_primitives::{FixedBytes, address, b256, bytes};
     use alloy_rpc_types_engine::PayloadAttributes;
-    use base_common_consensus::BaseTransactionSigned;
-    use base_common_rpc_types_engine::BasePayloadAttributes;
+    use base_common_consensus::UnstableTransactionSigned;
+    use base_common_rpc_types_engine::UnstablePayloadAttributes;
     use reth_payload_primitives::EngineApiMessageVersion;
 
     use super::*;
@@ -494,7 +494,7 @@ mod tests {
         // payload_id_builder="0x6ef26ca02318dcf9" payload_id_l2="0x03d2dae446d2a86a"
         let expected =
             PayloadId::new(FixedBytes::<8>::from_str("0x03d2dae446d2a86a").unwrap().into());
-        let attrs = BasePayloadAttributes {
+        let attrs = UnstablePayloadAttributes {
             payload_attributes: PayloadAttributes {
                 timestamp: 1728933301,
                 prev_randao: b256!("0x9158595abbdab2c90635087619aa7042bbebe47642dfab3c9bfb934f6b082765"),
@@ -525,7 +525,7 @@ mod tests {
         // <https://github.com/ethereum-optimism/op-geth/compare/optimism...mattsse:op-geth:matt/check-payload-id-equality>
         let expected =
             PayloadId::new(FixedBytes::<8>::from_str("0x046c65ffc4d659ec").unwrap().into());
-        let attrs = BasePayloadAttributes {
+        let attrs = UnstablePayloadAttributes {
             payload_attributes: PayloadAttributes {
                 timestamp: 1728933301,
                 prev_randao: b256!("0x9158595abbdab2c90635087619aa7042bbebe47642dfab3c9bfb934f6b082765"),
@@ -553,32 +553,32 @@ mod tests {
 
     #[test]
     fn test_get_extra_data_post_holocene() {
-        let attributes: BasePayloadBuilderAttributes<BaseTransactionSigned> =
-            BasePayloadBuilderAttributes {
+        let attributes: UnstablePayloadBuilderAttributes<UnstableTransactionSigned> =
+            UnstablePayloadBuilderAttributes {
                 eip_1559_params: Some(B64::from_str("0x0000000800000008").unwrap()),
                 ..Default::default()
             };
-        let extra_data = attributes.get_holocene_extra_data(BaseFeeParams::new(80, 60));
+        let extra_data = attributes.get_holocene_extra_data(UnstableFeeParams::new(80, 60));
         assert_eq!(extra_data.unwrap(), Bytes::copy_from_slice(&[0, 0, 0, 0, 8, 0, 0, 0, 8]));
     }
 
     #[test]
     fn test_get_extra_data_post_holocene_default() {
-        let attributes: BasePayloadBuilderAttributes<BaseTransactionSigned> =
-            BasePayloadBuilderAttributes { eip_1559_params: Some(B64::ZERO), ..Default::default() };
-        let extra_data = attributes.get_holocene_extra_data(BaseFeeParams::new(80, 60));
+        let attributes: UnstablePayloadBuilderAttributes<UnstableTransactionSigned> =
+            UnstablePayloadBuilderAttributes { eip_1559_params: Some(B64::ZERO), ..Default::default() };
+        let extra_data = attributes.get_holocene_extra_data(UnstableFeeParams::new(80, 60));
         assert_eq!(extra_data.unwrap(), Bytes::copy_from_slice(&[0, 0, 0, 0, 80, 0, 0, 0, 60]));
     }
 
     #[test]
     fn test_get_extra_data_post_jovian() {
-        let attributes: BasePayloadBuilderAttributes<BaseTransactionSigned> =
-            BasePayloadBuilderAttributes {
+        let attributes: UnstablePayloadBuilderAttributes<UnstableTransactionSigned> =
+            UnstablePayloadBuilderAttributes {
                 eip_1559_params: Some(B64::from_str("0x0000000800000008").unwrap()),
                 min_base_fee: Some(10),
                 ..Default::default()
             };
-        let extra_data = attributes.get_jovian_extra_data(BaseFeeParams::new(80, 60));
+        let extra_data = attributes.get_jovian_extra_data(UnstableFeeParams::new(80, 60));
         assert_eq!(
             extra_data.unwrap(),
             // Version byte is 1 for Jovian, then holocene payload followed by 8 bytes for the
@@ -589,13 +589,13 @@ mod tests {
 
     #[test]
     fn test_get_extra_data_post_jovian_default() {
-        let attributes: BasePayloadBuilderAttributes<BaseTransactionSigned> =
-            BasePayloadBuilderAttributes {
+        let attributes: UnstablePayloadBuilderAttributes<UnstableTransactionSigned> =
+            UnstablePayloadBuilderAttributes {
                 eip_1559_params: Some(B64::ZERO),
                 min_base_fee: Some(10),
                 ..Default::default()
             };
-        let extra_data = attributes.get_jovian_extra_data(BaseFeeParams::new(80, 60));
+        let extra_data = attributes.get_jovian_extra_data(UnstableFeeParams::new(80, 60));
         assert_eq!(
             extra_data.unwrap(),
             // Version byte is 1 for Jovian, then holocene payload followed by 8 bytes for the
@@ -606,13 +606,13 @@ mod tests {
 
     #[test]
     fn test_get_extra_data_post_jovian_no_base_fee() {
-        let attributes: BasePayloadBuilderAttributes<BaseTransactionSigned> =
-            BasePayloadBuilderAttributes {
+        let attributes: UnstablePayloadBuilderAttributes<UnstableTransactionSigned> =
+            UnstablePayloadBuilderAttributes {
                 eip_1559_params: Some(B64::ZERO),
                 min_base_fee: None,
                 ..Default::default()
             };
-        let extra_data = attributes.get_jovian_extra_data(BaseFeeParams::new(80, 60));
-        assert_eq!(extra_data.unwrap_err(), EIP1559ParamError::MinBaseFeeNotSet);
+        let extra_data = attributes.get_jovian_extra_data(UnstableFeeParams::new(80, 60));
+        assert_eq!(extra_data.unwrap_err(), EIP1559ParamError::MinUnstableFeeNotSet);
     }
 }

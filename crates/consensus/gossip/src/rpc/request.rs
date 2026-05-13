@@ -4,7 +4,7 @@ use std::{net::IpAddr, num::TryFromIntError, sync::Arc};
 
 use alloy_primitives::map::{HashMap, HashSet};
 use base_consensus_disc::Discv5Handler;
-use base_consensus_peers::BaseEnr;
+use base_consensus_peers::UnstableEnr;
 use discv5::{
     enr::{NodeId, k256::ecdsa},
     multiaddr::Protocol,
@@ -383,7 +383,7 @@ impl P2pRpcRequest {
                 .map(|(id, peer_id)| {
                     let (maybe_enr, maybe_status) = node_to_table_infos.get(id).cloned().unzip();
 
-                    let base_enr = maybe_enr.clone().and_then(|enr| BaseEnr::try_from(&enr).ok());
+                    let base_enr = maybe_enr.clone().and_then(|enr| UnstableEnr::try_from(&enr).ok());
 
                     let direction = maybe_status
                         .map(|status| {

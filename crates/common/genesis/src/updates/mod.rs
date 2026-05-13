@@ -22,7 +22,7 @@ mod operator_fee;
 pub use operator_fee::OperatorFeeUpdate;
 
 mod min_base_fee;
-pub use min_base_fee::MinBaseFeeUpdate;
+pub use min_base_fee::MinUnstableFeeUpdate;
 
 mod da_footprint_gas_scalar;
 pub use da_footprint_gas_scalar::DaFootprintGasScalarUpdate;

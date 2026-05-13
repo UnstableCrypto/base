@@ -1,11 +1,11 @@
-//! Base node storage type aliases.
+//! Unstable node storage type aliases.
 
 use alloy_consensus::Header;
-use base_common_consensus::BaseTransactionSigned;
+use base_common_consensus::UnstableTransactionSigned;
 use reth_storage_api::EmptyBodyStorage;
 
-/// Base storage implementation.
-pub type BaseStorage<T = BaseTransactionSigned, H = Header> = EmptyBodyStorage<T, H>;
+/// Unstable storage implementation.
+pub type UnstableStorage<T = UnstableTransactionSigned, H = Header> = EmptyBodyStorage<T, H>;
 
 #[cfg(test)]
 mod tests {

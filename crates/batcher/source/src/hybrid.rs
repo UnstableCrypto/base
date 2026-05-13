@@ -4,7 +4,7 @@ use std::{collections::HashMap, time::Duration};
 
 use alloy_primitives::B256;
 use async_trait::async_trait;
-use base_common_consensus::BaseBlock;
+use base_common_consensus::UnstableBlock;
 use base_protocol::{BlockInfo, L1BlockInfoTx, L2BlockInfo};
 use base_runtime::Clock;
 use futures::{StreamExt, stream::BoxStream};
@@ -25,7 +25,7 @@ pub struct HybridBlockSource<S, P, C> {
     /// Declared before `_subscription` so it is dropped first, ensuring the
     /// stream's underlying transport is released before the provider is torn down.
     #[debug(skip)]
-    sub: BoxStream<'static, Result<BaseBlock, SourceError>>,
+    sub: BoxStream<'static, Result<UnstableBlock, SourceError>>,
     /// The original subscription, kept alive so its resources remain open.
     #[debug(skip)]
     _subscription: S,
@@ -65,7 +65,7 @@ where
     /// Process a received block, returning an event if the block is new or a reorg.
     ///
     /// Returns `None` if the block is a duplicate (already seen with the same hash).
-    fn process(&mut self, block: BaseBlock) -> Option<L2BlockEvent> {
+    fn process(&mut self, block: UnstableBlock) -> Option<L2BlockEvent> {
         let number = block.header.number;
         let hash = block.header.hash_slow();
 
@@ -198,7 +198,7 @@ mod tests {
 
     use alloy_consensus::BlockBody;
     use alloy_primitives::Sealed;
-    use base_common_consensus::{BaseTxEnvelope, TxDeposit};
+    use base_common_consensus::{UnstableTxEnvelope, TxDeposit};
     use base_protocol::L1BlockInfoBedrock;
     use base_runtime::{Config, Runner};
     use futures::{StreamExt, stream::BoxStream};
@@ -206,17 +206,17 @@ mod tests {
     use super::*;
 
     /// Test helper: wraps a concrete stream as a [`BlockSubscription`].
-    struct StreamSub(BoxStream<'static, Result<BaseBlock, SourceError>>);
+    struct StreamSub(BoxStream<'static, Result<UnstableBlock, SourceError>>);
 
     impl BlockSubscription for StreamSub {
-        fn take_stream(&mut self) -> BoxStream<'static, Result<BaseBlock, SourceError>> {
+        fn take_stream(&mut self) -> BoxStream<'static, Result<UnstableBlock, SourceError>> {
             std::mem::replace(&mut self.0, futures::stream::pending().boxed())
         }
     }
 
-    /// Helper to build a minimal [`BaseBlock`] with a given number and parent hash.
-    fn make_block(number: u64, parent_hash: B256) -> BaseBlock {
-        BaseBlock {
+    /// Helper to build a minimal [`UnstableBlock`] with a given number and parent hash.
+    fn make_block(number: u64, parent_hash: B256) -> UnstableBlock {
+        UnstableBlock {
             header: alloy_consensus::Header { number, parent_hash, ..Default::default() },
             body: Default::default(),
         }
@@ -224,11 +224,11 @@ mod tests {
 
     /// A never-ending pending subscription (interval path tests).
     fn pending_sub() -> StreamSub {
-        StreamSub(futures::stream::pending::<Result<BaseBlock, SourceError>>().boxed())
+        StreamSub(futures::stream::pending::<Result<UnstableBlock, SourceError>>().boxed())
     }
 
     /// A polling source that always returns a fixed block.
-    struct FixedPoller(BaseBlock);
+    struct FixedPoller(UnstableBlock);
 
     /// A polling source that returns blocks with a monotonically increasing number on each call.
     struct IncrementingPoller(Arc<Mutex<u64>>);
@@ -241,7 +241,7 @@ mod tests {
 
     #[async_trait]
     impl PollingSource for IncrementingPoller {
-        async fn unsafe_head(&self) -> Result<BaseBlock, SourceError> {
+        async fn unsafe_head(&self) -> Result<UnstableBlock, SourceError> {
             let mut n = self.0.lock().unwrap();
             *n += 1;
             Ok(make_block(*n, B256::ZERO))
@@ -252,18 +252,18 @@ mod tests {
     /// then succeeds with a fixed block on all subsequent calls.
     struct FalliblePoller {
         calls: Arc<Mutex<u32>>,
-        block: BaseBlock,
+        block: UnstableBlock,
     }
 
     impl FalliblePoller {
-        fn new(block: BaseBlock) -> Self {
+        fn new(block: UnstableBlock) -> Self {
             Self { calls: Arc::new(Mutex::new(0)), block }
         }
     }
 
     #[async_trait]
     impl PollingSource for FalliblePoller {
-        async fn unsafe_head(&self) -> Result<BaseBlock, SourceError> {
+        async fn unsafe_head(&self) -> Result<UnstableBlock, SourceError> {
             let mut c = self.calls.lock().unwrap();
             *c += 1;
             if *c == 1 {
@@ -279,14 +279,14 @@ mod tests {
 
     #[async_trait]
     impl PollingSource for ClosedPoller {
-        async fn unsafe_head(&self) -> Result<BaseBlock, SourceError> {
+        async fn unsafe_head(&self) -> Result<UnstableBlock, SourceError> {
             Err(SourceError::Closed)
         }
     }
 
     #[async_trait]
     impl PollingSource for FixedPoller {
-        async fn unsafe_head(&self) -> Result<BaseBlock, SourceError> {
+        async fn unsafe_head(&self) -> Result<UnstableBlock, SourceError> {
             Ok(self.0.clone())
         }
     }
@@ -390,12 +390,12 @@ mod tests {
         ))
         .encode_calldata();
 
-        let deposit = BaseTxEnvelope::Deposit(Sealed::new(TxDeposit {
+        let deposit = UnstableTxEnvelope::Deposit(Sealed::new(TxDeposit {
             input: calldata,
             ..Default::default()
         }));
 
-        let block1 = BaseBlock {
+        let block1 = UnstableBlock {
             header: alloy_consensus::Header {
                 number: 1,
                 parent_hash: B256::ZERO,
@@ -404,7 +404,7 @@ mod tests {
             body: BlockBody { transactions: vec![deposit.clone()], ..Default::default() },
         };
         // Reorg block — same number, different parent hash produces a different block hash.
-        let block2 = BaseBlock {
+        let block2 = UnstableBlock {
             header: alloy_consensus::Header {
                 number: 1,
                 parent_hash: B256::from([1u8; 32]),
@@ -447,18 +447,18 @@ mod tests {
     struct CatchupPoller {
         state: Arc<Mutex<u64>>,
         until: u64,
-        latest: BaseBlock,
+        latest: UnstableBlock,
     }
 
     impl CatchupPoller {
-        fn new(start: u64, until: u64, latest: BaseBlock) -> Self {
+        fn new(start: u64, until: u64, latest: UnstableBlock) -> Self {
             Self { state: Arc::new(Mutex::new(start)), until, latest }
         }
     }
 
     #[async_trait]
     impl PollingSource for CatchupPoller {
-        async fn unsafe_head(&self) -> Result<BaseBlock, SourceError> {
+        async fn unsafe_head(&self) -> Result<UnstableBlock, SourceError> {
             let mut n = self.state.lock().unwrap();
             if *n <= self.until {
                 let block = make_block(*n, B256::ZERO);
@@ -478,18 +478,18 @@ mod tests {
     /// then succeeds with a fixed block on all subsequent calls.
     struct FallibleCatchupPoller {
         calls: Arc<Mutex<u32>>,
-        block: BaseBlock,
+        block: UnstableBlock,
     }
 
     impl FallibleCatchupPoller {
-        fn new(block: BaseBlock) -> Self {
+        fn new(block: UnstableBlock) -> Self {
             Self { calls: Arc::new(Mutex::new(0)), block }
         }
     }
 
     #[async_trait]
     impl PollingSource for FallibleCatchupPoller {
-        async fn unsafe_head(&self) -> Result<BaseBlock, SourceError> {
+        async fn unsafe_head(&self) -> Result<UnstableBlock, SourceError> {
             let mut c = self.calls.lock().unwrap();
             *c += 1;
             if *c == 1 {

@@ -29,7 +29,7 @@ async fn jovian_block_parameters_set() -> eyre::Result<()> {
     // Version byte
     assert_eq!(block.header.extra_data.slice(0..1), bytes!("0x01"));
 
-    // Min Base Fee of zero by default
+    // Min Unstable Fee of zero by default
     assert_eq!(block.header.extra_data.slice(9..=16), bytes!("0x0000000000000000"),);
 
     Ok(())

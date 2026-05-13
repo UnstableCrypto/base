@@ -1,11 +1,11 @@
 //! Contains utilities for the L2 executor.
 
 use alloy_consensus::{BlockHeader, Header};
-use alloy_eips::eip1559::BaseFeeParams;
+use alloy_eips::eip1559::UnstableFeeParams;
 use alloy_primitives::Bytes;
 use base_common_consensus::{EIP1559ParamError, HoloceneExtraData, JovianExtraData};
 use base_common_genesis::RollupConfig;
-use base_common_rpc_types_engine::BasePayloadAttributes;
+use base_common_rpc_types_engine::UnstablePayloadAttributes;
 
 use crate::{Eip1559ValidationError, ExecutorError, ExecutorResult};
 
@@ -15,11 +15,11 @@ use crate::{Eip1559ValidationError, ExecutorError, ExecutorResult};
 /// - `extra_data`: The extra data field of the [Header].
 ///
 /// ## Returns
-/// - `Ok(BaseFeeParams)`: The EIP-1559 parameters.
+/// - `Ok(UnstableFeeParams)`: The EIP-1559 parameters.
 /// - `Err(ExecutorError::InvalidExtraData)`: If the extra data is invalid.
 pub(crate) fn decode_holocene_eip_1559_params_block_header(
     header: &Header,
-) -> ExecutorResult<BaseFeeParams> {
+) -> ExecutorResult<UnstableFeeParams> {
     let (elasticity, denominator) = HoloceneExtraData::decode(header.extra_data())?;
 
     // Check for potential division by zero.
@@ -29,7 +29,7 @@ pub(crate) fn decode_holocene_eip_1559_params_block_header(
         return Err(ExecutorError::InvalidExtraData(Eip1559ValidationError::ZeroDenominator));
     }
 
-    Ok(BaseFeeParams {
+    Ok(UnstableFeeParams {
         elasticity_multiplier: elasticity.into(),
         max_change_denominator: denominator.into(),
     })
@@ -37,7 +37,7 @@ pub(crate) fn decode_holocene_eip_1559_params_block_header(
 
 pub(crate) fn decode_jovian_eip_1559_params_block_header(
     header: &Header,
-) -> ExecutorResult<(BaseFeeParams, u64)> {
+) -> ExecutorResult<(UnstableFeeParams, u64)> {
     let (elasticity, denominator, min_base_fee) = JovianExtraData::decode(header.extra_data())?;
 
     // Check for potential division by zero.
@@ -48,7 +48,7 @@ pub(crate) fn decode_jovian_eip_1559_params_block_header(
     }
 
     Ok((
-        BaseFeeParams {
+        UnstableFeeParams {
             elasticity_multiplier: elasticity.into(),
             max_change_denominator: denominator.into(),
         },
@@ -60,14 +60,14 @@ pub(crate) fn decode_jovian_eip_1559_params_block_header(
 ///
 /// ## Takes
 /// - `config`: The [`RollupConfig`] for the chain.
-/// - `attributes`: The [`BasePayloadAttributes`] for the block.
+/// - `attributes`: The [`UnstablePayloadAttributes`] for the block.
 ///
 /// ## Returns
 /// - `Ok(data)`: The encoded extra data.
 /// - `Err(ExecutorError::MissingEIP1559Params)`: If the EIP-1559 parameters are missing.
 pub(crate) fn encode_holocene_eip_1559_params(
     config: &RollupConfig,
-    attributes: &BasePayloadAttributes,
+    attributes: &UnstablePayloadAttributes,
 ) -> ExecutorResult<Bytes> {
     Ok(HoloceneExtraData::encode(
         attributes.eip_1559_params.ok_or(ExecutorError::MissingEIP1559Params)?,
@@ -79,20 +79,20 @@ pub(crate) fn encode_holocene_eip_1559_params(
 ///
 /// ## Takes
 /// - `config`: The [`RollupConfig`] for the chain.
-/// - `attributes`: The [`BasePayloadAttributes`] for the block.
+/// - `attributes`: The [`UnstablePayloadAttributes`] for the block.
 ///
 /// ## Returns
 /// - `Ok(data)`: The encoded extra data.
 /// - `Err(ExecutorError::MissingEIP1559Params)`: If the EIP-1559 parameters are missing.
 pub(crate) fn encode_jovian_eip_1559_params(
     config: &RollupConfig,
-    attributes: &BasePayloadAttributes,
+    attributes: &UnstablePayloadAttributes,
 ) -> ExecutorResult<Bytes> {
     Ok(JovianExtraData::encode(
         attributes.eip_1559_params.ok_or(ExecutorError::MissingEIP1559Params)?,
         config.chain_op_config.post_canyon_params(),
         attributes.min_base_fee.ok_or(ExecutorError::InvalidExtraData(
-            Eip1559ValidationError::Decode(EIP1559ParamError::MinBaseFeeNotSet),
+            Eip1559ValidationError::Decode(EIP1559ParamError::MinUnstableFeeNotSet),
         ))?,
     )?)
 }
@@ -103,15 +103,15 @@ mod test {
     use alloy_primitives::{B64, b64, bytes};
     use alloy_rpc_types_engine::PayloadAttributes;
     use base_common_genesis::{FeeConfig, RollupConfig};
-    use base_common_rpc_types_engine::BasePayloadAttributes;
+    use base_common_rpc_types_engine::UnstablePayloadAttributes;
 
     use super::decode_holocene_eip_1559_params_block_header;
     use crate::util::{
         decode_jovian_eip_1559_params_block_header, encode_holocene_eip_1559_params,
     };
 
-    fn mock_payload(eip_1559_params: Option<B64>) -> BasePayloadAttributes {
-        BasePayloadAttributes {
+    fn mock_payload(eip_1559_params: Option<B64>) -> UnstablePayloadAttributes {
+        UnstablePayloadAttributes {
             payload_attributes: PayloadAttributes {
                 timestamp: 0,
                 prev_randao: Default::default(),

@@ -4,7 +4,7 @@ This document specifies the JSON-RPC methods implemented by the Flashblocks RPC 
 
 ## Type Definitions
 
-All types used in these RPC methods are identical to the standard Base RPC types. No modifications have been made to the existing type definitions.
+All types used in these RPC methods are identical to the standard Unstable RPC types. No modifications have been made to the existing type definitions.
 
 ## Modified Ethereum JSON-RPC Methods
 

@@ -1,7 +1,7 @@
-//! Stateless Base L2 block builder implementation.
+//! Stateless Unstable L2 block builder implementation.
 //!
 //! The [`StatelessL2Builder`] provides a complete block building and execution engine
-//! for Base L2 chains that operates in a stateless manner, pulling required state
+//! for Unstable L2 chains that operates in a stateless manner, pulling required state
 //! data from a [`TrieDB`] during execution rather than maintaining full state.
 
 use alloc::{string::ToString, vec::Vec};
@@ -12,12 +12,12 @@ use alloy_evm::{
     EvmFactory, FromRecoveredTx, FromTxWithEncoded,
     block::{BlockExecutionResult, BlockExecutor, BlockExecutorFactory},
 };
-use base_common_consensus::{BaseReceiptEnvelope, BaseTxEnvelope};
+use base_common_consensus::{UnstableReceiptEnvelope, UnstableTxEnvelope};
 use base_common_evm::{
-    AlloyReceiptBuilder, BaseBlockExecutionCtx, BaseBlockExecutorFactory, BaseSpecId, BaseTxEnv,
+    AlloyReceiptBuilder, UnstableBlockExecutionCtx, UnstableBlockExecutorFactory, UnstableSpecId, UnstableTxEnv,
 };
 use base_common_genesis::RollupConfig;
-use base_common_rpc_types_engine::BasePayloadAttributes;
+use base_common_rpc_types_engine::UnstablePayloadAttributes;
 use base_proof_mpt::TrieHinter;
 use revm::{
     context::BlockEnv,
@@ -26,7 +26,7 @@ use revm::{
 
 use crate::{ExecutorError, ExecutorResult, TrieDB, TrieDBError, TrieDBProvider};
 
-/// Stateless Base L2 block builder that derives state from trie proofs during execution.
+/// Stateless Unstable L2 block builder that derives state from trie proofs during execution.
 ///
 /// The [`StatelessL2Builder`] is a specialized block execution engine designed for fault proof
 /// systems and stateless verification. Instead of maintaining full L2 state, it dynamically
@@ -48,17 +48,17 @@ where
     pub(crate) config: &'a RollupConfig,
     /// The trie database providing stateless access to L2 state via Merkle proofs.
     pub(crate) trie_db: TrieDB<P, H>,
-    /// The block executor factory for creating Base execution environments.
-    pub(crate) factory: BaseBlockExecutorFactory<AlloyReceiptBuilder, RollupConfig, Evm>,
+    /// The block executor factory for creating Unstable execution environments.
+    pub(crate) factory: UnstableBlockExecutorFactory<AlloyReceiptBuilder, RollupConfig, Evm>,
 }
 
 impl<'a, P, H, Evm> StatelessL2Builder<'a, P, H, Evm>
 where
     P: TrieDBProvider + Debug,
     H: TrieHinter + Debug,
-    Evm: EvmFactory<Spec = BaseSpecId, BlockEnv = BlockEnv> + 'static,
+    Evm: EvmFactory<Spec = UnstableSpecId, BlockEnv = BlockEnv> + 'static,
     <Evm as EvmFactory>::Tx:
-        FromTxWithEncoded<BaseTxEnvelope> + FromRecoveredTx<BaseTxEnvelope> + BaseTxEnv,
+        FromTxWithEncoded<UnstableTxEnvelope> + FromRecoveredTx<UnstableTxEnvelope> + UnstableTxEnv,
 {
     /// Creates a new stateless L2 block builder instance.
     ///
@@ -79,7 +79,7 @@ where
         parent_header: Sealed<Header>,
     ) -> Self {
         let trie_db = TrieDB::new(parent_header, provider, hinter);
-        let factory = BaseBlockExecutorFactory::new(
+        let factory = UnstableBlockExecutorFactory::new(
             AlloyReceiptBuilder::default(),
             config.clone(),
             evm_factory,
@@ -101,7 +101,7 @@ where
     /// * `Err(ExecutorError)` - Block building or execution failure
     pub fn build_block(
         &mut self,
-        attrs: BasePayloadAttributes,
+        attrs: UnstablePayloadAttributes,
     ) -> ExecutorResult<BlockBuildingOutcome> {
         // Step 1. Set up the execution environment.
         let (base_fee_params, min_base_fee) = Self::active_base_fee_params(
@@ -110,7 +110,7 @@ where
             attrs.payload_attributes.timestamp,
         )?;
         let evm_env = self.evm_env(
-            BaseSpecId::from_timestamp(self.config, attrs.payload_attributes.timestamp),
+            UnstableSpecId::from_timestamp(self.config, attrs.payload_attributes.timestamp),
             self.trie_db.parent_block_header(),
             &attrs,
             &base_fee_params,
@@ -144,7 +144,7 @@ where
             .without_state_clear()
             .build();
         let evm = self.factory.evm_factory().create_evm(&mut state, evm_env);
-        let ctx = BaseBlockExecutionCtx {
+        let ctx = UnstableBlockExecutionCtx {
             parent_hash,
             parent_beacon_block_root: attrs.payload_attributes.parent_beacon_block_root,
             // This field is unused for individual block building jobs.
@@ -194,12 +194,12 @@ pub struct BlockBuildingOutcome {
     /// The block header.
     pub header: Sealed<Header>,
     /// The block execution result.
-    pub execution_result: BlockExecutionResult<BaseReceiptEnvelope>,
+    pub execution_result: BlockExecutionResult<UnstableReceiptEnvelope>,
 }
 
-impl From<(Sealed<Header>, BlockExecutionResult<BaseReceiptEnvelope>)> for BlockBuildingOutcome {
+impl From<(Sealed<Header>, BlockExecutionResult<UnstableReceiptEnvelope>)> for BlockBuildingOutcome {
     fn from(
-        (header, execution_result): (Sealed<Header>, BlockExecutionResult<BaseReceiptEnvelope>),
+        (header, execution_result): (Sealed<Header>, BlockExecutionResult<UnstableReceiptEnvelope>),
     ) -> Self {
         Self { header, execution_result }
     }

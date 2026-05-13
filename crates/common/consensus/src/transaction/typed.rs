@@ -5,65 +5,65 @@ use alloy_consensus::{
 use alloy_eips::Encodable2718;
 use alloy_primitives::{B256, ChainId, Signature, TxHash, bytes::BufMut};
 
-pub use crate::transaction::envelope::BaseTypedTransaction;
-use crate::{BaseTxEnvelope, OpTxType, TxDeposit};
+pub use crate::transaction::envelope::UnstableTypedTransaction;
+use crate::{UnstableTxEnvelope, OpTxType, TxDeposit};
 
-impl From<TxLegacy> for BaseTypedTransaction {
+impl From<TxLegacy> for UnstableTypedTransaction {
     fn from(tx: TxLegacy) -> Self {
         Self::Legacy(tx)
     }
 }
 
-impl From<TxEip2930> for BaseTypedTransaction {
+impl From<TxEip2930> for UnstableTypedTransaction {
     fn from(tx: TxEip2930) -> Self {
         Self::Eip2930(tx)
     }
 }
 
-impl From<TxEip1559> for BaseTypedTransaction {
+impl From<TxEip1559> for UnstableTypedTransaction {
     fn from(tx: TxEip1559) -> Self {
         Self::Eip1559(tx)
     }
 }
 
-impl From<TxEip7702> for BaseTypedTransaction {
+impl From<TxEip7702> for UnstableTypedTransaction {
     fn from(tx: TxEip7702) -> Self {
         Self::Eip7702(tx)
     }
 }
 
-impl From<TxDeposit> for BaseTypedTransaction {
+impl From<TxDeposit> for UnstableTypedTransaction {
     fn from(tx: TxDeposit) -> Self {
         Self::Deposit(tx)
     }
 }
 
-impl From<BaseTxEnvelope> for BaseTypedTransaction {
-    fn from(envelope: BaseTxEnvelope) -> Self {
+impl From<UnstableTxEnvelope> for UnstableTypedTransaction {
+    fn from(envelope: UnstableTxEnvelope) -> Self {
         match envelope {
-            BaseTxEnvelope::Legacy(tx) => Self::Legacy(tx.strip_signature()),
-            BaseTxEnvelope::Eip2930(tx) => Self::Eip2930(tx.strip_signature()),
-            BaseTxEnvelope::Eip1559(tx) => Self::Eip1559(tx.strip_signature()),
-            BaseTxEnvelope::Eip7702(tx) => Self::Eip7702(tx.strip_signature()),
-            BaseTxEnvelope::Deposit(tx) => Self::Deposit(tx.into_inner()),
+            UnstableTxEnvelope::Legacy(tx) => Self::Legacy(tx.strip_signature()),
+            UnstableTxEnvelope::Eip2930(tx) => Self::Eip2930(tx.strip_signature()),
+            UnstableTxEnvelope::Eip1559(tx) => Self::Eip1559(tx.strip_signature()),
+            UnstableTxEnvelope::Eip7702(tx) => Self::Eip7702(tx.strip_signature()),
+            UnstableTxEnvelope::Deposit(tx) => Self::Deposit(tx.into_inner()),
         }
     }
 }
 
 #[cfg(feature = "alloy-compat")]
-impl From<BaseTypedTransaction> for alloy_rpc_types_eth::TransactionRequest {
-    fn from(tx: BaseTypedTransaction) -> Self {
+impl From<UnstableTypedTransaction> for alloy_rpc_types_eth::TransactionRequest {
+    fn from(tx: UnstableTypedTransaction) -> Self {
         match tx {
-            BaseTypedTransaction::Legacy(tx) => tx.into(),
-            BaseTypedTransaction::Eip2930(tx) => tx.into(),
-            BaseTypedTransaction::Eip1559(tx) => tx.into(),
-            BaseTypedTransaction::Eip7702(tx) => tx.into(),
-            BaseTypedTransaction::Deposit(tx) => tx.into(),
+            UnstableTypedTransaction::Legacy(tx) => tx.into(),
+            UnstableTypedTransaction::Eip2930(tx) => tx.into(),
+            UnstableTypedTransaction::Eip1559(tx) => tx.into(),
+            UnstableTypedTransaction::Eip7702(tx) => tx.into(),
+            UnstableTypedTransaction::Deposit(tx) => tx.into(),
         }
     }
 }
 
-impl BaseTypedTransaction {
+impl UnstableTypedTransaction {
     /// Return the [`OpTxType`] of the inner txn.
     pub const fn tx_type(&self) -> OpTxType {
         match self {
@@ -138,10 +138,10 @@ impl BaseTypedTransaction {
         }
     }
 
-    /// Convenience function to convert this typed transaction into an [`BaseTxEnvelope`].
+    /// Convenience function to convert this typed transaction into an [`UnstableTxEnvelope`].
     ///
-    /// Note: If this is a [`BaseTypedTransaction::Deposit`] variant, the signature will be ignored.
-    pub fn into_envelope(self, signature: Signature) -> BaseTxEnvelope {
+    /// Note: If this is a [`UnstableTypedTransaction::Deposit`] variant, the signature will be ignored.
+    pub fn into_envelope(self, signature: Signature) -> UnstableTxEnvelope {
         self.into_signed(signature).into()
     }
 
@@ -163,7 +163,7 @@ impl BaseTypedTransaction {
     }
 }
 
-impl RlpEcdsaEncodableTx for BaseTypedTransaction {
+impl RlpEcdsaEncodableTx for UnstableTypedTransaction {
     fn rlp_encoded_fields_length(&self) -> usize {
         match self {
             Self::Legacy(tx) => tx.rlp_encoded_fields_length(),
@@ -245,7 +245,7 @@ impl RlpEcdsaEncodableTx for BaseTypedTransaction {
     }
 }
 
-impl SignableTransaction<Signature> for BaseTypedTransaction {
+impl SignableTransaction<Signature> for UnstableTypedTransaction {
     fn set_chain_id(&mut self, chain_id: ChainId) {
         match self {
             Self::Legacy(tx) => tx.set_chain_id(chain_id),
@@ -285,7 +285,7 @@ impl SignableTransaction<Signature> for BaseTypedTransaction {
     }
 }
 
-impl InMemorySize for BaseTypedTransaction {
+impl InMemorySize for UnstableTypedTransaction {
     fn size(&self) -> usize {
         match self {
             Self::Legacy(tx) => tx.size(),

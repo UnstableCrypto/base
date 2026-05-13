@@ -10,7 +10,7 @@ use base_consensus_derive::{
     SignalReceiver,
 };
 use base_proof::{
-    BaseExecutor, BootInfo, OracleL1ChainProvider, OracleL2ChainProvider, OraclePipeline,
+    UnstableExecutor, BootInfo, OracleL1ChainProvider, OracleL2ChainProvider, OraclePipeline,
     new_oracle_pipeline_cursor,
 };
 use base_proof_driver::{Driver, DriverPipeline, PipelineCursor};
@@ -21,7 +21,7 @@ use tracing::info;
 
 use crate::{
     client::{advance_to_target, fetch_safe_head_hash},
-    precompiles::{CustomCrypto, ZkvmBaseEvmFactory},
+    precompiles::{CustomCrypto, ZkvmUnstableEvmFactory},
 };
 
 // Gets the inputs for constructing the derivation pipeline.
@@ -145,11 +145,11 @@ pub trait WitnessExecutor {
 
         let rollup_config = Arc::new(boot.rollup_config);
 
-        let executor = BaseExecutor::new(
+        let executor = UnstableExecutor::new(
             rollup_config.as_ref(),
             l2_provider.clone(),
             l2_provider,
-            ZkvmBaseEvmFactory::new(),
+            ZkvmUnstableEvmFactory::new(),
             None,
         );
         let mut driver = Driver::new(cursor, executor, pipeline);

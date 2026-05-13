@@ -1,4 +1,4 @@
-//! Base-specific `eth_config` RPC support.
+//! Unstable-specific `eth_config` RPC support.
 
 use std::sync::Arc;
 
@@ -23,7 +23,7 @@ const fn zero_blob_params() -> BlobParams {
         update_fraction: 0,
         // EIP-7840's serde shape omits this field, so clients round-trip a missing value back to
         // the protocol default of `1`. Keep the wire-observable default aligned while zeroing the
-        // blob capacity fields that Base must not advertise.
+        // blob capacity fields that Unstable must not advertise.
         min_blob_fee: BLOB_TX_MIN_BLOB_GASPRICE,
         max_blobs_per_tx: 0,
         blob_base_cost: 0,
@@ -38,7 +38,7 @@ fn sanitize_system_contracts_for_fork(chain_spec: &impl Upgrades, fork_config: &
         SystemContract::HistoryStorage => {
             chain_spec.is_isthmus_active_at_timestamp(activation_time)
         }
-        // Base does not support L1-style deposit, consolidation, or withdrawal request contracts.
+        // Unstable does not support L1-style deposit, consolidation, or withdrawal request contracts.
         SystemContract::ConsolidationRequestPredeploy
         | SystemContract::DepositContract
         | SystemContract::WithdrawalRequestPredeploy
@@ -58,27 +58,27 @@ fn for_each_fork(config: &mut EthConfig, mut f: impl FnMut(&mut EthForkConfig)) 
     }
 }
 
-/// RPC endpoint support for Base's `eth_config` response.
+/// RPC endpoint support for Unstable's `eth_config` response.
 ///
-/// Base does not currently support native blob transactions, so its `blobSchedule` should be
+/// Unstable does not currently support native blob transactions, so its `blobSchedule` should be
 /// reported as zeroed rather than inheriting synthetic Cancun/Prague/Osaka defaults from the
 /// upstream Ethereum handler.
 #[cfg_attr(not(feature = "client"), rpc(server, namespace = "eth"))]
 #[cfg_attr(feature = "client", rpc(server, client, namespace = "eth"))]
-pub trait BaseEthConfigApi {
+pub trait UnstableEthConfigApi {
     /// Returns an object with data about recent and upcoming fork configurations.
     #[method(name = "config")]
     fn config(&self) -> RpcResult<EthConfig>;
 }
 
-/// Base-specific handler for the `eth_config` RPC endpoint.
+/// Unstable-specific handler for the `eth_config` RPC endpoint.
 #[derive(Debug, Clone)]
-pub struct BaseEthConfigHandler<Provider: ChainSpecProvider, Evm> {
+pub struct UnstableEthConfigHandler<Provider: ChainSpecProvider, Evm> {
     chain_spec: Arc<<Provider as ChainSpecProvider>::ChainSpec>,
     eth_config: EthConfigHandler<Provider, Evm>,
 }
 
-impl<Provider, Evm> BaseEthConfigHandler<Provider, Evm>
+impl<Provider, Evm> UnstableEthConfigHandler<Provider, Evm>
 where
     Provider: ChainSpecProvider<ChainSpec: Hardforks + EthereumHardforks + Upgrades>
         + BlockReaderIdExt<Header: HeaderMut>
@@ -86,7 +86,7 @@ where
         + 'static,
     Evm: ConfigureEvm<Primitives: NodePrimitives<BlockHeader = Provider::Header>> + Clone + 'static,
 {
-    /// Creates a new [`BaseEthConfigHandler`].
+    /// Creates a new [`UnstableEthConfigHandler`].
     pub fn new(provider: Provider, evm_config: Evm) -> Self {
         let chain_spec = provider.chain_spec();
         let eth_config = EthConfigHandler::new(provider, evm_config);
@@ -106,7 +106,7 @@ where
     }
 }
 
-impl<Provider, Evm> BaseEthConfigApiServer for BaseEthConfigHandler<Provider, Evm>
+impl<Provider, Evm> UnstableEthConfigApiServer for UnstableEthConfigHandler<Provider, Evm>
 where
     Provider: ChainSpecProvider<ChainSpec: Hardforks + EthereumHardforks + Upgrades>
         + BlockReaderIdExt<Header: HeaderMut>
@@ -130,7 +130,7 @@ mod tests {
         eip4844::BLOB_TX_MIN_BLOB_GASPRICE,
         eip7910::{EthForkConfig, SystemContract},
     };
-    use base_execution_chainspec::BaseChainSpecBuilder;
+    use base_execution_chainspec::UnstableChainSpecBuilder;
 
     use super::{sanitize_system_contracts_for_fork, zero_blob_params};
 
@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn ecotone_only_keeps_beacon_roots() {
-        let chain_spec = BaseChainSpecBuilder::base_mainnet().ecotone_activated().build();
+        let chain_spec = UnstableChainSpecBuilder::base_mainnet().ecotone_activated().build();
         let mut fork_config = fork_config(0);
 
         sanitize_system_contracts_for_fork(&chain_spec, &mut fork_config);
@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn isthmus_keeps_beacon_roots_and_history_storage() {
-        let chain_spec = BaseChainSpecBuilder::base_mainnet().isthmus_activated().build();
+        let chain_spec = UnstableChainSpecBuilder::base_mainnet().isthmus_activated().build();
         let mut fork_config = fork_config(0);
 
         sanitize_system_contracts_for_fork(&chain_spec, &mut fork_config);

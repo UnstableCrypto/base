@@ -6,7 +6,7 @@ use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_provider::Network;
 use alloy_transport::TransportResult;
 use base_common_genesis::RollupConfig;
-use base_common_network::Base;
+use base_common_network::Unstable;
 use base_protocol::L2BlockInfo;
 
 use crate::{EngineClient, SyncStartError};
@@ -96,7 +96,7 @@ impl L2ForkchoiceState {
 async fn get_block_compat<EngineClient_: EngineClient>(
     engine_client: &EngineClient_,
     block_id: BlockId,
-) -> TransportResult<Option<<Base as Network>::BlockResponse>> {
+) -> TransportResult<Option<<Unstable as Network>::BlockResponse>> {
     match engine_client.get_l2_block(block_id).full().await {
         Err(e) => {
             let err_str = e.to_string();

@@ -9,9 +9,9 @@ use base_common_genesis::HardForkConfig;
 use base_protocol::BatchType;
 
 // ---------------------------------------------------------------------------
-// Section 1: Base mainnet config — hardfork boundary tests
+// Section 1: Unstable mainnet config — hardfork boundary tests
 //
-// These tests use the real Base mainnet rollup config from the chain registry
+// These tests use the real Unstable mainnet rollup config from the chain registry
 // and fast-forward through timestamps to verify that each fork activates at
 // exactly the right moment and that protocol parameters change as specified.
 //
@@ -94,7 +94,7 @@ fn each_hardfork_activates_at_its_mainnet_timestamp() {
     assert!(rc.is_base_azul_active(base_azul_time), "Azul must be active at its timestamp");
 }
 
-/// Hardfork timestamps on Base mainnet are strictly increasing. This guarantees
+/// Hardfork timestamps on Unstable mainnet are strictly increasing. This guarantees
 /// that no two forks activate simultaneously — each fork's `is_X_active` check
 /// trips at a different second, so there is never a spurious simultaneous cascade.
 #[test]
@@ -159,7 +159,7 @@ fn cascade_implies_all_preceding_forks_and_no_later_forks() {
     assert!(rc.is_isthmus_active(jovian_time));
     assert!(rc.is_jovian_active(jovian_time));
 
-    // Azul is a standalone Base-specific fork; Jovian does NOT imply it.
+    // Azul is a standalone Unstable-specific fork; Jovian does NOT imply it.
     assert!(!rc.is_base_azul_active(jovian_time), "Azul must not be implied by Jovian");
     // And setting only Azul does not imply Jovian (tested in base_azul_is_standalone).
 }
@@ -219,7 +219,7 @@ fn granite_changes_channel_timeout_at_mainnet_timestamp() {
     );
 }
 
-/// `Azul` is a standalone Base-specific hardfork. It is not part of the
+/// `Azul` is a standalone Unstable-specific hardfork. It is not part of the
 /// inherited cascade chain: Jovian does not imply it, and it does not imply Jovian.
 #[test]
 fn base_azul_is_standalone_from_jovian() {

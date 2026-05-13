@@ -2,29 +2,29 @@
 
 use std::sync::Arc;
 
-use base_common_consensus::BasePrimitives;
-use base_execution_chainspec::BaseChainSpec;
+use base_common_consensus::UnstablePrimitives;
+use base_execution_chainspec::UnstableChainSpec;
 use clap::Parser;
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_commands::common::CliNodeTypes;
 
 /// Initializes the database with the genesis block.
 #[derive(Debug, Parser)]
-pub struct BaseInitStateCommand<C: ChainSpecParser> {
+pub struct UnstableInitStateCommand<C: ChainSpecParser> {
     #[command(flatten)]
     init_state: reth_cli_commands::init_state::InitStateCommand<C>,
 }
 
-impl<C: ChainSpecParser<ChainSpec = BaseChainSpec>> BaseInitStateCommand<C> {
+impl<C: ChainSpecParser<ChainSpec = UnstableChainSpec>> UnstableInitStateCommand<C> {
     /// Execute the `init` command
-    pub async fn execute<N: CliNodeTypes<ChainSpec = C::ChainSpec, Primitives = BasePrimitives>>(
+    pub async fn execute<N: CliNodeTypes<ChainSpec = C::ChainSpec, Primitives = UnstablePrimitives>>(
         self,
     ) -> eyre::Result<()> {
         self.init_state.execute::<N>().await
     }
 }
 
-impl<C: ChainSpecParser> BaseInitStateCommand<C> {
+impl<C: ChainSpecParser> UnstableInitStateCommand<C> {
     /// Returns the underlying chain being used to run this command.
     pub fn chain_spec(&self) -> Option<&Arc<C::ChainSpec>> {
         self.init_state.chain_spec()

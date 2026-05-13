@@ -4,7 +4,7 @@ use reth_node_core::version::{
     RethCliVersionConsts, default_reth_version_metadata, try_init_version_metadata,
 };
 
-/// Reth version initialization for Base execution layer binaries.
+/// Reth version initialization for Unstable execution layer binaries.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct Version;
 

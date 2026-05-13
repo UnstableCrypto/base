@@ -15,9 +15,9 @@ use alloy_provider::{Provider, ProviderBuilder, RootProvider};
 use alloy_rlp::Decodable;
 use alloy_sol_types::SolValue;
 use anyhow::{Context, Result, anyhow, bail};
-use base_common_consensus::BaseBlock;
+use base_common_consensus::UnstableBlock;
 use base_common_genesis::RollupConfig;
-use base_common_network::Base;
+use base_common_network::Unstable;
 use base_proof_host::HostConfig;
 use base_proof_rpc::DebugProviderExt;
 use base_proof_succinct_client_utils::boot::BootInfoStruct;
@@ -42,7 +42,7 @@ pub struct OPSuccinctDataFetcher {
     /// L1 RPC provider.
     pub l1_provider: Arc<RootProvider>,
     /// L2 RPC provider.
-    pub l2_provider: Arc<RootProvider<Base>>,
+    pub l2_provider: Arc<RootProvider<Unstable>>,
     /// Optional rollup config override.
     pub rollup_config: Option<RollupConfig>,
     /// Path to rollup config file.
@@ -674,9 +674,9 @@ impl OPSuccinctDataFetcher {
 
     // Source from: https://github.com/anton-rs/kona/blob/85b1c88b44e5f54edfc92c781a313717bad5dfc7/crates/derive-alloy/src/alloy_providers.rs#L225.
     /// Fetch an L2 block by number.
-    pub async fn get_l2_block_by_number(&self, block_number: u64) -> Result<BaseBlock> {
+    pub async fn get_l2_block_by_number(&self, block_number: u64) -> Result<UnstableBlock> {
         let raw_block = self.l2_provider.debug_get_raw_block(block_number).await?;
-        let block = BaseBlock::decode(&mut raw_block.as_ref()).map_err(|e| anyhow::anyhow!(e))?;
+        let block = UnstableBlock::decode(&mut raw_block.as_ref()).map_err(|e| anyhow::anyhow!(e))?;
         Ok(block)
     }
 

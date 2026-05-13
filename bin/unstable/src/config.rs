@@ -19,11 +19,11 @@ pub(crate) const BASE_CHAIN_ENV_PREFIX: &str = "BASE_CHAIN_";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum BuiltInChain {
-    /// Base mainnet.
+    /// Unstable mainnet.
     Mainnet,
-    /// Base sepolia.
+    /// Unstable sepolia.
     Sepolia,
-    /// Base zeronet.
+    /// Unstable zeronet.
     Zeronet,
 }
 

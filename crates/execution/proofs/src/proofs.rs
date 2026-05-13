@@ -1,13 +1,13 @@
 use std::{sync::Arc, time::Duration};
 
-use base_execution_exex::BaseProofsExEx;
+use base_execution_exex::UnstableProofsExEx;
 use base_execution_rpc::{
     debug::{DebugApiExt, DebugApiOverrideServer},
     eth::proofs::{EthApiExt, EthApiOverrideServer},
 };
-use base_execution_trie::{BaseProofsStorage, MdbxProofsStorage};
+use base_execution_trie::{UnstableProofsStorage, MdbxProofsStorage};
 use base_node_core::args::RollupArgs;
-use base_node_runner::{BaseNodeExtension, FromExtensionConfig, NodeHooks};
+use base_node_runner::{UnstableNodeExtension, FromExtensionConfig, NodeHooks};
 use reth_db::database_metrics::DatabaseMetrics;
 use reth_node_api::FullNodeComponents;
 use reth_tasks::TaskExecutor;
@@ -31,7 +31,7 @@ impl ProofsHistoryExtension {
     }
 }
 
-impl BaseNodeExtension for ProofsHistoryExtension {
+impl UnstableNodeExtension for ProofsHistoryExtension {
     /// Applies the extension to the supplied hooks.
     fn apply(self: Box<Self>, mut hooks: NodeHooks) -> NodeHooks {
         // TODO: if NodeHooks exposes the underlying Builder, we can call launch_node_with_proof_history
@@ -57,7 +57,7 @@ impl BaseNodeExtension for ProofsHistoryExtension {
                 }
             };
             let mdbx = Arc::new(mdbx);
-            let storage: BaseProofsStorage<Arc<MdbxProofsStorage>> = Arc::clone(&mdbx).into();
+            let storage: UnstableProofsStorage<Arc<MdbxProofsStorage>> = Arc::clone(&mdbx).into();
 
             let storage_exec = storage.clone();
 
@@ -73,7 +73,7 @@ impl BaseNodeExtension for ProofsHistoryExtension {
 
             hooks = hooks
                 .install_exex("proofs-history", async move |exex_context| {
-                    Ok(BaseProofsExEx::builder(exex_context, storage_exec)
+                    Ok(UnstableProofsExEx::builder(exex_context, storage_exec)
                         .with_proofs_history_prune_interval(proofs_history_prune_interval)
                         .with_proofs_history_window(proofs_history_window)
                         .with_verification_interval(proofs_history_verification_interval)
@@ -116,7 +116,7 @@ fn spawn_proofs_db_metrics(
         info!(
             target: "reth::cli",
             ?metrics_report_interval,
-            "Starting Base proofs storage metrics task"
+            "Starting Unstable proofs storage metrics task"
         );
 
         loop {

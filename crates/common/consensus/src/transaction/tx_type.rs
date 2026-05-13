@@ -1,4 +1,4 @@
-//! Contains the transaction type identifier for Base chains.
+//! Contains the transaction type identifier for Unstable chains.
 
 use core::fmt::Display;
 

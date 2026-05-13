@@ -23,7 +23,7 @@ use reth_codecs::{
 use reth_ethereum_primitives as _;
 
 use crate::{
-    BaseBlock, BasePooledTransaction, BaseReceipt, BaseTxEnvelope, BaseTypedTransaction,
+    UnstableBlock, UnstablePooledTransaction, UnstableReceipt, UnstableTxEnvelope, UnstableTypedTransaction,
     DEPOSIT_TX_TYPE_ID, DepositReceipt, OpTxType, TxDeposit,
 };
 
@@ -53,7 +53,7 @@ impl reth_primitives_traits::InMemorySize for DepositReceipt {
     }
 }
 
-impl reth_primitives_traits::InMemorySize for BaseReceipt {
+impl reth_primitives_traits::InMemorySize for UnstableReceipt {
     fn size(&self) -> usize {
         match self {
             Self::Legacy(receipt)
@@ -65,7 +65,7 @@ impl reth_primitives_traits::InMemorySize for BaseReceipt {
     }
 }
 
-impl reth_primitives_traits::InMemorySize for BaseTypedTransaction {
+impl reth_primitives_traits::InMemorySize for UnstableTypedTransaction {
     fn size(&self) -> usize {
         match self {
             Self::Legacy(tx) => tx.size(),
@@ -77,7 +77,7 @@ impl reth_primitives_traits::InMemorySize for BaseTypedTransaction {
     }
 }
 
-impl reth_primitives_traits::InMemorySize for BasePooledTransaction {
+impl reth_primitives_traits::InMemorySize for UnstablePooledTransaction {
     fn size(&self) -> usize {
         match self {
             Self::Legacy(tx) => tx.size(),
@@ -88,7 +88,7 @@ impl reth_primitives_traits::InMemorySize for BasePooledTransaction {
     }
 }
 
-impl reth_primitives_traits::InMemorySize for BaseTxEnvelope {
+impl reth_primitives_traits::InMemorySize for UnstableTxEnvelope {
     fn size(&self) -> usize {
         match self {
             Self::Legacy(tx) => tx.size(),
@@ -104,9 +104,9 @@ impl reth_primitives_traits::InMemorySize for BaseTxEnvelope {
 // SignedTransaction (reth-primitives-traits)
 // ---------------------------------------------------------------------------
 
-impl reth_primitives_traits::SignedTransaction for BasePooledTransaction {}
+impl reth_primitives_traits::SignedTransaction for UnstablePooledTransaction {}
 
-impl reth_primitives_traits::SignedTransaction for BaseTxEnvelope {
+impl reth_primitives_traits::SignedTransaction for UnstableTxEnvelope {
     fn is_system_tx(&self) -> bool {
         self.is_system_transaction()
     }
@@ -116,8 +116,8 @@ impl reth_primitives_traits::SignedTransaction for BaseTxEnvelope {
 // SerdeBincodeCompat (reth-primitives-traits)
 // ---------------------------------------------------------------------------
 
-impl reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat for BaseTxEnvelope {
-    type BincodeRepr<'a> = crate::serde_bincode_compat::transaction::BaseTxEnvelope<'a>;
+impl reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat for UnstableTxEnvelope {
+    type BincodeRepr<'a> = crate::serde_bincode_compat::transaction::UnstableTxEnvelope<'a>;
 
     fn as_repr(&self) -> Self::BincodeRepr<'_> {
         self.into()
@@ -128,8 +128,8 @@ impl reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat for BaseTx
     }
 }
 
-impl reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat for BaseReceipt {
-    type BincodeRepr<'a> = crate::serde_bincode_compat::BaseReceipt<'a>;
+impl reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat for UnstableReceipt {
+    type BincodeRepr<'a> = crate::serde_bincode_compat::UnstableReceipt<'a>;
 
     fn as_repr(&self) -> Self::BincodeRepr<'_> {
         self.into()
@@ -252,10 +252,10 @@ impl Compact for OpTxType {
 }
 
 // ---------------------------------------------------------------------------
-// Compact – BaseTypedTransaction
+// Compact – UnstableTypedTransaction
 // ---------------------------------------------------------------------------
 
-impl Compact for BaseTypedTransaction {
+impl Compact for UnstableTypedTransaction {
     fn to_compact<B>(&self, out: &mut B) -> usize
     where
         B: BufMut + AsMut<[u8]>,
@@ -299,10 +299,10 @@ impl Compact for BaseTypedTransaction {
 }
 
 // ---------------------------------------------------------------------------
-// ToTxCompact / FromTxCompact – BaseTxEnvelope
+// ToTxCompact / FromTxCompact – UnstableTxEnvelope
 // ---------------------------------------------------------------------------
 
-impl reth_codecs::alloy::transaction::ToTxCompact for BaseTxEnvelope {
+impl reth_codecs::alloy::transaction::ToTxCompact for UnstableTxEnvelope {
     fn to_tx_compact(&self, buf: &mut (impl BufMut + AsMut<[u8]>)) {
         match self {
             Self::Legacy(tx) => tx.tx().to_compact(buf),
@@ -314,7 +314,7 @@ impl reth_codecs::alloy::transaction::ToTxCompact for BaseTxEnvelope {
     }
 }
 
-impl reth_codecs::alloy::transaction::FromTxCompact for BaseTxEnvelope {
+impl reth_codecs::alloy::transaction::FromTxCompact for UnstableTxEnvelope {
     type TxType = OpTxType;
 
     fn from_tx_compact(buf: &[u8], tx_type: OpTxType, signature: Signature) -> (Self, &[u8]) {
@@ -349,13 +349,13 @@ impl reth_codecs::alloy::transaction::FromTxCompact for BaseTxEnvelope {
 }
 
 // ---------------------------------------------------------------------------
-// Envelope – BaseTxEnvelope
+// Envelope – UnstableTxEnvelope
 // ---------------------------------------------------------------------------
 
 /// Deposit signature placeholder (all zeros).
 const DEPOSIT_SIGNATURE: Signature = Signature::new(U256::ZERO, U256::ZERO, false);
 
-impl reth_codecs::alloy::transaction::Envelope for BaseTxEnvelope {
+impl reth_codecs::alloy::transaction::Envelope for UnstableTxEnvelope {
     fn signature(&self) -> &Signature {
         match self {
             Self::Legacy(tx) => tx.signature(),
@@ -372,10 +372,10 @@ impl reth_codecs::alloy::transaction::Envelope for BaseTxEnvelope {
 }
 
 // ---------------------------------------------------------------------------
-// Compact – BaseTxEnvelope (via CompactEnvelope)
+// Compact – UnstableTxEnvelope (via CompactEnvelope)
 // ---------------------------------------------------------------------------
 
-impl Compact for BaseTxEnvelope {
+impl Compact for UnstableTxEnvelope {
     fn to_compact<B>(&self, buf: &mut B) -> usize
     where
         B: BufMut + AsMut<[u8]>,
@@ -389,7 +389,7 @@ impl Compact for BaseTxEnvelope {
 }
 
 // ---------------------------------------------------------------------------
-// Compact – BaseReceipt (via CompactZstd helper)
+// Compact – UnstableReceipt (via CompactZstd helper)
 // ---------------------------------------------------------------------------
 
 #[derive(CompactZstd)]
@@ -398,7 +398,7 @@ impl Compact for BaseTxEnvelope {
     compressor = reth_zstd_compressors::with_receipt_compressor,
     decompressor = reth_zstd_compressors::with_receipt_decompressor
 )]
-struct CompactBaseReceipt<'a> {
+struct CompactUnstableReceipt<'a> {
     tx_type: OpTxType,
     success: bool,
     cumulative_gas_used: u64,
@@ -408,19 +408,19 @@ struct CompactBaseReceipt<'a> {
     deposit_receipt_version: Option<u64>,
 }
 
-impl<'a> From<&'a BaseReceipt> for CompactBaseReceipt<'a> {
-    fn from(receipt: &'a BaseReceipt) -> Self {
+impl<'a> From<&'a UnstableReceipt> for CompactUnstableReceipt<'a> {
+    fn from(receipt: &'a UnstableReceipt) -> Self {
         Self {
             tx_type: receipt.tx_type(),
             success: receipt.status(),
             cumulative_gas_used: receipt.cumulative_gas_used(),
             logs: Cow::Borrowed(&receipt.as_receipt().logs),
-            deposit_nonce: if let BaseReceipt::Deposit(receipt) = receipt {
+            deposit_nonce: if let UnstableReceipt::Deposit(receipt) = receipt {
                 receipt.deposit_nonce
             } else {
                 None
             },
-            deposit_receipt_version: if let BaseReceipt::Deposit(receipt) = receipt {
+            deposit_receipt_version: if let UnstableReceipt::Deposit(receipt) = receipt {
                 receipt.deposit_receipt_version
             } else {
                 None
@@ -429,9 +429,9 @@ impl<'a> From<&'a BaseReceipt> for CompactBaseReceipt<'a> {
     }
 }
 
-impl From<CompactBaseReceipt<'_>> for BaseReceipt {
-    fn from(receipt: CompactBaseReceipt<'_>) -> Self {
-        let CompactBaseReceipt {
+impl From<CompactUnstableReceipt<'_>> for UnstableReceipt {
+    fn from(receipt: CompactUnstableReceipt<'_>) -> Self {
+        let CompactUnstableReceipt {
             tx_type,
             success,
             cumulative_gas_used,
@@ -455,16 +455,16 @@ impl From<CompactBaseReceipt<'_>> for BaseReceipt {
     }
 }
 
-impl Compact for BaseReceipt {
+impl Compact for UnstableReceipt {
     fn to_compact<B>(&self, buf: &mut B) -> usize
     where
         B: BufMut + AsMut<[u8]>,
     {
-        CompactBaseReceipt::from(self).to_compact(buf)
+        CompactUnstableReceipt::from(self).to_compact(buf)
     }
 
     fn from_compact(buf: &[u8], len: usize) -> (Self, &[u8]) {
-        let (receipt, buf) = CompactBaseReceipt::from_compact(buf, len);
+        let (receipt, buf) = CompactUnstableReceipt::from_compact(buf, len);
         (receipt.into(), buf)
     }
 }
@@ -473,7 +473,7 @@ impl Compact for BaseReceipt {
 // Compress / Decompress (reth-db-api)
 // ---------------------------------------------------------------------------
 
-impl reth_db_api::table::Compress for BaseTxEnvelope {
+impl reth_db_api::table::Compress for UnstableTxEnvelope {
     type Compressed = Vec<u8>;
 
     fn compress_to_buf<B: BufMut + AsMut<[u8]>>(&self, buf: &mut B) {
@@ -481,14 +481,14 @@ impl reth_db_api::table::Compress for BaseTxEnvelope {
     }
 }
 
-impl reth_db_api::table::Decompress for BaseTxEnvelope {
+impl reth_db_api::table::Decompress for UnstableTxEnvelope {
     fn decompress(value: &[u8]) -> Result<Self, reth_db_api::DatabaseError> {
         let (obj, _) = Compact::from_compact(value, value.len());
         Ok(obj)
     }
 }
 
-impl reth_db_api::table::Compress for BaseReceipt {
+impl reth_db_api::table::Compress for UnstableReceipt {
     type Compressed = Vec<u8>;
 
     fn compress_to_buf<B: BufMut + AsMut<[u8]>>(&self, buf: &mut B) {
@@ -496,7 +496,7 @@ impl reth_db_api::table::Compress for BaseReceipt {
     }
 }
 
-impl reth_db_api::table::Decompress for BaseReceipt {
+impl reth_db_api::table::Decompress for UnstableReceipt {
     fn decompress(value: &[u8]) -> Result<Self, reth_db_api::DatabaseError> {
         let (obj, _) = Compact::from_compact(value, value.len());
         Ok(obj)
@@ -516,7 +516,7 @@ pub trait DepositReceiptExt: reth_primitives_traits::Receipt {
     fn as_deposit_receipt(&self) -> Option<&DepositReceipt>;
 }
 
-impl DepositReceiptExt for BaseReceipt {
+impl DepositReceiptExt for UnstableReceipt {
     fn as_deposit_receipt_mut(&mut self) -> Option<&mut DepositReceipt> {
         match self {
             Self::Deposit(receipt) => Some(receipt),
@@ -533,21 +533,21 @@ impl DepositReceiptExt for BaseReceipt {
 }
 
 // ---------------------------------------------------------------------------
-// BaseBlockBody / BasePrimitives
+// UnstableBlockBody / UnstablePrimitives
 // ---------------------------------------------------------------------------
 
-/// Base-specific block body type.
-pub type BaseBlockBody = <BaseBlock as reth_primitives_traits::Block>::Body;
+/// Unstable-specific block body type.
+pub type UnstableBlockBody = <UnstableBlock as reth_primitives_traits::Block>::Body;
 
-/// Primitive types for the Base node.
+/// Primitive types for the Unstable node.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct BasePrimitives;
+pub struct UnstablePrimitives;
 
-impl reth_primitives_traits::NodePrimitives for BasePrimitives {
-    type Block = BaseBlock;
+impl reth_primitives_traits::NodePrimitives for UnstablePrimitives {
+    type Block = UnstableBlock;
     type BlockHeader = Header;
-    type BlockBody = BaseBlockBody;
-    type SignedTx = BaseTxEnvelope;
-    type Receipt = BaseReceipt;
+    type BlockBody = UnstableBlockBody;
+    type SignedTx = UnstableTxEnvelope;
+    type Receipt = UnstableReceipt;
 }

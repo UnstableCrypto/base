@@ -6,7 +6,7 @@ use alloy_rlp::Decodable;
 use alloy_rpc_types::{Block, debug::ExecutionWitness};
 use ark_ff::{BigInteger, PrimeField};
 use base_common_consensus::Predeploys;
-use base_common_rpc_types_engine::BasePayloadAttributes;
+use base_common_rpc_types_engine::UnstablePayloadAttributes;
 use base_consensus_providers::BlobWithCommitmentAndProof;
 use base_proof::{Hint, HintType, ROOTS_OF_UNITY};
 use base_proof_preimage::{PreimageKey, PreimageKeyType};
@@ -382,13 +382,13 @@ async fn handle_hint_inner(
             }
 
             let parent_block_hash = B256::from_slice(&hint.data.as_ref()[..32]);
-            let payload_attributes: BasePayloadAttributes =
+            let payload_attributes: UnstablePayloadAttributes =
                 serde_json::from_slice(&hint.data[32..])?;
 
             let execute_payload_response = match providers
                 .l2
                 .client()
-                .request::<(B256, BasePayloadAttributes), ExecutionWitness>(
+                .request::<(B256, UnstablePayloadAttributes), ExecutionWitness>(
                     "debug_executePayload",
                     (parent_block_hash, payload_attributes),
                 )
@@ -428,7 +428,7 @@ mod tests {
     use alloy_genesis::ChainConfig;
     use alloy_provider::{RootProvider, builder as provider_builder, mock::Asserter};
     use base_common_genesis::RollupConfig;
-    use base_common_network::Base;
+    use base_common_network::Unstable;
     use base_consensus_providers::{OnlineBeaconClient, OnlineBlobProvider};
     use base_proof_primitives::ProofRequest;
     use tokio::sync::RwLock;
@@ -468,7 +468,7 @@ mod tests {
         }
     }
 
-    fn test_providers(l2: RootProvider<Base>) -> HostProviders {
+    fn test_providers(l2: RootProvider<Unstable>) -> HostProviders {
         let l1 = RootProvider::new_http("http://127.0.0.1:1".parse().unwrap());
         let beacon = OnlineBeaconClient::new_http("http://127.0.0.1:1".to_string());
         let blobs =
@@ -508,7 +508,7 @@ mod tests {
         let actual_hash = keccak256(preimage.as_ref());
         let asserter = Asserter::new();
         asserter.push_success(&preimage);
-        let l2 = provider_builder::<Base>().connect_mocked_client(asserter);
+        let l2 = provider_builder::<Unstable>().connect_mocked_client(asserter);
         let providers = test_providers(l2);
         let kv: SharedKeyValueStore = Arc::new(RwLock::new(MemoryKeyValueStore::new()));
         let hint = HintType::L2StateNode.with_data(&[requested_hash.as_slice()]);

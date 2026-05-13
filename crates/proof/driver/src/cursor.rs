@@ -37,7 +37,7 @@ impl PipelineCursor {
     pub fn new(channel_timeout: u64, origin: BlockInfo) -> Self {
         // NOTE: capacity must be greater than the `channel_timeout` to allow
         // for derivation to proceed through a deep reorg.
-        // Ref: <https://specs.base.org/protocol/consensus/derivation#timeouts>
+        // Ref: <https://specs.unstable.org/protocol/consensus/derivation#timeouts>
         let capacity = channel_timeout as usize + 5;
 
         let mut origins = VecDeque::with_capacity(capacity);

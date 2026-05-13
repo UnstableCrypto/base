@@ -268,7 +268,7 @@ impl View for FlashblocksView {
         let inner = block.inner(block_area);
         frame.render_widget(block, block_area);
 
-        // Idx(4) + Txs(4) + Gas(7) + BaseFee(12) + Delta(8) + Dt(8) + Fill(42) + Time(8) + spacing = ~100
+        // Idx(4) + Txs(4) + Gas(7) + UnstableFee(12) + Delta(8) + Dt(8) + Fill(42) + Time(8) + spacing = ~100
         let fixed_cols_width = 4 + 4 + 7 + 12 + 8 + 8 + (GAS_BAR_CHARS as u16 + 2) + 8 + 9;
         let block_col_width = inner.width.saturating_sub(fixed_cols_width).clamp(4, 10) as usize;
 
@@ -278,7 +278,7 @@ impl View for FlashblocksView {
             Cell::from("Idx").style(header_style),
             Cell::from("Txs").style(header_style),
             Cell::from("Gas").style(header_style),
-            Cell::from("Base Fee").style(header_style),
+            Cell::from("Unstable Fee").style(header_style),
             Cell::from("Δ").style(header_style),
             Cell::from("Δt").style(header_style),
             Cell::from("Fill").style(header_style),

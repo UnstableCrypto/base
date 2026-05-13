@@ -1,6 +1,6 @@
 # `base-txpool-rpc`
 
-Transaction pool RPC APIs for Base.
+Transaction pool RPC APIs for Unstable.
 
 Provides RPC endpoints for querying transaction status and managing the transaction pool.
 

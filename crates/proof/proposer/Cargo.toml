@@ -1,6 +1,6 @@
 [package]
 name = "base-proposer"
-description = "Base Proposer"
+description = "Unstable Proposer"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

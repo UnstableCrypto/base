@@ -1,6 +1,6 @@
 [package]
 name = "base-common-precompiles"
-description = "Base precompile definitions and fork-specific precompile sets"
+description = "Unstable precompile definitions and fork-specific precompile sets"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -1,4 +1,4 @@
-use alloy_eips::eip1559::BaseFeeParams;
+use alloy_eips::eip1559::UnstableFeeParams;
 use alloy_primitives::{B64, Bytes};
 
 use super::{EIP1559ParamError, encode_eip_1559_params};
@@ -46,7 +46,7 @@ impl HoloceneExtraData {
     /// Produces a 9-byte encoding with a leading version byte of `0`.
     pub fn encode(
         eip_1559_params: B64,
-        default_base_fee_params: BaseFeeParams,
+        default_base_fee_params: UnstableFeeParams,
     ) -> Result<Bytes, EIP1559ParamError> {
         let mut extra_data = [0u8; 9];
         encode_eip_1559_params(eip_1559_params, default_base_fee_params, &mut extra_data)?;
@@ -58,7 +58,7 @@ impl HoloceneExtraData {
 mod tests {
     use core::str::FromStr;
 
-    use alloy_eips::eip1559::BaseFeeParams;
+    use alloy_eips::eip1559::UnstableFeeParams;
     use alloy_primitives::{B64, Bytes};
 
     use super::HoloceneExtraData;
@@ -67,26 +67,26 @@ mod tests {
     #[test]
     fn test_encode_with_explicit_params() {
         let eip_1559_params = B64::from_str("0x0000000800000008").unwrap();
-        let extra_data = HoloceneExtraData::encode(eip_1559_params, BaseFeeParams::new(80, 60));
+        let extra_data = HoloceneExtraData::encode(eip_1559_params, UnstableFeeParams::new(80, 60));
         assert_eq!(extra_data.unwrap(), Bytes::copy_from_slice(&[0, 0, 0, 0, 8, 0, 0, 0, 8]));
     }
 
     #[test]
     fn test_encode_with_defaults() {
-        let extra_data = HoloceneExtraData::encode(B64::ZERO, BaseFeeParams::new(80, 60));
+        let extra_data = HoloceneExtraData::encode(B64::ZERO, UnstableFeeParams::new(80, 60));
         assert_eq!(extra_data.unwrap(), Bytes::copy_from_slice(&[0, 0, 0, 0, 80, 0, 0, 0, 60]));
     }
 
     #[test]
     fn test_decode_invalid_length_short() {
-        let extra_data = HoloceneExtraData::encode(B64::ZERO, BaseFeeParams::new(80, 60)).unwrap();
+        let extra_data = HoloceneExtraData::encode(B64::ZERO, UnstableFeeParams::new(80, 60)).unwrap();
         let res = HoloceneExtraData::decode(&extra_data[..8]).unwrap_err();
         assert_eq!(res, EIP1559ParamError::InvalidExtraDataLength);
     }
 
     #[test]
     fn test_decode_rejects_jovian_extra_data() {
-        let extra_data = JovianExtraData::encode(B64::ZERO, BaseFeeParams::new(80, 60), 0).unwrap();
+        let extra_data = JovianExtraData::encode(B64::ZERO, UnstableFeeParams::new(80, 60), 0).unwrap();
         let res = HoloceneExtraData::decode(&extra_data).unwrap_err();
         assert_eq!(res, EIP1559ParamError::InvalidExtraDataLength);
     }

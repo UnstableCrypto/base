@@ -233,7 +233,7 @@ mod tests {
             "bundleGasPrice": "1000000000",
             "bundleHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
             "coinbaseDiff": "100",
-            "ethSentToCoinbase": "0",
+            "ethSentToTheAlxLabs": "0",
             "gasFees": "100",
             "results": [],
             "stateBlockNumber": 12345,

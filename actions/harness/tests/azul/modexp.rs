@@ -1,4 +1,4 @@
-//! MODEXP precompile tests across the Base Azul boundary.
+//! MODEXP precompile tests across the Unstable Azul boundary.
 
 use alloy_primitives::{Bytes, TxKind, U256, hex};
 use base_action_harness::{
@@ -69,7 +69,7 @@ impl ModexpInput {
     }
 }
 
-/// EIP-7823: MODEXP rejects inputs with any field length > 1024 bytes after Base Azul.
+/// EIP-7823: MODEXP rejects inputs with any field length > 1024 bytes after Unstable Azul.
 ///
 /// Pre-fork the oversized call succeeds; post-fork it fails.
 #[tokio::test]
@@ -79,7 +79,7 @@ async fn azul_modexp_upper_bound() {
         ..Default::default()
     };
 
-    // Base Azul activates at ts=6 (block 3).
+    // Unstable Azul activates at ts=6 (block 3).
     let base_azul_time = 6u64;
     let rollup_cfg = TestRollupConfigBuilder::base_mainnet(&batcher_cfg)
         .through_isthmus()
@@ -177,11 +177,11 @@ async fn azul_modexp_upper_bound() {
     assert_eq!(
         node.l2_safe().block_info.number,
         3,
-        "all 3 L2 blocks must derive through the Base Azul boundary"
+        "all 3 L2 blocks must derive through the Unstable Azul boundary"
     );
 }
 
-/// EIP-7883: MODEXP gas cost increases after Base Azul (min 200→500, general cost tripled).
+/// EIP-7883: MODEXP gas cost increases after Unstable Azul (min 200→500, general cost tripled).
 #[tokio::test]
 async fn azul_modexp_gas_cost_increase() {
     let batcher_cfg = BatcherConfig {
@@ -189,7 +189,7 @@ async fn azul_modexp_gas_cost_increase() {
         ..Default::default()
     };
 
-    // Base Azul activates at ts=6 (block 3).
+    // Unstable Azul activates at ts=6 (block 3).
     let base_azul_time = 6u64;
     let rollup_cfg = TestRollupConfigBuilder::base_mainnet(&batcher_cfg)
         .through_isthmus()
@@ -293,6 +293,6 @@ async fn azul_modexp_gas_cost_increase() {
     assert_eq!(
         node.l2_safe().block_info.number,
         3,
-        "all 3 L2 blocks must derive through the Base V1 boundary"
+        "all 3 L2 blocks must derive through the Unstable V1 boundary"
     );
 }

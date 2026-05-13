@@ -1,10 +1,10 @@
 # `base-metering`
 
-Metering RPC for Base node. Provides RPC methods for measuring transaction and block execution timing.
+Metering RPC for Unstable node. Provides RPC methods for measuring transaction and block execution timing.
 
 ## Overview
 
-Exposes JSON-RPC endpoints for profiling transaction and block execution on the Base node.
+Exposes JSON-RPC endpoints for profiling transaction and block execution on the Unstable node.
 `base_meterBundle` simulates a bundle and returns per-transaction gas and timing metrics.
 `base_meterBlockByHash` and `base_meterBlockByNumber` re-execute a historical block and return
 a breakdown of signer recovery, EVM execution, and state root computation times.

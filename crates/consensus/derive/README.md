@@ -2,14 +2,14 @@
 
 <a href="https://crates.io/crates/base-consensus-derive"><img src="https://img.shields.io/crates/v/base-consensus-derive.svg?label=base-consensus-derive&labelColor=2a2f35" alt="base-consensus-derive"></a>
 
-A `no_std` compatible implementation of Base's [derivation pipeline][derive].
+A `no_std` compatible implementation of Unstable's [derivation pipeline][derive].
 
-[derive]: https://specs.base.org/protocol/consensus/derivation#l2-chain-derivation-specification
+[derive]: https://specs.unstable.org/protocol/consensus/derivation#l2-chain-derivation-specification
 
 ## Overview
 
-Implements the full L2 chain derivation pipeline as specified by the Base protocol. The
-`DerivationPipeline` steps through L1 data to produce `BasePayloadAttributes` for each L2 block.
+Implements the full L2 chain derivation pipeline as specified by the Unstable protocol. The
+`DerivationPipeline` steps through L1 data to produce `UnstablePayloadAttributes` for each L2 block.
 `EthereumDataSource` fetches batch data from calldata or blobs, `StatefulAttributesBuilder`
 constructs payload attributes with deposits and sequencer configuration, and `PipelineBuilder`
 wires all stages together. The crate is `no_std` compatible for use in fault proof VMs.

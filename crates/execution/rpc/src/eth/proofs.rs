@@ -7,14 +7,14 @@ use alloy_primitives::Address;
 use alloy_rpc_types_eth::EIP1186AccountProofResponse;
 use alloy_serde::JsonStorageKey;
 use async_trait::async_trait;
-use base_execution_trie::{BaseProofsStorage, BaseProofsStore};
+use base_execution_trie::{UnstableProofsStorage, UnstableProofsStore};
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee_core::RpcResult;
 use jsonrpsee_types::error::{ErrorCode, ErrorObject};
 use reth_provider::StateProofProvider;
 use reth_rpc_api::eth::helpers::FullEthApi;
 
-use crate::{metrics::EthApiExtMetrics, state::BaseStateProviderFactory};
+use crate::{metrics::EthApiExtMetrics, state::UnstableStateProviderFactory};
 
 /// Maximum number of storage keys accepted in a single `eth_getProof` request. Matches go-ethereum.
 pub const MAX_PROOF_KEYS: usize = 1024;
@@ -54,18 +54,18 @@ pub trait EthApiOverride {
 #[derive(Debug)]
 /// Overrides applied to the `eth_` namespace of the RPC API for historical proofs `ExEx`.
 pub struct EthApiExt<Eth, P> {
-    state_provider_factory: BaseStateProviderFactory<Eth, P>,
+    state_provider_factory: UnstableStateProviderFactory<Eth, P>,
 }
 
 impl<Eth, P> EthApiExt<Eth, P>
 where
     Eth: FullEthApi + Send + Sync + 'static,
     ErrorObject<'static>: From<Eth::Error>,
-    P: BaseProofsStore + Clone + 'static,
+    P: UnstableProofsStore + Clone + 'static,
 {
     /// Creates a new instance of the `EthApiExt`.
-    pub const fn new(eth_api: Eth, preimage_store: BaseProofsStorage<P>) -> Self {
-        Self { state_provider_factory: BaseStateProviderFactory::new(eth_api, preimage_store) }
+    pub const fn new(eth_api: Eth, preimage_store: UnstableProofsStorage<P>) -> Self {
+        Self { state_provider_factory: UnstableStateProviderFactory::new(eth_api, preimage_store) }
     }
 }
 
@@ -74,7 +74,7 @@ impl<Eth, P> EthApiOverrideServer for EthApiExt<Eth, P>
 where
     Eth: FullEthApi + Send + Sync + 'static,
     ErrorObject<'static>: From<Eth::Error>,
-    P: BaseProofsStore + Clone + 'static,
+    P: UnstableProofsStore + Clone + 'static,
 {
     async fn get_proof(
         &self,

@@ -1,4 +1,4 @@
-//! Helper function for Receipt root calculation for Base hardforks.
+//! Helper function for Receipt root calculation for Unstable hardforks.
 
 use alloc::vec::Vec;
 
@@ -40,7 +40,7 @@ pub fn calculate_receipt_root<R: DepositReceiptExt>(
     ordered_trie_root_with_encoder(receipts, |r, buf| r.encode_2718(buf))
 }
 
-/// Calculates the receipt root for a header for the reference type of a Base receipt.
+/// Calculates the receipt root for a header for the reference type of a Unstable receipt.
 ///
 /// NOTE: Prefer [`calculate_receipt_root`] if you have log blooms memoized.
 pub fn calculate_receipt_root_no_memo<R: DepositReceiptExt>(
@@ -81,8 +81,8 @@ pub fn calculate_receipt_root_no_memo<R: DepositReceiptExt>(
 mod tests {
     use alloy_consensus::{Receipt, ReceiptWithBloom, TxReceipt};
     use alloy_primitives::{Address, Bytes, Log, LogData, b256, bloom, hex};
-    use base_common_consensus::{BaseReceipt, DepositReceipt};
-    use base_execution_chainspec::BaseChainSpec;
+    use base_common_consensus::{UnstableReceipt, DepositReceipt};
+    use base_execution_chainspec::UnstableChainSpec;
 
     use super::*;
 
@@ -121,7 +121,7 @@ mod tests {
         for case in cases {
             let receipts = [
                 // 0xb0d6ee650637911394396d81172bd1c637d568ed1fbddab0daddfca399c58b53
-                BaseReceipt::Deposit(DepositReceipt {
+                UnstableReceipt::Deposit(DepositReceipt {
                     inner: Receipt {
                         status: true.into(),
                         cumulative_gas_used: 46913,
@@ -131,7 +131,7 @@ mod tests {
                     deposit_receipt_version: None,
                 }),
                 // 0x2f433586bae30573c393adfa02bc81d2a1888a3d6c9869f473fb57245166bd9a
-                BaseReceipt::Eip1559(Receipt {
+                UnstableReceipt::Eip1559(Receipt {
                     status: true.into(),
                     cumulative_gas_used: 118083,
                     logs: vec![
@@ -201,7 +201,7 @@ mod tests {
                     ],
                 }),
                 // 0x6c33676e8f6077f46a62eabab70bc6d1b1b18a624b0739086d77093a1ecf8266
-                BaseReceipt::Eip1559(Receipt {
+                UnstableReceipt::Eip1559(Receipt {
                     status: true.into(),
                     cumulative_gas_used: 189253,
                     logs: vec![
@@ -271,7 +271,7 @@ mod tests {
                     ],
                 }),
                 // 0x4d3ecbef04ba7ce7f5ab55be0c61978ca97c117d7da448ed9771d4ff0c720a3f
-                BaseReceipt::Eip1559(Receipt {
+                UnstableReceipt::Eip1559(Receipt {
                     status: true.into(),
                     cumulative_gas_used: 346969,
                     logs: vec![
@@ -395,7 +395,7 @@ mod tests {
                     ],
                 }),
                 // 0xf738af5eb00ba23dbc1be2dbce41dbc0180f0085b7fb46646e90bf737af90351
-                BaseReceipt::Eip1559(Receipt {
+                UnstableReceipt::Eip1559(Receipt {
                     status: true.into(),
                     cumulative_gas_used: 623249,
                     logs: vec![
@@ -465,7 +465,7 @@ mod tests {
             ];
             let root = calculate_receipt_root(
                 &receipts.iter().map(TxReceipt::with_bloom_ref).collect::<Vec<_>>(),
-                BaseChainSpec::sepolia(),
+                UnstableChainSpec::sepolia(),
                 case.1,
             );
             assert_eq!(root, case.2);
@@ -481,14 +481,14 @@ mod tests {
         let logs_bloom = bloom!(
             "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
         );
-        let inner = BaseReceipt::Eip2930(Receipt {
+        let inner = UnstableReceipt::Eip2930(Receipt {
             status: true.into(),
             cumulative_gas_used: 102068,
             logs,
         });
         let receipt = ReceiptWithBloom { receipt: &inner, logs_bloom };
         let receipt = vec![receipt];
-        let root = calculate_receipt_root(&receipt, BaseChainSpec::sepolia(), 0);
+        let root = calculate_receipt_root(&receipt, UnstableChainSpec::sepolia(), 0);
         assert_eq!(
             root,
             b256!("0xfe70ae4a136d98944951b2123859698d59ad251a381abc9960fa81cae3d0d4a0")

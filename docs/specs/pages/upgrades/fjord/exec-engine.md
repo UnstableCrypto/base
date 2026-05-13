@@ -10,7 +10,7 @@ Fjord updates the L1 cost calculation function to use a FastLZ-based compression
 The L1 cost is computed as:
 
 ```pseudocode
-l1FeeScaled = l1BaseFeeScalar*l1BaseFee*16 + l1BlobFeeScalar*l1BlobBaseFee
+l1FeeScaled = l1UnstableFeeScalar*l1UnstableFee*16 + l1BlobFeeScalar*l1BlobUnstableFee
 estimatedSizeScaled = max(minTransactionSize * 1e6, intercept + fastlzCoef*fastlzSize)
 l1Fee = estimatedSizeScaled * l1FeeScaled / 1e12
 ```
@@ -20,16 +20,16 @@ having `uint256` range. The values in this computation, are as follows:
 
 | Input arg            | Type      | Description                                                       | Value                    |
 |----------------------|-----------|-------------------------------------------------------------------|--------------------------|
-| `l1BaseFee`          | `uint256` | L1 base fee of the latest L1 origin registered in the L2 chain    | varies, L1 fee           |
-| `l1BlobBaseFee`      | `uint256` | Blob gas price of the latest L1 origin registered in the L2 chain | varies, L1 fee           |
+| `l1UnstableFee`          | `uint256` | L1 base fee of the latest L1 origin registered in the L2 chain    | varies, L1 fee           |
+| `l1BlobUnstableFee`      | `uint256` | Blob gas price of the latest L1 origin registered in the L2 chain | varies, L1 fee           |
 | `fastlzSize`         | `uint256` | Size of the FastLZ-compressed RLP-encoded signed tx               | varies, per transaction  |
-| `l1BaseFeeScalar`    | `uint32`  | L1 base fee scalar, scaled by `1e6`                               | varies, L2 configuration |
+| `l1UnstableFeeScalar`    | `uint32`  | L1 base fee scalar, scaled by `1e6`                               | varies, L2 configuration |
 | `l1BlobFeeScalar`    | `uint32`  | L1 blob fee scalar, scaled by `1e6`                               | varies, L2 configuration |
 | `intercept`          | `int32`   | Intercept constant, scaled by `1e6` (can be negative)             | -42_585_600              |
 | `fastlzCoef`         | `uint32`  | FastLZ coefficient, scaled by `1e6`                               | 836_500                  |
 | `minTransactionSize` | `uint32`  | A lower bound on transaction size, in bytes                       | 100                      |
 
-Previously, `l1BaseFeeScalar` and `l1BlobFeeScalar` were used to encode the compression ratio, due to the inaccuracy of
+Previously, `l1UnstableFeeScalar` and `l1BlobFeeScalar` were used to encode the compression ratio, due to the inaccuracy of
 the L1 cost function. However, the new cost function takes into account the compression ratio, so these scalars should
 be adjusted to account for any previous compression ratio they encoded.
 

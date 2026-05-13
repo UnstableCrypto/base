@@ -6,7 +6,7 @@ use core::fmt::Debug;
 use alloy_consensus::BlockBody;
 use alloy_primitives::{B256, Bytes};
 use alloy_rlp::Decodable;
-use base_common_consensus::{BaseBlock, BaseTxEnvelope, OpTxType};
+use base_common_consensus::{UnstableBlock, UnstableTxEnvelope, OpTxType};
 use base_common_genesis::RollupConfig;
 use base_consensus_derive::{Pipeline, PipelineError, PipelineErrorKind, Signal, SignalReceiver};
 use base_proof_executor::BlockBuildingOutcome;
@@ -143,7 +143,7 @@ where
             };
 
             // Construct the block.
-            let block = BaseBlock {
+            let block = UnstableBlock {
                 header: outcome.header.inner().clone(),
                 body: BlockBody {
                     transactions: attributes
@@ -152,9 +152,9 @@ where
                         .unwrap_or(&Vec::new())
                         .iter()
                         .map(|tx| {
-                            BaseTxEnvelope::decode(&mut tx.as_ref()).map_err(DriverError::Rlp)
+                            UnstableTxEnvelope::decode(&mut tx.as_ref()).map_err(DriverError::Rlp)
                         })
-                        .collect::<DriverResult<Vec<BaseTxEnvelope>, E::Error>>()?,
+                        .collect::<DriverResult<Vec<UnstableTxEnvelope>, E::Error>>()?,
                     ommers: Vec::new(),
                     withdrawals: None,
                 },

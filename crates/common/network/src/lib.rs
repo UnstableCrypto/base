@@ -8,12 +8,12 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod base;
-pub use base::Base;
+pub use base::Unstable;
 
 mod builder;
 
 mod engine;
-pub use engine::BaseEngineApi;
+pub use engine::UnstableEngineApi;
 
 #[cfg(feature = "reth")]
 mod reth;

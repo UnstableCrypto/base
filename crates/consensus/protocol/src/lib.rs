@@ -27,7 +27,7 @@ mod attributes;
 pub use attributes::AttributesWithParent;
 
 mod errors;
-pub use errors::BaseBlockConversionError;
+pub use errors::UnstableBlockConversionError;
 
 mod block;
 pub use block::{BlockInfo, FromBlockError, L2BlockInfo};
@@ -49,12 +49,12 @@ pub use deposits::{DepositDecodeError, Deposits};
 
 mod info;
 pub use info::{
-    BlockInfoError, DecodeError, L1BlockInfoBedrock, L1BlockInfoBedrockBase,
-    L1BlockInfoBedrockBaseFields, L1BlockInfoBedrockFields, L1BlockInfoBedrockOnlyFields,
-    L1BlockInfoEcotone, L1BlockInfoEcotoneBase, L1BlockInfoEcotoneBaseFields,
+    BlockInfoError, DecodeError, L1BlockInfoBedrock, L1BlockInfoBedrockUnstable,
+    L1BlockInfoBedrockUnstableFields, L1BlockInfoBedrockFields, L1BlockInfoBedrockOnlyFields,
+    L1BlockInfoEcotone, L1BlockInfoEcotoneUnstable, L1BlockInfoEcotoneUnstableFields,
     L1BlockInfoEcotoneFields, L1BlockInfoEcotoneOnlyFields, L1BlockInfoIsthmus,
-    L1BlockInfoIsthmusBaseFields, L1BlockInfoIsthmusFields, L1BlockInfoJovian,
-    L1BlockInfoJovianBaseFields, L1BlockInfoJovianFields, L1BlockInfoTx,
+    L1BlockInfoIsthmusUnstableFields, L1BlockInfoIsthmusFields, L1BlockInfoJovian,
+    L1BlockInfoJovianUnstableFields, L1BlockInfoJovianFields, L1BlockInfoTx,
 };
 
 mod output_root;

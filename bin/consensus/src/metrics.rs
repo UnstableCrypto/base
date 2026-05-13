@@ -78,7 +78,7 @@ impl CliMetrics {
 pub fn init_p2p_metrics(p2p: &P2PArgs) {
     metrics::describe_gauge!(
         CliMetrics::IDENTIFIER,
-        "P2P configuration settings for the Base consensus node"
+        "P2P configuration settings for the Unstable consensus node"
     );
     metrics::gauge!(
         CliMetrics::IDENTIFIER,
@@ -115,9 +115,9 @@ pub fn init_p2p_metrics(p2p: &P2PArgs) {
 pub fn init_bootnode_p2p_metrics(p2p: &BootnodeP2PArgs) {
     metrics::describe_gauge!(
         CliMetrics::IDENTIFIER,
-        "P2P discovery configuration settings for the Base consensus bootnode"
+        "P2P discovery configuration settings for the Unstable consensus bootnode"
     );
-    metrics::describe_gauge!(CliMetrics::BOOTNODE_UP, "Whether the Base consensus bootnode is up");
+    metrics::describe_gauge!(CliMetrics::BOOTNODE_UP, "Whether the Unstable consensus bootnode is up");
     metrics::gauge!(
         CliMetrics::IDENTIFIER,
         &[
@@ -137,10 +137,10 @@ pub fn record_bootnode_up() {
 
 /// Initializes metrics for the rollup config.
 pub fn init_rollup_config_metrics(config: &RollupConfig) {
-    metrics::describe_gauge!(CliMetrics::ROLLUP_CONFIG, "Rollup configuration settings for Base");
+    metrics::describe_gauge!(CliMetrics::ROLLUP_CONFIG, "Rollup configuration settings for Unstable");
     metrics::describe_gauge!(
         CliMetrics::HARDFORK_ACTIVATION_TIMES,
-        "Activation times for hardforks in Base"
+        "Activation times for hardforks in Unstable"
     );
 
     metrics::gauge!(

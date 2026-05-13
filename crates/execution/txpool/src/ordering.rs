@@ -2,25 +2,25 @@
 
 use std::marker::PhantomData;
 
-use reth_transaction_pool::{CoinbaseTipOrdering, PoolTransaction, Priority, TransactionOrdering};
+use reth_transaction_pool::{TheAlxLabsTipOrdering, PoolTransaction, Priority, TransactionOrdering};
 
-use crate::{BasePooledTransaction, TimestampedTransaction};
+use crate::{UnstablePooledTransaction, TimestampedTransaction};
 
 /// Transaction ordering strategy for the pool.
 ///
 /// Each variant holds only the ordering implementation it needs.
 #[derive(Debug)]
-pub enum BaseOrdering<T> {
+pub enum UnstableOrdering<T> {
     /// Order by coinbase tip (fee-based, higher tip = higher priority).
-    CoinbaseTip(CoinbaseTipOrdering<T>),
+    TheAlxLabsTip(TheAlxLabsTipOrdering<T>),
     /// Order by receive timestamp (FIFO, earlier = higher priority).
     Timestamp(TimestampOrdering<T>),
 }
 
-impl<T> BaseOrdering<T> {
+impl<T> UnstableOrdering<T> {
     /// Creates a new coinbase-tip ordering (fee-based).
     pub fn coinbase_tip() -> Self {
-        Self::CoinbaseTip(CoinbaseTipOrdering::default())
+        Self::TheAlxLabsTip(TheAlxLabsTipOrdering::default())
     }
 
     /// Creates a new timestamp ordering (FIFO).
@@ -29,16 +29,16 @@ impl<T> BaseOrdering<T> {
     }
 }
 
-impl<T> Clone for BaseOrdering<T> {
+impl<T> Clone for UnstableOrdering<T> {
     fn clone(&self) -> Self {
         match self {
-            Self::CoinbaseTip(ordering) => Self::CoinbaseTip(ordering.clone()),
+            Self::TheAlxLabsTip(ordering) => Self::TheAlxLabsTip(ordering.clone()),
             Self::Timestamp(ordering) => Self::Timestamp(ordering.clone()),
         }
     }
 }
 
-impl<T> Default for BaseOrdering<T> {
+impl<T> Default for UnstableOrdering<T> {
     fn default() -> Self {
         Self::coinbase_tip()
     }
@@ -50,7 +50,7 @@ impl<T> Default for BaseOrdering<T> {
 /// Uses a timestamp assigned at insertion time for deterministic ordering.
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct TimestampOrdering<T = BasePooledTransaction>(PhantomData<T>);
+pub struct TimestampOrdering<T = UnstablePooledTransaction>(PhantomData<T>);
 
 impl<T> Default for TimestampOrdering<T> {
     fn default() -> Self {
@@ -83,7 +83,7 @@ where
     }
 }
 
-impl<T> TransactionOrdering for BaseOrdering<T>
+impl<T> TransactionOrdering for UnstableOrdering<T>
 where
     T: PoolTransaction + TimestampedTransaction + 'static,
 {
@@ -96,7 +96,7 @@ where
         base_fee: u64,
     ) -> Priority<Self::PriorityValue> {
         match self {
-            Self::CoinbaseTip(ordering) => ordering.priority(transaction, base_fee),
+            Self::TheAlxLabsTip(ordering) => ordering.priority(transaction, base_fee),
             Self::Timestamp(ordering) => ordering.priority(transaction, base_fee),
         }
     }
@@ -105,15 +105,15 @@ where
 #[cfg(test)]
 mod tests {
     use alloy_eips::eip2718::Encodable2718;
-    use base_common_consensus::BaseTransactionSigned;
+    use base_common_consensus::UnstableTransactionSigned;
     use base_test_utils::Account;
     use reth_primitives_traits::Recovered;
     use reth_transaction_pool::{TransactionOrdering, test_utils::TransactionBuilder};
 
     use super::*;
-    use crate::BasePooledTransaction;
+    use crate::UnstablePooledTransaction;
 
-    fn create_test_tx(nonce: u64) -> BasePooledTransaction {
+    fn create_test_tx(nonce: u64) -> UnstablePooledTransaction {
         let alice = Account::Alice;
         let bob = Account::Bob;
 
@@ -127,16 +127,16 @@ mod tests {
             .max_fee_per_gas(10)
             .max_priority_fee_per_gas(1)
             .into_eip1559();
-        let tx = BaseTransactionSigned::Eip1559(
+        let tx = UnstableTransactionSigned::Eip1559(
             signed_tx.as_eip1559().expect("eip1559 transaction").clone(),
         );
 
         let recovered = Recovered::new_unchecked(tx, alice.address());
         let len = recovered.encode_2718_len();
-        BasePooledTransaction::new(recovered, len)
+        UnstablePooledTransaction::new(recovered, len)
     }
 
-    fn create_test_tx_with_timestamp(nonce: u64, received_at: u128) -> BasePooledTransaction {
+    fn create_test_tx_with_timestamp(nonce: u64, received_at: u128) -> UnstablePooledTransaction {
         let alice = Account::Alice;
         let bob = Account::Bob;
 
@@ -150,13 +150,13 @@ mod tests {
             .max_fee_per_gas(10)
             .max_priority_fee_per_gas(1)
             .into_eip1559();
-        let tx = BaseTransactionSigned::Eip1559(
+        let tx = UnstableTransactionSigned::Eip1559(
             signed_tx.as_eip1559().expect("eip1559 transaction").clone(),
         );
 
         let recovered = Recovered::new_unchecked(tx, alice.address());
         let len = recovered.encode_2718_len();
-        BasePooledTransaction::new_with_received_at(recovered, len, received_at)
+        UnstablePooledTransaction::new_with_received_at(recovered, len, received_at)
     }
 
     fn create_test_tx_from(
@@ -164,7 +164,7 @@ mod tests {
         nonce: u64,
         received_at: u128,
         max_priority_fee_per_gas: u128,
-    ) -> BasePooledTransaction {
+    ) -> UnstablePooledTransaction {
         let bob = Account::Bob;
 
         let signed_tx = TransactionBuilder::default()
@@ -177,18 +177,18 @@ mod tests {
             .max_fee_per_gas(10)
             .max_priority_fee_per_gas(max_priority_fee_per_gas)
             .into_eip1559();
-        let tx = BaseTransactionSigned::Eip1559(
+        let tx = UnstableTransactionSigned::Eip1559(
             signed_tx.as_eip1559().expect("eip1559 transaction").clone(),
         );
 
         let recovered = Recovered::new_unchecked(tx, account.address());
         let len = recovered.encode_2718_len();
-        BasePooledTransaction::new_with_received_at(recovered, len, received_at)
+        UnstablePooledTransaction::new_with_received_at(recovered, len, received_at)
     }
 
     #[test]
     fn test_older_tx_has_higher_priority() {
-        let ordering = TimestampOrdering::<BasePooledTransaction>::default();
+        let ordering = TimestampOrdering::<UnstablePooledTransaction>::default();
 
         let older_tx = create_test_tx_with_timestamp(1, 1000);
         let newer_tx = create_test_tx_with_timestamp(2, 2000);
@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     fn test_priority_value_is_max_minus_timestamp() {
-        let ordering = TimestampOrdering::<BasePooledTransaction>::default();
+        let ordering = TimestampOrdering::<UnstablePooledTransaction>::default();
         let tx = create_test_tx(1);
 
         let priority = ordering.priority(&tx, 0);
@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn test_base_ordering_coinbase_tip_mode() {
-        let ordering = BaseOrdering::<BasePooledTransaction>::coinbase_tip();
+        let ordering = UnstableOrdering::<UnstablePooledTransaction>::coinbase_tip();
 
         let higher_tip = create_test_tx(1);
         let lower_tip = {
@@ -234,12 +234,12 @@ mod tests {
                 .max_fee_per_gas(10)
                 .max_priority_fee_per_gas(0)
                 .into_eip1559();
-            let tx = BaseTransactionSigned::Eip1559(
+            let tx = UnstableTransactionSigned::Eip1559(
                 signed_tx.as_eip1559().expect("eip1559 transaction").clone(),
             );
             let recovered = Recovered::new_unchecked(tx, alice.address());
             let len = recovered.encode_2718_len();
-            BasePooledTransaction::new(recovered, len)
+            UnstablePooledTransaction::new(recovered, len)
         };
 
         let higher_priority = ordering.priority(&higher_tip, 0);
@@ -249,7 +249,7 @@ mod tests {
 
     #[test]
     fn test_base_ordering_timestamp_mode() {
-        let ordering = BaseOrdering::<BasePooledTransaction>::timestamp();
+        let ordering = UnstableOrdering::<UnstablePooledTransaction>::timestamp();
 
         let older_tx = create_test_tx_with_timestamp(1, 1000);
         let newer_tx = create_test_tx_with_timestamp(2, 2000);
@@ -261,10 +261,10 @@ mod tests {
 
     #[test]
     fn test_base_ordering_default_is_coinbase_tip() {
-        let ordering = BaseOrdering::<BasePooledTransaction>::default();
+        let ordering = UnstableOrdering::<UnstablePooledTransaction>::default();
         let tx = create_test_tx(1);
         let priority = ordering.priority(&tx, 0);
-        let coinbase = CoinbaseTipOrdering::<BasePooledTransaction>::default();
+        let coinbase = TheAlxLabsTipOrdering::<UnstablePooledTransaction>::default();
         let coinbase_priority = coinbase.priority(&tx, 0);
         assert_eq!(priority, coinbase_priority);
     }
@@ -283,7 +283,7 @@ mod tests {
     // regardless of nonce.
     #[test]
     fn test_same_sender_timestamp_ordering() {
-        let ordering = BaseOrdering::<BasePooledTransaction>::timestamp();
+        let ordering = UnstableOrdering::<UnstablePooledTransaction>::timestamp();
 
         let tx_nonce_0 = create_test_tx_from(Account::Alice, 0, 1000, 1);
         let tx_nonce_1 = create_test_tx_from(Account::Alice, 1, 2000, 1);

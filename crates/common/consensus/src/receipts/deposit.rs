@@ -1,4 +1,4 @@
-//! Transaction receipt types for Base chains.
+//! Transaction receipt types for Unstable chains.
 
 use alloy_consensus::{
     Eip658Value, InMemorySize, Receipt, ReceiptWithBloom, RlpDecodableReceipt, RlpEncodableReceipt,
@@ -7,10 +7,10 @@ use alloy_consensus::{
 use alloy_primitives::{Bloom, Log};
 use alloy_rlp::{Buf, BufMut, Decodable, Encodable, Header};
 
-use super::BaseTxReceipt;
+use super::UnstableTxReceipt;
 use crate::transaction::DepositInfo;
 
-/// [`DepositReceipt`] with calculated bloom filter, modified for Base.
+/// [`DepositReceipt`] with calculated bloom filter, modified for Unstable.
 ///
 /// This convenience type allows us to lazily calculate the bloom filter for a
 /// receipt, similar to [`Sealed`].
@@ -230,7 +230,7 @@ impl<T: Decodable> RlpDecodableReceipt for DepositReceipt<T> {
     }
 }
 
-impl BaseTxReceipt for DepositReceipt {
+impl UnstableTxReceipt for DepositReceipt {
     fn deposit_nonce(&self) -> Option<u64> {
         self.deposit_nonce
     }
@@ -305,7 +305,7 @@ pub(super) mod serde_bincode_compat {
         fn from(value: &'a super::DepositReceipt<T>) -> Self {
             Self {
                 logs: Cow::Borrowed(&value.inner.logs),
-                // Base has no post-state-root variant.
+                // Unstable has no post-state-root variant.
                 status: value.inner.status.coerce_status(),
                 cumulative_gas_used: value.inner.cumulative_gas_used,
                 deposit_nonce: value.deposit_nonce,

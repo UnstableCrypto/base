@@ -9,7 +9,7 @@ use url::Url;
 use crate::{
     metrics::ConfigSummary,
     runner::{TxConfig, TxType},
-    utils::{BaselineError, Result},
+    utils::{UnstablelineError, Result},
 };
 
 /// Typed precompile target for load test configuration.
@@ -207,7 +207,7 @@ pub struct WeightedTxType {
     pub tx_type: TxTypeConfig,
 }
 
-/// Osaka (Base Azul) transaction target.
+/// Osaka (Unstable Azul) transaction target.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OsakaTarget {
@@ -253,7 +253,7 @@ pub enum TxTypeConfig {
         iterations: u32,
     },
 
-    /// Osaka (Base Azul) opcode or precompile transaction.
+    /// Osaka (Unstable Azul) opcode or precompile transaction.
     Osaka {
         /// Target Osaka feature.
         target: OsakaTarget,
@@ -333,7 +333,7 @@ impl TestConfig {
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         let contents = std::fs::read_to_string(path).map_err(|e| {
-            BaselineError::Config(format!("failed to read config file {}: {}", path.display(), e))
+            UnstablelineError::Config(format!("failed to read config file {}: {}", path.display(), e))
         })?;
         Self::from_yaml(&contents)
     }
@@ -341,7 +341,7 @@ impl TestConfig {
     /// Parses configuration from a YAML string.
     pub fn from_yaml(yaml: &str) -> Result<Self> {
         let config: Self = serde_yaml::from_str(yaml)
-            .map_err(|e| BaselineError::Config(format!("failed to parse YAML: {e}")))?;
+            .map_err(|e| UnstablelineError::Config(format!("failed to parse YAML: {e}")))?;
         config.validate()?;
         Ok(config)
     }
@@ -349,11 +349,11 @@ impl TestConfig {
     /// Validates that all required fields are set and values are sensible.
     pub fn validate(&self) -> Result<()> {
         if self.sender_count == 0 {
-            return Err(BaselineError::Config("sender_count must be > 0".into()));
+            return Err(UnstablelineError::Config("sender_count must be > 0".into()));
         }
 
         if self.transaction_submission_rpcs.is_empty() {
-            return Err(BaselineError::Config(
+            return Err(UnstablelineError::Config(
                 "transaction_submission_rpcs must not be empty".into(),
             ));
         }
@@ -369,7 +369,7 @@ impl TestConfig {
         }
 
         let Some(flashblocks_ws) = &self.flashblocks_ws else {
-            return Err(BaselineError::Config("flashblocks_ws is required".into()));
+            return Err(UnstablelineError::Config("flashblocks_ws is required".into()));
         };
         Self::validate_ws_url(flashblocks_ws, "flashblocks_ws")?;
 
@@ -379,20 +379,20 @@ impl TestConfig {
     /// Returns the first transaction submission endpoint.
     pub fn primary_submission_rpc(&self) -> Result<&Url> {
         self.transaction_submission_rpcs.first().ok_or_else(|| {
-            BaselineError::Config("transaction_submission_rpcs must not be empty".into())
+            UnstablelineError::Config("transaction_submission_rpcs must not be empty".into())
         })
     }
 
     fn validate_http_url(url: &Url, field_name: &str) -> Result<()> {
         match url.scheme() {
             "http" | "https" => Ok(()),
-            "ws" => Err(BaselineError::Config(format!(
+            "ws" => Err(UnstablelineError::Config(format!(
                 "{field_name} uses 'ws://' scheme but requires 'http://' for JSON-RPC requests"
             ))),
-            "wss" => Err(BaselineError::Config(format!(
+            "wss" => Err(UnstablelineError::Config(format!(
                 "{field_name} uses 'wss://' scheme but requires 'https://' for JSON-RPC requests"
             ))),
-            scheme => Err(BaselineError::Config(format!(
+            scheme => Err(UnstablelineError::Config(format!(
                 "{field_name} has invalid scheme '{scheme}', expected 'http://' or 'https://'"
             ))),
         }
@@ -401,13 +401,13 @@ impl TestConfig {
     fn validate_ws_url(url: &Url, field_name: &str) -> Result<()> {
         match url.scheme() {
             "ws" | "wss" => Ok(()),
-            "http" => Err(BaselineError::Config(format!(
+            "http" => Err(UnstablelineError::Config(format!(
                 "{field_name} uses 'http://' scheme but requires 'ws://' for WebSocket connections"
             ))),
-            "https" => Err(BaselineError::Config(format!(
+            "https" => Err(UnstablelineError::Config(format!(
                 "{field_name} uses 'https://' scheme but requires 'wss://' for secure WebSocket connections"
             ))),
-            scheme => Err(BaselineError::Config(format!(
+            scheme => Err(UnstablelineError::Config(format!(
                 "{field_name} has invalid scheme '{scheme}', expected 'ws://' or 'wss://'"
             ))),
         }
@@ -425,11 +425,11 @@ impl TestConfig {
             s.to_string()
         } else {
             std::env::var("FUNDER_KEY").map_err(|_| {
-                BaselineError::Config("FUNDER_KEY environment variable is required".into())
+                UnstablelineError::Config("FUNDER_KEY environment variable is required".into())
             })?
         };
         key_str.parse().map_err(|e| {
-            BaselineError::Config(format!("invalid funder key (expected 0x-prefixed hex): {e}"))
+            UnstablelineError::Config(format!("invalid funder key (expected 0x-prefixed hex): {e}"))
         })
     }
 
@@ -446,7 +446,7 @@ impl TestConfig {
             .as_ref()
             .map(|d| {
                 humantime::parse_duration(d.trim())
-                    .map_err(|e| BaselineError::Config(format!("invalid duration '{d}': {e}")))
+                    .map_err(|e| UnstablelineError::Config(format!("invalid duration '{d}': {e}")))
             })
             .transpose()
     }
@@ -454,14 +454,14 @@ impl TestConfig {
     /// Parses the funding amount string into a U256.
     pub fn parse_funding_amount(&self) -> Result<alloy_primitives::U256> {
         self.funding_amount.parse().map_err(|e| {
-            BaselineError::Config(format!("invalid funding_amount '{}': {e}", self.funding_amount))
+            UnstablelineError::Config(format!("invalid funding_amount '{}': {e}", self.funding_amount))
         })
     }
 
     /// Parses the swap token amount string into a U256.
     pub fn parse_swap_token_amount(&self) -> Result<alloy_primitives::U256> {
         self.swap_token_amount.parse().map_err(|e| {
-            BaselineError::Config(format!(
+            UnstablelineError::Config(format!(
                 "invalid swap_token_amount '{}': {e}",
                 self.swap_token_amount
             ))
@@ -500,7 +500,7 @@ impl TestConfig {
         fallback_chain_id: Option<u64>,
     ) -> Result<crate::runner::LoadConfig> {
         let resolved_chain_id = self.chain_id.or(fallback_chain_id).ok_or_else(|| {
-            BaselineError::Config("chain_id must be provided in config or fetched from RPC".into())
+            UnstablelineError::Config("chain_id must be provided in config or fetched from RPC".into())
         })?;
 
         let transaction_submission_rpcs = self.transaction_submission_rpcs.clone();
@@ -520,7 +520,7 @@ impl TestConfig {
             .as_ref()
             .map(|d| {
                 humantime::parse_duration(d.trim())
-                    .map_err(|e| BaselineError::Config(format!("invalid batch_timeout '{d}': {e}")))
+                    .map_err(|e| UnstablelineError::Config(format!("invalid batch_timeout '{d}': {e}")))
             })
             .transpose()?
             .unwrap_or(Duration::from_millis(100));
@@ -544,7 +544,7 @@ impl TestConfig {
             flashblocks_ws: self
                 .flashblocks_ws
                 .clone()
-                .ok_or_else(|| BaselineError::Config("flashblocks_ws is required".into()))?,
+                .ok_or_else(|| UnstablelineError::Config("flashblocks_ws is required".into()))?,
         })
     }
 
@@ -556,7 +556,7 @@ impl TestConfig {
             }
             TxTypeConfig::Erc20 { contract } => {
                 let address = contract.parse::<Address>().map_err(|e| {
-                    BaselineError::Config(format!(
+                    UnstablelineError::Config(format!(
                         "invalid erc20 contract address '{contract}': {e}"
                     ))
                 })?;
@@ -565,12 +565,12 @@ impl TestConfig {
             TxTypeConfig::Precompile { target, iterations } => {
                 let looper_contract = if *iterations > 1 {
                     let addr_str = self.looper_contract.as_ref().ok_or_else(|| {
-                        BaselineError::Config(
+                        UnstablelineError::Config(
                             "looper_contract required when precompile iterations > 1".into(),
                         )
                     })?;
                     let addr = addr_str.parse::<Address>().map_err(|e| {
-                        BaselineError::Config(format!(
+                        UnstablelineError::Config(format!(
                             "invalid looper_contract address '{addr_str}': {e}"
                         ))
                     })?;
@@ -599,7 +599,7 @@ impl TestConfig {
                 let token_out = parse_address(token_out, "uniswap_v3 token_out")?;
                 let max_u24: u32 = (1 << 24) - 1;
                 if *fee > max_u24 {
-                    return Err(BaselineError::Config(format!(
+                    return Err(UnstablelineError::Config(format!(
                         "uniswap_v3 fee {fee} exceeds u24 max ({max_u24})"
                     )));
                 }
@@ -623,7 +623,7 @@ impl TestConfig {
                 let max_amount = parse_amount(max_amount, "aerodrome_cl max_amount")?;
                 validate_swap_amounts(min_amount, max_amount, "aerodrome_cl")?;
                 if !(-8_388_608..=8_388_607).contains(tick_spacing) {
-                    return Err(BaselineError::Config(format!(
+                    return Err(UnstablelineError::Config(format!(
                         "aerodrome_cl tick_spacing {tick_spacing} exceeds i24 range"
                     )));
                 }
@@ -675,27 +675,27 @@ where
 
 fn parse_address(s: &str, field: &str) -> Result<Address> {
     s.parse::<Address>()
-        .map_err(|e| BaselineError::Config(format!("invalid {field} address '{s}': {e}")))
+        .map_err(|e| UnstablelineError::Config(format!("invalid {field} address '{s}': {e}")))
 }
 
 fn parse_amount(s: &str, field: &str) -> Result<U256> {
-    s.parse::<U256>().map_err(|e| BaselineError::Config(format!("invalid {field} '{s}': {e}")))
+    s.parse::<U256>().map_err(|e| UnstablelineError::Config(format!("invalid {field} '{s}': {e}")))
 }
 
 fn validate_swap_amounts(min: U256, max: U256, tx_type: &str) -> Result<()> {
     if min > max {
-        return Err(BaselineError::Config(format!(
+        return Err(UnstablelineError::Config(format!(
             "{tx_type} min_amount ({min}) exceeds max_amount ({max})"
         )));
     }
     let u128_max = U256::from(u128::MAX);
     if min > u128_max {
-        return Err(BaselineError::Config(format!(
+        return Err(UnstablelineError::Config(format!(
             "{tx_type} min_amount ({min}) exceeds u128::MAX — swap calls require u128 amounts"
         )));
     }
     if max > u128_max {
-        return Err(BaselineError::Config(format!(
+        return Err(UnstablelineError::Config(format!(
             "{tx_type} max_amount ({max}) exceeds u128::MAX — swap calls require u128 amounts"
         )));
     }
@@ -753,8 +753,8 @@ flashblocks_ws: ws://localhost:7111
     #[test]
     fn parse_full_config() {
         let yaml = r#"
-transaction_submission_rpcs: https://sepolia.base.org
-flashblocks_ws: wss://sepolia.flashblocks.base.org/ws
+transaction_submission_rpcs: https://sepolia.unstable.org
+flashblocks_ws: wss://sepolia.flashblocks.unstable.org/ws
 mnemonic: "test test test test test test test test test test test junk"
 funding_amount: "500000000000000000"
 sender_count: 20

@@ -1,18 +1,18 @@
 use alloy_consensus::{Eip658Value, Receipt};
 use alloy_evm::eth::receipt_builder::ReceiptBuilderCtx;
-use base_common_consensus::{BaseReceipt, BaseTransactionSigned, OpTxType};
-use base_common_evm::BaseReceiptBuilder;
+use base_common_consensus::{UnstableReceipt, UnstableTransactionSigned, OpTxType};
+use base_common_evm::UnstableReceiptBuilder;
 use reth_evm::Evm;
 
-/// A builder that operates on Base primitive types, specifically [`BaseTransactionSigned`] and
-/// [`BaseReceipt`].
+/// A builder that operates on Unstable primitive types, specifically [`UnstableTransactionSigned`] and
+/// [`UnstableReceipt`].
 #[derive(Debug, Default, Clone, Copy)]
 #[non_exhaustive]
-pub struct BaseRethReceiptBuilder;
+pub struct UnstableRethReceiptBuilder;
 
-impl BaseReceiptBuilder for BaseRethReceiptBuilder {
-    type Transaction = BaseTransactionSigned;
-    type Receipt = BaseReceipt;
+impl UnstableReceiptBuilder for UnstableRethReceiptBuilder {
+    type Transaction = UnstableTransactionSigned;
+    type Receipt = UnstableReceipt;
 
     fn build_receipt<'a, E: Evm>(
         &self,
@@ -30,10 +30,10 @@ impl BaseReceiptBuilder for BaseRethReceiptBuilder {
                 };
 
                 Ok(match ty {
-                    OpTxType::Legacy => BaseReceipt::Legacy(receipt),
-                    OpTxType::Eip1559 => BaseReceipt::Eip1559(receipt),
-                    OpTxType::Eip2930 => BaseReceipt::Eip2930(receipt),
-                    OpTxType::Eip7702 => BaseReceipt::Eip7702(receipt),
+                    OpTxType::Legacy => UnstableReceipt::Legacy(receipt),
+                    OpTxType::Eip1559 => UnstableReceipt::Eip1559(receipt),
+                    OpTxType::Eip2930 => UnstableReceipt::Eip2930(receipt),
+                    OpTxType::Eip7702 => UnstableReceipt::Eip7702(receipt),
                     OpTxType::Deposit => unreachable!(),
                 })
             }
@@ -41,6 +41,6 @@ impl BaseReceiptBuilder for BaseRethReceiptBuilder {
     }
 
     fn build_deposit_receipt(&self, inner: base_common_consensus::DepositReceipt) -> Self::Receipt {
-        BaseReceipt::Deposit(inner)
+        UnstableReceipt::Deposit(inner)
     }
 }

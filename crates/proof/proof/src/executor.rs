@@ -7,17 +7,17 @@ use alloy_consensus::{Header, Sealed};
 use alloy_evm::{EvmFactory, FromRecoveredTx, FromTxWithEncoded, revm::context::BlockEnv};
 use alloy_primitives::B256;
 use async_trait::async_trait;
-use base_common_consensus::BaseTxEnvelope;
-use base_common_evm::{BaseSpecId, BaseTxEnv};
+use base_common_consensus::UnstableTxEnvelope;
+use base_common_evm::{UnstableSpecId, UnstableTxEnv};
 use base_common_genesis::RollupConfig;
-use base_common_rpc_types_engine::BasePayloadAttributes;
+use base_common_rpc_types_engine::UnstablePayloadAttributes;
 use base_proof_driver::Executor;
 use base_proof_executor::{BlockBuildingOutcome, StatelessL2Builder, TrieDBProvider};
 use base_proof_mpt::TrieHinter;
 
 /// An executor wrapper type.
 #[derive(Debug)]
-pub struct BaseExecutor<'a, P, H, Evm>
+pub struct UnstableExecutor<'a, P, H, Evm>
 where
     P: TrieDBProvider + Send + Sync + Clone,
     H: TrieHinter + Send + Sync + Clone,
@@ -35,7 +35,7 @@ where
     inner: Option<StatelessL2Builder<'a, P, H, Evm>>,
 }
 
-impl<'a, P, H, Evm> BaseExecutor<'a, P, H, Evm>
+impl<'a, P, H, Evm> UnstableExecutor<'a, P, H, Evm>
 where
     P: TrieDBProvider + Send + Sync + Clone,
     H: TrieHinter + Send + Sync + Clone,
@@ -54,13 +54,13 @@ where
 }
 
 #[async_trait]
-impl<P, H, Evm> Executor for BaseExecutor<'_, P, H, Evm>
+impl<P, H, Evm> Executor for UnstableExecutor<'_, P, H, Evm>
 where
     P: TrieDBProvider + Debug + Send + Sync + Clone,
     H: TrieHinter + Debug + Send + Sync + Clone,
-    Evm: EvmFactory<Spec = BaseSpecId, BlockEnv = BlockEnv> + Send + Sync + Clone + 'static,
+    Evm: EvmFactory<Spec = UnstableSpecId, BlockEnv = BlockEnv> + Send + Sync + Clone + 'static,
     <Evm as EvmFactory>::Tx:
-        FromTxWithEncoded<BaseTxEnvelope> + FromRecoveredTx<BaseTxEnvelope> + BaseTxEnv,
+        FromTxWithEncoded<UnstableTxEnvelope> + FromRecoveredTx<UnstableTxEnvelope> + UnstableTxEnv,
 {
     type Error = base_proof_executor::ExecutorError;
 
@@ -87,7 +87,7 @@ where
     /// Execute the given payload attributes.
     async fn execute_payload(
         &mut self,
-        attributes: BasePayloadAttributes,
+        attributes: UnstablePayloadAttributes,
     ) -> Result<BlockBuildingOutcome, Self::Error> {
         self.inner.as_mut().map_or_else(
             || Err(base_proof_executor::ExecutorError::MissingExecutor),

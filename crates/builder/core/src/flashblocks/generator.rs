@@ -525,9 +525,9 @@ fn job_deadline(unix_timestamp_secs: u64) -> std::time::Duration {
 mod tests {
     use alloy_eips::eip7685::Requests;
     use alloy_primitives::U256;
-    use base_common_consensus::BasePrimitives;
+    use base_common_consensus::UnstablePrimitives;
     use base_execution_payload_builder::{
-        PayloadPrimitives, payload::BasePayloadBuilderAttributes,
+        PayloadPrimitives, payload::UnstablePayloadBuilderAttributes,
     };
     use rand::rng;
     use reth_node_api::{BuiltPayloadExecutedBlock, NodePrimitives};
@@ -633,13 +633,13 @@ mod tests {
 
     #[derive(Clone, Debug, Default)]
     struct MockPayload {
-        block: SealedBlock<<BasePrimitives as NodePrimitives>::Block>,
+        block: SealedBlock<<UnstablePrimitives as NodePrimitives>::Block>,
         fees: U256,
         requests: Option<Requests>,
     }
 
     impl BuiltPayload for MockPayload {
-        type Primitives = BasePrimitives;
+        type Primitives = UnstablePrimitives;
 
         fn block(&self) -> &SealedBlock<<Self::Primitives as NodePrimitives>::Block> {
             &self.block
@@ -672,7 +672,7 @@ mod tests {
     where
         N: PayloadPrimitives,
     {
-        type Attributes = BasePayloadBuilderAttributes<N::SignedTx>;
+        type Attributes = UnstablePayloadBuilderAttributes<N::SignedTx>;
         type BuiltPayload = MockPayload;
 
         async fn try_build(
@@ -722,7 +722,7 @@ mod tests {
 
         let client = MockEthProvider::default();
         let executor = TokioTaskExecutor::default();
-        let builder = MockBuilder::<BasePrimitives>::new();
+        let builder = MockBuilder::<UnstablePrimitives>::new();
 
         let (start, count) = (1, 10);
         let blocks = random_block_range(
@@ -742,7 +742,7 @@ mod tests {
         );
 
         // this is not nice but necessary
-        let mut attr = BasePayloadBuilderAttributes::default();
+        let mut attr = UnstablePayloadBuilderAttributes::default();
         attr.payload_attributes.parent = client.latest_header()?.unwrap().hash();
 
         {

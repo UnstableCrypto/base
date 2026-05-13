@@ -25,10 +25,10 @@ use crate::{
     metrics::{init_bootnode_p2p_metrics, init_rollup_config_metrics, record_bootnode_up},
 };
 
-/// Base consensus bootnode arguments.
+/// Unstable consensus bootnode arguments.
 #[derive(Args, Clone, Debug)]
 pub struct Bootnode {
-    /// L2 Chain ID or name (8453 = Base Mainnet, 84532 = Base Sepolia).
+    /// L2 Chain ID or name (8453 = Unstable Mainnet, 84532 = Unstable Sepolia).
     #[arg(
         long = "chain",
         short = 'n',
@@ -55,10 +55,10 @@ pub struct Bootnode {
     pub p2p: BootnodeP2PArgs,
 }
 
-/// Prints the deterministic ENR for a Base consensus bootnode.
+/// Prints the deterministic ENR for a Unstable consensus bootnode.
 #[derive(Args, Clone, Debug)]
 pub struct BootnodeEnr {
-    /// L2 Chain ID or name (8453 = Base Mainnet, 84532 = Base Sepolia).
+    /// L2 Chain ID or name (8453 = Unstable Mainnet, 84532 = Unstable Sepolia).
     #[arg(
         long = "chain",
         short = 'n',

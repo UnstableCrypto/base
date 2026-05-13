@@ -1,4 +1,4 @@
-//! Action tests for Base V1 (Osaka) hardfork activation.
+//! Action tests for Unstable V1 (Osaka) hardfork activation.
 
 mod clz;
 mod derivation;

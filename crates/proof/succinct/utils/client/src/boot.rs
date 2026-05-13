@@ -74,10 +74,10 @@ mod tests {
 
     fn boot_info(claimed_l2_block_number: u64) -> BootInfo {
         let rollup_config =
-            Registry::rollup_config(8453).expect("Base mainnet config should exist").clone();
+            Registry::rollup_config(8453).expect("Unstable mainnet config should exist").clone();
         let l1_config = base_common_chains::L1_CONFIGS
             .get(&rollup_config.l1_chain_id)
-            .expect("Base mainnet L1 config should exist")
+            .expect("Unstable mainnet L1 config should exist")
             .clone();
 
         BootInfo {

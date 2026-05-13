@@ -8,11 +8,11 @@ use ambassador::Delegate;
 use crate::{
     DecodeError,
     info::{
-        L1BlockInfoEcotoneBaseFields,
+        L1BlockInfoEcotoneUnstableFields,
         bedrock_base::{
-            L1BlockInfoBedrockBaseFields, ambassador_impl_L1BlockInfoBedrockBaseFields,
+            L1BlockInfoBedrockUnstableFields, ambassador_impl_L1BlockInfoBedrockUnstableFields,
         },
-        ecotone_base::{L1BlockInfoEcotoneBase, ambassador_impl_L1BlockInfoEcotoneBaseFields},
+        ecotone_base::{L1BlockInfoEcotoneUnstable, ambassador_impl_L1BlockInfoEcotoneUnstableFields},
     },
 };
 
@@ -23,24 +23,24 @@ use crate::{
 /// | Bytes   | Field                    |
 /// +---------+--------------------------+
 /// | 4       | Function signature       |
-/// | 4       | `BaseFeeScalar`            |
-/// | 4       | `BlobBaseFeeScalar`        |
+/// | 4       | `UnstableFeeScalar`            |
+/// | 4       | `BlobUnstableFeeScalar`        |
 /// | 8       | `SequenceNumber`           |
 /// | 8       | Timestamp                |
 /// | 8       | `L1BlockNumber`            |
-/// | 32      | `BaseFee`                  |
-/// | 32      | `BlobBaseFee`              |
+/// | 32      | `UnstableFee`                  |
+/// | 32      | `BlobUnstableFee`              |
 /// | 32      | `BlockHash`                |
 /// | 32      | `BatcherHash`              |
 /// +---------+--------------------------+
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Default, Copy, Delegate)]
 #[allow(clippy::duplicated_attributes)]
-#[delegate(L1BlockInfoBedrockBaseFields, target = "base")]
-#[delegate(L1BlockInfoEcotoneBaseFields, target = "base")]
+#[delegate(L1BlockInfoBedrockUnstableFields, target = "base")]
+#[delegate(L1BlockInfoEcotoneUnstableFields, target = "base")]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct L1BlockInfoEcotone {
     #[cfg_attr(feature = "serde", serde(flatten))]
-    base: L1BlockInfoEcotoneBase,
+    base: L1BlockInfoEcotoneUnstable,
     /// Indicates that the scalars are empty.
     /// This is an edge case where the first block in ecotone has no scalars,
     /// so the bedrock tx l1 cost function needs to be used.
@@ -78,7 +78,7 @@ impl L1BlockInfoEcotoneOnlyFields for L1BlockInfoEcotone {
 
 /// Accessors for all Ecotone fields.
 pub trait L1BlockInfoEcotoneFields:
-    L1BlockInfoBedrockBaseFields + L1BlockInfoEcotoneOnlyFields
+    L1BlockInfoBedrockUnstableFields + L1BlockInfoEcotoneOnlyFields
 {
 }
 
@@ -116,7 +116,7 @@ impl L1BlockInfoEcotone {
         }
         // SAFETY: For all below slice operations, the full
         //         length is validated above to be `164`.
-        let base = L1BlockInfoEcotoneBase::decode_calldata_body(r);
+        let base = L1BlockInfoEcotoneUnstable::decode_calldata_body(r);
 
         Ok(Self::new(
             base.number(),
@@ -153,7 +153,7 @@ impl L1BlockInfoEcotone {
         l1_fee_overhead: U256,
     ) -> Self {
         Self {
-            base: L1BlockInfoEcotoneBase::new(
+            base: L1BlockInfoEcotoneUnstable::new(
                 number,
                 time,
                 base_fee,
@@ -170,40 +170,40 @@ impl L1BlockInfoEcotone {
     }
     /// Construct from default values and `base_fee`.
     pub fn new_from_base_fee(base_fee: u64) -> Self {
-        Self { base: L1BlockInfoEcotoneBase::new_from_base_fee(base_fee), ..Default::default() }
+        Self { base: L1BlockInfoEcotoneUnstable::new_from_base_fee(base_fee), ..Default::default() }
     }
     /// Construct from default values and `block_hash`.
     pub fn new_from_block_hash(block_hash: B256) -> Self {
-        let base = L1BlockInfoEcotoneBase::new_from_block_hash(block_hash);
+        let base = L1BlockInfoEcotoneUnstable::new_from_block_hash(block_hash);
         Self { base, ..Default::default() }
     }
     /// Construct from default values and `sequence_number`.
     pub fn new_from_sequence_number(sequence_number: u64) -> Self {
         Self {
-            base: L1BlockInfoEcotoneBase::new_from_sequence_number(sequence_number),
+            base: L1BlockInfoEcotoneUnstable::new_from_sequence_number(sequence_number),
             ..Default::default()
         }
     }
     /// Construct from default values and `batcher_address`.
     pub fn new_from_batcher_address(batcher_address: Address) -> Self {
         Self {
-            base: L1BlockInfoEcotoneBase::new_from_batcher_address(batcher_address),
+            base: L1BlockInfoEcotoneUnstable::new_from_batcher_address(batcher_address),
             ..Default::default()
         }
     }
     /// Construct from default values and `blob_base_fee`.
     pub fn new_from_blob_base_fee(blob_base_fee: u128) -> Self {
-        let base = L1BlockInfoEcotoneBase::new_from_blob_base_fee(blob_base_fee);
+        let base = L1BlockInfoEcotoneUnstable::new_from_blob_base_fee(blob_base_fee);
         Self { base, ..Default::default() }
     }
     /// Construct from default values and `blob_base_fee_scalar`.
     pub fn new_from_blob_base_fee_scalar(base_fee_scalar: u32) -> Self {
-        let base = L1BlockInfoEcotoneBase::new_from_blob_base_fee_scalar(base_fee_scalar);
+        let base = L1BlockInfoEcotoneUnstable::new_from_blob_base_fee_scalar(base_fee_scalar);
         Self { base, ..Default::default() }
     }
     /// Construct from default values and `base_fee_scalar`.
     pub fn new_from_base_fee_scalar(base_fee: u32) -> Self {
-        let base = L1BlockInfoEcotoneBase::new_from_base_fee_scalar(base_fee);
+        let base = L1BlockInfoEcotoneUnstable::new_from_base_fee_scalar(base_fee);
         Self { base, ..Default::default() }
     }
     /// Construct from default values and `l1_fee_overhead`.
@@ -216,7 +216,7 @@ impl L1BlockInfoEcotone {
     }
     /// Construct from default values, `number` and `block_hash`.
     pub fn new_from_number_and_block_hash(number: u64, block_hash: B256) -> Self {
-        let base = L1BlockInfoEcotoneBase::new_from_number_and_block_hash(number, block_hash);
+        let base = L1BlockInfoEcotoneUnstable::new_from_number_and_block_hash(number, block_hash);
         Self { base, ..Default::default() }
     }
 }

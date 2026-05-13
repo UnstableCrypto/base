@@ -18,12 +18,12 @@ pub mod sequencer;
 pub mod state;
 pub mod witness;
 
-pub use config::{BaseEthConfigApiServer, BaseEthConfigHandler};
+pub use config::{UnstableEthConfigApiServer, UnstableEthConfigHandler};
 #[cfg(feature = "client")]
-pub use engine::BaseEngineApiClient;
-pub use engine::{BaseEngineApi, BaseEngineApiServer, ENGINE_CAPABILITIES};
-pub use error::{BaseEthApiError, BaseInvalidTransactionError, SequencerClientError};
-pub use eth::{BaseEthApi, BaseEthApiBuilder, BaseReceiptBuilder};
+pub use engine::UnstableEngineApiClient;
+pub use engine::{UnstableEngineApi, UnstableEngineApiServer, ENGINE_CAPABILITIES};
+pub use error::{UnstableEthApiError, UnstableInvalidTransactionError, SequencerClientError};
+pub use eth::{UnstableEthApi, UnstableEthApiBuilder, UnstableReceiptBuilder};
 pub use metrics::{DebugApiExtMetrics, DebugApis, EthApiExtMetrics, SequencerMetrics};
 #[cfg(feature = "client")]
 pub use miner::MinerApiExtClient;

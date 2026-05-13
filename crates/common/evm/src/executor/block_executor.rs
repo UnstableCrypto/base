@@ -24,19 +24,19 @@ use revm::{
 };
 
 use crate::{
-    BaseBlockExecutionCtx, BaseBlockExecutionError, BaseReceiptBuilder, BaseTxEnv, BaseTxResult,
+    UnstableBlockExecutionCtx, UnstableBlockExecutionError, UnstableReceiptBuilder, UnstableTxEnv, UnstableTxResult,
     DEPOSIT_TRANSACTION_TYPE, L1BlockInfo, canyon,
 };
 
-/// Block executor for Base.
+/// Block executor for Unstable.
 #[derive(Debug)]
-pub struct BaseBlockExecutor<Evm, R: BaseReceiptBuilder, Spec> {
+pub struct UnstableBlockExecutor<Evm, R: UnstableReceiptBuilder, Spec> {
     /// Spec.
     pub spec: Spec,
     /// Receipt builder.
     pub receipt_builder: R,
     /// Context for block execution.
-    pub ctx: BaseBlockExecutionCtx,
+    pub ctx: UnstableBlockExecutionCtx,
     /// The EVM used by executor.
     pub evm: Evm,
     /// Receipts of executed transactions.
@@ -54,14 +54,14 @@ pub struct BaseBlockExecutor<Evm, R: BaseReceiptBuilder, Spec> {
     pub system_caller: SystemCaller<Spec>,
 }
 
-impl<E, R, Spec> BaseBlockExecutor<E, R, Spec>
+impl<E, R, Spec> UnstableBlockExecutor<E, R, Spec>
 where
     E: Evm,
-    R: BaseReceiptBuilder,
+    R: UnstableReceiptBuilder,
     Spec: Upgrades + Clone,
 {
-    /// Creates a new [`BaseBlockExecutor`].
-    pub fn new(evm: E, ctx: BaseBlockExecutionCtx, spec: Spec, receipt_builder: R) -> Self {
+    /// Creates a new [`UnstableBlockExecutor`].
+    pub fn new(evm: E, ctx: UnstableBlockExecutionCtx, spec: Spec, receipt_builder: R) -> Self {
         Self {
             is_regolith: spec
                 .is_regolith_active_at_timestamp(evm.block().timestamp().saturating_to()),
@@ -77,13 +77,13 @@ where
     }
 }
 
-impl<E, R, Spec> BaseBlockExecutor<E, R, Spec>
+impl<E, R, Spec> UnstableBlockExecutor<E, R, Spec>
 where
     E: Evm<
             DB: Database + DatabaseCommit + StateDB,
-            Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction> + BaseTxEnv,
+            Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction> + UnstableTxEnv,
         >,
-    R: BaseReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt>,
+    R: UnstableReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt>,
     Spec: Upgrades,
 {
     fn jovian_da_footprint_estimation(
@@ -112,19 +112,19 @@ where
     }
 }
 
-impl<E, R, Spec> BlockExecutor for BaseBlockExecutor<E, R, Spec>
+impl<E, R, Spec> BlockExecutor for UnstableBlockExecutor<E, R, Spec>
 where
     E: Evm<
             DB: Database + DatabaseCommit + StateDB,
-            Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction> + BaseTxEnv,
+            Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction> + UnstableTxEnv,
         >,
-    R: BaseReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt>,
+    R: UnstableReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt>,
     Spec: Upgrades,
 {
     type Transaction = R::Transaction;
     type Receipt = R::Receipt;
     type Evm = E;
-    type Result = BaseTxResult<E::HaltReason, <R::Transaction as TransactionEnvelope>::TxType>;
+    type Result = UnstableTxResult<E::HaltReason, <R::Transaction as TransactionEnvelope>::TxType>;
 
     fn apply_pre_execution_changes(&mut self) -> Result<(), BlockExecutionError> {
         // Set state clear flag if the block is after the Spurious Dragon hardfork.
@@ -136,10 +136,10 @@ where
         self.system_caller
             .apply_beacon_root_contract_call(self.ctx.parent_beacon_block_root, &mut self.evm)?;
 
-        // Ensure that the create2deployer is force-deployed at the canyon transition. Base
+        // Ensure that the create2deployer is force-deployed at the canyon transition. Unstable
         // blocks will always have at least a single transaction in them (the L1 info transaction),
         // so we can safely assume that this will always be triggered upon the transition and that
-        // the above check for empty blocks will never be hit on Base chains.
+        // the above check for empty blocks will never be hit on Unstable chains.
         canyon::ensure_create2_deployer(
             &self.spec,
             self.evm.block().timestamp().saturating_to(),
@@ -180,7 +180,7 @@ where
 
             if tx_da_footprint > da_footprint_available {
                 return Err(BlockExecutionError::Validation(BlockValidationError::Other(
-                    Box::new(BaseBlockExecutionError::TransactionDaFootprintAboveGasLimit {
+                    Box::new(UnstableBlockExecutionError::TransactionDaFootprintAboveGasLimit {
                         transaction_da_footprint: tx_da_footprint,
                         available_block_da_footprint: da_footprint_available,
                     }),
@@ -198,7 +198,7 @@ where
             BlockExecutionError::evm(err, hash)
         })?;
 
-        Ok(BaseTxResult {
+        Ok(UnstableTxResult {
             inner: EthTxResult {
                 result,
                 blob_gas_used: da_footprint_used,
@@ -210,7 +210,7 @@ where
     }
 
     fn commit_transaction(&mut self, output: Self::Result) -> Result<u64, BlockExecutionError> {
-        let BaseTxResult {
+        let UnstableTxResult {
             inner: EthTxResult { result: ResultAndState { result, state }, blob_gas_used, tx_type },
             is_deposit,
             sender,
@@ -340,8 +340,8 @@ mod tests {
     use alloy_evm::{EvmEnv, EvmFactory, ToTxEnv, block::BlockExecutorFactory};
     use alloy_hardforks::ForkCondition;
     use alloy_primitives::{Address, Signature, U256, uint};
-    use base_common_chains::{BaseUpgrade, ChainUpgrades};
-    use base_common_consensus::{BaseTxEnvelope, Predeploys};
+    use base_common_chains::{UnstableUpgrade, ChainUpgrades};
+    use base_common_consensus::{UnstableTxEnvelope, Predeploys};
     use revm::{
         Context,
         context::BlockEnv,
@@ -353,23 +353,23 @@ mod tests {
 
     use super::*;
     use crate::{
-        AlloyReceiptBuilder, BaseBlockExecutorFactory, BaseEvm, BaseEvmFactory, BaseSpecId,
-        Builder, DefaultBase, L1BlockInfo,
+        AlloyReceiptBuilder, UnstableBlockExecutorFactory, UnstableEvm, UnstableEvmFactory, UnstableSpecId,
+        Builder, DefaultUnstable, L1BlockInfo,
     };
 
     #[test]
     fn test_with_encoded() {
-        let executor_factory = BaseBlockExecutorFactory::new(
+        let executor_factory = UnstableBlockExecutorFactory::new(
             AlloyReceiptBuilder::default(),
             ChainUpgrades::mainnet(),
-            BaseEvmFactory::default(),
+            UnstableEvmFactory::default(),
         );
         let mut db =
             revm::database::State::builder().with_database(CacheDB::<EmptyDB>::default()).build();
         let evm = executor_factory.evm_factory().create_evm(&mut db, EvmEnv::default());
-        let mut executor = executor_factory.create_executor(evm, BaseBlockExecutionCtx::default());
+        let mut executor = executor_factory.create_executor(evm, UnstableBlockExecutionCtx::default());
         let tx = Recovered::new_unchecked(
-            BaseTxEnvelope::Legacy(TxLegacy::default().into_signed(Signature::new(
+            UnstableTxEnvelope::Legacy(TxLegacy::default().into_signed(Signature::new(
                 Default::default(),
                 Default::default(),
                 Default::default(),
@@ -432,8 +432,8 @@ mod tests {
         base_chain_hardforks: &'a ChainUpgrades,
         gas_limit: u64,
         jovian_timestamp: u64,
-    ) -> BaseBlockExecutor<
-        BaseEvm<&'a mut revm::database::State<InMemoryDB>, NoOpInspector>,
+    ) -> UnstableBlockExecutor<
+        UnstableEvm<&'a mut revm::database::State<InMemoryDB>, NoOpInspector>,
         &'a AlloyReceiptBuilder,
         &'a ChainUpgrades,
     > {
@@ -449,13 +449,13 @@ mod tests {
                 gas_limit,
                 ..Default::default()
             })
-            .modify_cfg_chained(|cfg| cfg.spec = BaseSpecId::new(BaseUpgrade::Jovian));
+            .modify_cfg_chained(|cfg| cfg.spec = UnstableSpecId::new(UnstableUpgrade::Jovian));
 
         let evm = ctx.build_with_inspector(NoOpInspector {});
 
-        BaseBlockExecutor::new(
+        UnstableBlockExecutor::new(
             evm,
-            BaseBlockExecutionCtx::default(),
+            UnstableBlockExecutionCtx::default(),
             base_chain_hardforks,
             receipt_builder,
         )
@@ -469,9 +469,9 @@ mod tests {
 
         let mut db = prepare_jovian_db(DA_FOOTPRINT_GAS_SCALAR);
         let base_chain_hardforks = ChainUpgrades::new(
-            BaseUpgrade::mainnet()
+            UnstableUpgrade::mainnet()
                 .into_iter()
-                .chain(vec![(BaseUpgrade::Jovian, ForkCondition::Timestamp(JOVIAN_TIMESTAMP))]),
+                .chain(vec![(UnstableUpgrade::Jovian, ForkCondition::Timestamp(JOVIAN_TIMESTAMP))]),
         );
 
         let receipt_builder = AlloyReceiptBuilder::default();
@@ -486,7 +486,7 @@ mod tests {
         let tx_inner = TxLegacy { gas_limit: GAS_LIMIT, ..Default::default() };
 
         let tx = Recovered::new_unchecked(
-            BaseTxEnvelope::Legacy(tx_inner.into_signed(Signature::new(
+            UnstableTxEnvelope::Legacy(tx_inner.into_signed(Signature::new(
                 Default::default(),
                 Default::default(),
                 Default::default(),
@@ -514,9 +514,9 @@ mod tests {
 
         let mut db = prepare_jovian_db(DA_FOOTPRINT_GAS_SCALAR);
         let base_chain_hardforks = ChainUpgrades::new(
-            BaseUpgrade::mainnet()
+            UnstableUpgrade::mainnet()
                 .into_iter()
-                .chain(vec![(BaseUpgrade::Jovian, ForkCondition::Timestamp(JOVIAN_TIMESTAMP))]),
+                .chain(vec![(UnstableUpgrade::Jovian, ForkCondition::Timestamp(JOVIAN_TIMESTAMP))]),
         );
 
         let receipt_builder = AlloyReceiptBuilder::default();
@@ -531,7 +531,7 @@ mod tests {
         let tx_inner = TxLegacy { gas_limit: GAS_LIMIT, ..Default::default() };
 
         let tx = Recovered::new_unchecked(
-            BaseTxEnvelope::Legacy(tx_inner.into_signed(Signature::new(
+            UnstableTxEnvelope::Legacy(tx_inner.into_signed(Signature::new(
                 Default::default(),
                 Default::default(),
                 Default::default(),
@@ -552,7 +552,7 @@ mod tests {
             BlockExecutionError::Validation(BlockValidationError::Other(err)) => {
                 assert_eq!(
                     err.to_string(),
-                    BaseBlockExecutionError::TransactionDaFootprintAboveGasLimit {
+                    UnstableBlockExecutionError::TransactionDaFootprintAboveGasLimit {
                         transaction_da_footprint: expected_da_footprint,
                         available_block_da_footprint: GAS_LIMIT,
                     }
@@ -571,9 +571,9 @@ mod tests {
 
         let mut db = prepare_jovian_db(DA_FOOTPRINT_GAS_SCALAR);
         let base_chain_hardforks = ChainUpgrades::new(
-            BaseUpgrade::mainnet()
+            UnstableUpgrade::mainnet()
                 .into_iter()
-                .chain(vec![(BaseUpgrade::Jovian, ForkCondition::Timestamp(JOVIAN_TIMESTAMP))]),
+                .chain(vec![(UnstableUpgrade::Jovian, ForkCondition::Timestamp(JOVIAN_TIMESTAMP))]),
         );
 
         let receipt_builder = AlloyReceiptBuilder::default();
@@ -588,7 +588,7 @@ mod tests {
         let tx_inner = TxLegacy { gas_limit: GAS_LIMIT, ..Default::default() };
 
         let tx = Recovered::new_unchecked(
-            BaseTxEnvelope::Legacy(tx_inner.into_signed(Signature::new(
+            UnstableTxEnvelope::Legacy(tx_inner.into_signed(Signature::new(
                 Default::default(),
                 Default::default(),
                 Default::default(),

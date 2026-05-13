@@ -1,7 +1,7 @@
 //! Contains error types for the [`crate::SynchronizeTask`].
 
 use alloy_transport::{RpcError, TransportErrorKind};
-use base_common_rpc_types_engine::BaseExecutionPayloadEnvelope;
+use base_common_rpc_types_engine::UnstableExecutionPayloadEnvelope;
 use base_protocol::FromBlockError;
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -30,15 +30,15 @@ pub enum SealTaskError {
     /// be flushed post-holocene.
     #[error("Invalid payload, must flush post-holocene")]
     HoloceneInvalidFlush,
-    /// Failed to convert a [`BaseExecutionPayload`] to a [`L2BlockInfo`].
+    /// Failed to convert a [`UnstableExecutionPayload`] to a [`L2BlockInfo`].
     ///
-    /// [`BaseExecutionPayload`]: base_common_rpc_types_engine::BaseExecutionPayload
+    /// [`UnstableExecutionPayload`]: base_common_rpc_types_engine::UnstableExecutionPayload
     /// [`L2BlockInfo`]: base_protocol::L2BlockInfo
     #[error(transparent)]
     FromBlock(#[from] FromBlockError),
     /// Error sending the built payload envelope.
     #[error(transparent)]
-    MpscSend(#[from] Box<mpsc::error::SendError<Result<BaseExecutionPayloadEnvelope, Self>>>),
+    MpscSend(#[from] Box<mpsc::error::SendError<Result<UnstableExecutionPayloadEnvelope, Self>>>),
     /// The clock went backwards.
     #[error("The clock went backwards")]
     ClockWentBackwards,

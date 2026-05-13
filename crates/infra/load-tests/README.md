@@ -1,6 +1,6 @@
 # Load Tests
 
-Load testing and benchmarking framework for Base infrastructure.
+Load testing and benchmarking framework for Unstable infrastructure.
 
 ## Crate
 
@@ -70,13 +70,13 @@ fetching `eth_getBlockReceipts` for each observed block, so `query_rpc` must sup
 | Config | Target | Notes |
 |--------|--------|-------|
 | `devnet.yaml` | Local devnet | Uses Anvil Account #1 |
-| `sepolia.yaml` | Base Sepolia | Requires `FUNDER_KEY` |
+| `sepolia.yaml` | Unstable Sepolia | Requires `FUNDER_KEY` |
 
 ### Contract Addresses
 
 Contract addresses for swap testing and related tokens.
 
-#### Base Sepolia (Chain ID: 84532)
+#### Unstable Sepolia (Chain ID: 84532)
 
 | Contract | Address |
 |----------|---------|
@@ -85,7 +85,7 @@ Contract addresses for swap testing and related tokens.
 | Load Test Token A (LTTA) | `0x15948C3043A980A8d980d4D615A5E4c9514B0D64` |
 | Load Test Token B (LTTB) | `0x4dc9ccF2C5A346c4032B648006B4774Ad2a021c4` |
 
-#### Base Zeronet (Chain ID: 763360)
+#### Unstable Zeronet (Chain ID: 763360)
 
 | Contract | Address |
 |----------|---------|

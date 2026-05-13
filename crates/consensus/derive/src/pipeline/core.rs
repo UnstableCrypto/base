@@ -265,7 +265,7 @@ mod tests {
     use alloy_primitives::{Address, B256, address};
     use alloy_rpc_types_engine::PayloadAttributes;
     use base_common_genesis::{HardForkConfig, RollupConfig, SystemConfig};
-    use base_common_rpc_types_engine::BasePayloadAttributes;
+    use base_common_rpc_types_engine::UnstablePayloadAttributes;
     use base_protocol::{AttributesWithParent, BlockInfo, L2BlockInfo};
 
     use super::*;
@@ -276,7 +276,7 @@ mod tests {
 
     fn default_test_payload_attributes() -> AttributesWithParent {
         AttributesWithParent {
-            attributes: BasePayloadAttributes {
+            attributes: UnstablePayloadAttributes {
                 payload_attributes: PayloadAttributes {
                     timestamp: 0,
                     prev_randao: Default::default(),

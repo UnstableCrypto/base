@@ -1,23 +1,23 @@
-//! RPC response types for Base rollup nodes.
+//! RPC response types for Unstable rollup nodes.
 
 use alloy_network::Ethereum;
 use alloy_primitives::B256;
 use alloy_provider::RootProvider;
-use base_common_network::Base;
+use base_common_network::Unstable;
 use serde::{Deserialize, Serialize};
 
 /// Shared type alias for the L1 HTTP provider.
 /// Uses `RootProvider` directly since these clients only perform read operations.
 pub type HttpProvider = RootProvider<Ethereum>;
 
-/// L2-specific provider type using the Base network.
-/// Required for deserializing Base deposit transactions (type 0x7E).
-pub type L2HttpProvider = RootProvider<Base>;
+/// L2-specific provider type using the Unstable network.
+/// Required for deserializing Unstable deposit transactions (type 0x7E).
+pub type L2HttpProvider = RootProvider<Unstable>;
 
-/// Base block type with Base-specific transactions.
+/// Unstable block type with Unstable-specific transactions.
 ///
 /// Uses `base_common_rpc_types::Transaction` which can deserialize deposit transactions (type 0x7E).
-pub type BaseBlock = alloy_rpc_types_eth::Block<base_common_rpc_types::Transaction>;
+pub type UnstableBlock = alloy_rpc_types_eth::Block<base_common_rpc_types::Transaction>;
 
 /// L1 block reference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

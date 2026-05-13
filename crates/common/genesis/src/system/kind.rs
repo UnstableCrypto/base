@@ -18,7 +18,7 @@ pub enum SystemConfigUpdateKind {
     /// Operator fee parameter update
     OperatorFee = 5,
     /// Min base fee parameter update
-    MinBaseFee = 6,
+    MinUnstableFee = 6,
     /// DA footprint gas scalar update type
     DaFootprintGasScalar = 7,
 }

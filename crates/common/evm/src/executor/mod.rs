@@ -1,13 +1,13 @@
 //! Contains executor types.
 
 mod result;
-pub use result::BaseTxResult;
+pub use result::UnstableTxResult;
 
 mod factory;
-pub use factory::BaseBlockExecutorFactory;
+pub use factory::UnstableBlockExecutorFactory;
 
 mod block_executor;
-pub use block_executor::BaseBlockExecutor;
+pub use block_executor::UnstableBlockExecutor;
 
 mod context;
-pub use context::BaseBlockExecutionCtx;
+pub use context::UnstableBlockExecutionCtx;

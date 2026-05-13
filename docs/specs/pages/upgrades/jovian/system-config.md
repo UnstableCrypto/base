@@ -1,18 +1,18 @@
 # Jovian: System Config
 
-## Minimum Base Fee Configuration
+## Minimum Unstable Fee Configuration
 
 Jovian adds a configuration value to `SystemConfig` to control the minimum base fee used by the EIP-1559 fee market
-on Base. The value is a minimum base fee in wei.
+on Unstable. The value is a minimum base fee in wei.
 
 | Name         | Type     | Default | Meaning                 |
 |--------------|----------|---------|-------------------------|
-| `minBaseFee` | `uint64` | `0`     | Minimum base fee in wei |
+| `minUnstableFee` | `uint64` | `0`     | Minimum base fee in wei |
 
 The configuration is updated via a new method on `SystemConfig`:
 
 ```solidity
-function setMinBaseFee(uint64 minBaseFee) external onlyOwner;
+function setMinUnstableFee(uint64 minUnstableFee) external onlyOwner;
 ```
 
 ### `ConfigUpdate`
@@ -22,7 +22,7 @@ MUST be emitted with the following parameters:
 
 | `version` | `updateType` | `data` | Usage |
 | ---- | ----- | --- | -- |
-| `uint256(0)` | `uint8(6)` | `abi.encode(uint64(_minBaseFee))` | Modifies the minimum base fee (wei) |
+| `uint256(0)` | `uint8(6)` | `abi.encode(uint64(_minUnstableFee))` | Modifies the minimum base fee (wei) |
 
 ### Initialization
 
@@ -39,7 +39,7 @@ Requiring these parameters to be set during initialization would add a strict re
 that the L2 hardforks before the L1 contracts are upgraded, and this is complicated to manage in a
 world of many chains.
 
-### Modifying Minimum Base Fee
+### Modifying Minimum Unstable Fee
 
 Upon update, the contract emits the `ConfigUpdate` event above, enabling nodes
 to derive the configuration from L1 logs.
@@ -49,14 +49,14 @@ Implementations MUST incorporate the configured value into the block header `ext
 
 ### Interface
 
-#### Minimum Base Fee Parameters
+#### Minimum Unstable Fee Parameters
 
-##### `minBaseFee`
+##### `minUnstableFee`
 
 This function returns the currently configured minimum base fee in wei.
 
 ```solidity
-function minBaseFee() external view returns (uint64);
+function minUnstableFee() external view returns (uint64);
 ```
 
 ## DA Footprint Configuration

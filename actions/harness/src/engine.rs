@@ -1,4 +1,4 @@
-//! In-process engine client for action tests backed by the production `BasePayloadBuilder`.
+//! In-process engine client for action tests backed by the production `UnstablePayloadBuilder`.
 
 use std::{
     collections::HashMap,
@@ -21,24 +21,24 @@ use alloy_rpc_types_eth::{
 };
 use alloy_transport::{TransportError, TransportErrorKind, TransportResult};
 use async_trait::async_trait;
-use base_common_consensus::BasePrimitives;
+use base_common_consensus::UnstablePrimitives;
 use base_common_genesis::RollupConfig;
-use base_common_network::{Base, BaseEngineApi};
-use base_common_rpc_types::Transaction as BaseTransaction;
+use base_common_network::{Unstable, UnstableEngineApi};
+use base_common_rpc_types::Transaction as UnstableTransaction;
 use base_common_rpc_types_engine::{
-    BaseExecutionPayload, BaseExecutionPayloadEnvelope, BaseExecutionPayloadEnvelopeV3,
-    BaseExecutionPayloadEnvelopeV4, BaseExecutionPayloadEnvelopeV5, BaseExecutionPayloadV4,
-    BasePayloadAttributes,
+    UnstableExecutionPayload, UnstableExecutionPayloadEnvelope, UnstableExecutionPayloadEnvelopeV3,
+    UnstableExecutionPayloadEnvelopeV4, UnstableExecutionPayloadEnvelopeV5, UnstableExecutionPayloadV4,
+    UnstablePayloadAttributes,
 };
 use base_consensus_engine::{EngineClient, EngineClientError};
 use base_consensus_node::{EngineClientError as NodeEngineClientError, SequencerEngineClient};
-use base_execution_chainspec::BaseChainSpec;
-use base_execution_evm::BaseEvmConfig;
+use base_execution_chainspec::UnstableChainSpec;
+use base_execution_evm::UnstableEvmConfig;
 use base_execution_payload_builder::{
-    BaseBuiltPayload, BasePayloadBuilder, BasePayloadBuilderAttributes,
+    UnstableBuiltPayload, UnstablePayloadBuilder, UnstablePayloadBuilderAttributes,
 };
-use base_execution_txpool::BasePooledTransaction;
-use base_node_core::BaseNode;
+use base_execution_txpool::UnstablePooledTransaction;
+use base_node_core::UnstableNode;
 use base_protocol::{AttributesWithParent, BlockInfo, L2BlockInfo};
 use base_test_utils::build_test_genesis;
 use reth_basic_payload_builder::{
@@ -60,7 +60,7 @@ use reth_transaction_pool::noop::NoopTransactionPool;
 use crate::{SharedBlockHashRegistry, SharedL1Chain};
 
 /// Type alias for the node type adapter used in tests.
-pub type TestNodeTypes = NodeTypesWithDBAdapter<BaseNode, Arc<TempDatabase<DatabaseEnv>>>;
+pub type TestNodeTypes = NodeTypesWithDBAdapter<UnstableNode, Arc<TempDatabase<DatabaseEnv>>>;
 
 /// Type alias for the test provider factory used by the engine client.
 pub type TestProviderFactory = ProviderFactory<TestNodeTypes>;
@@ -69,13 +69,13 @@ pub type TestProviderFactory = ProviderFactory<TestNodeTypes>;
 pub type TestBlockchainProvider = BlockchainProvider<TestNodeTypes>;
 
 /// Type alias for the noop pool used by the engine client.
-pub type TestPool = NoopTransactionPool<BasePooledTransaction>;
+pub type TestPool = NoopTransactionPool<UnstablePooledTransaction>;
 
 /// A payload built in-process during sequencer mode, waiting to be fetched via `get_payload`.
 #[derive(Debug, Clone)]
 pub struct PendingPayload {
-    /// The built payload from the production `BasePayloadBuilder`.
-    pub built: BaseBuiltPayload<BasePrimitives>,
+    /// The built payload from the production `UnstablePayloadBuilder`.
+    pub built: UnstableBuiltPayload<UnstablePrimitives>,
 }
 
 /// Mutable state owned by [`ActionEngineClient`], protected by a `Mutex` so
@@ -87,8 +87,8 @@ pub struct ActionEngineClientInner {
     /// The blockchain provider wrapping the same factory, used by the builder
     /// since it implements `StateProviderFactory`.
     blockchain_provider: TestBlockchainProvider,
-    evm_config: BaseEvmConfig,
-    chain_spec: Arc<BaseChainSpec>,
+    evm_config: UnstableEvmConfig,
+    chain_spec: Arc<UnstableChainSpec>,
     canonical_head: L2BlockInfo,
     executed_headers: HashMap<u64, Header>,
     /// Payloads built via FCU-with-attrs (sequencer mode), keyed by `PayloadId`.
@@ -96,10 +96,10 @@ pub struct ActionEngineClientInner {
     payload_counter: u64,
 }
 
-/// An in-process engine client for action tests backed by the production `BasePayloadBuilder`.
+/// An in-process engine client for action tests backed by the production `UnstablePayloadBuilder`.
 ///
 /// `ActionEngineClient` implements [`EngineClient`] using the real Reth payload building
-/// code path (`BasePayloadBuilder::try_build`). It supports two workflows:
+/// code path (`UnstablePayloadBuilder::try_build`). It supports two workflows:
 ///
 /// ## Derivation mode
 ///
@@ -131,7 +131,7 @@ impl ActionEngineClient {
     ///
     /// Starts from [`build_test_genesis`] (pre-funded test accounts, all forks through
     /// Jovian at timestamp 0) and overrides each fork timestamp and the chain ID from the
-    /// rollup config so the resulting [`BaseChainSpec`] matches the test's expectations.
+    /// rollup config so the resulting [`UnstableChainSpec`] matches the test's expectations.
     fn build_genesis_for_rollup(rollup_config: &RollupConfig) -> Genesis {
         let mut genesis = build_test_genesis();
         genesis.config.chain_id = rollup_config.l2_chain_id.id();
@@ -146,7 +146,7 @@ impl ActionEngineClient {
         );
 
         let hf = &rollup_config.hardforks;
-        // Helper: set or clear a JSON extra-field that BaseChainSpec::from_genesis reads.
+        // Helper: set or clear a JSON extra-field that UnstableChainSpec::from_genesis reads.
         macro_rules! set_ts {
             ($key:expr, $val:expr) => {
                 match $val {
@@ -176,7 +176,7 @@ impl ActionEngineClient {
             );
         }
 
-        // Base Azul requires Osaka (the EL counterpart).
+        // Unstable Azul requires Osaka (the EL counterpart).
         genesis.config.osaka_time = hf.base.azul;
         let mut base = serde_json::Map::new();
         if let Some(ts) = hf.base.azul {
@@ -202,14 +202,14 @@ impl ActionEngineClient {
     /// `l2_safe_head.hash` matches the `parent_hash` encoded in batches by the sequencer.
     pub fn compute_l2_genesis_hash(rollup_config: &RollupConfig) -> B256 {
         let chain_spec =
-            Arc::new(BaseChainSpec::from_genesis(Self::build_genesis_for_rollup(rollup_config)));
+            Arc::new(UnstableChainSpec::from_genesis(Self::build_genesis_for_rollup(rollup_config)));
         chain_spec.genesis_header().hash_slow()
     }
 
     /// Create a new `ActionEngineClient` backed by a production payload builder.
     ///
     /// Initializes a temporary Reth database with the test genesis state and creates
-    /// a production `BasePayloadBuilder` for block building.
+    /// a production `UnstablePayloadBuilder` for block building.
     pub fn new(
         rollup_config: Arc<RollupConfig>,
         canonical_head: L2BlockInfo,
@@ -220,13 +220,13 @@ impl ActionEngineClient {
         // build_test_genesis() provides the genesis accounts and sets all forks through
         // Jovian at timestamp 0; we override per-fork times and the chain ID here.
         let chain_spec =
-            Arc::new(BaseChainSpec::from_genesis(Self::build_genesis_for_rollup(&rollup_config)));
+            Arc::new(UnstableChainSpec::from_genesis(Self::build_genesis_for_rollup(&rollup_config)));
         let provider_factory =
-            create_test_provider_factory_with_node_types::<BaseNode>(Arc::clone(&chain_spec));
+            create_test_provider_factory_with_node_types::<UnstableNode>(Arc::clone(&chain_spec));
         init_genesis(&provider_factory).expect("failed to initialize genesis in action engine");
         let blockchain_provider = BlockchainProvider::new(provider_factory.clone())
             .expect("failed to create blockchain provider");
-        let evm_config = BaseEvmConfig::base(Arc::clone(&chain_spec));
+        let evm_config = UnstableEvmConfig::base(Arc::clone(&chain_spec));
 
         let inner = Arc::new(Mutex::new(ActionEngineClientInner {
             provider_factory,
@@ -284,13 +284,13 @@ impl ActionEngineClient {
             .is_some_and(|c: reth_primitives_traits::Bytecode| !c.is_empty())
     }
 
-    /// Build a block from the given `BasePayloadAttributes` and commit it to the database,
-    /// returning the `BaseBuiltPayload`.
+    /// Build a block from the given `UnstablePayloadAttributes` and commit it to the database,
+    /// returning the `UnstableBuiltPayload`.
     fn build_and_commit(
         inner: &mut ActionEngineClientInner,
         parent_hash: B256,
-        attrs: BasePayloadAttributes,
-    ) -> TransportResult<BaseBuiltPayload<BasePrimitives>> {
+        attrs: UnstablePayloadAttributes,
+    ) -> TransportResult<UnstableBuiltPayload<UnstablePrimitives>> {
         // Look up the parent header from executed headers or fall back to the real genesis.
         // When building the first block the caller may pass B256::ZERO (the default rollup-config
         // genesis hash), but the Reth DB stores the genesis block under its actual computed hash.
@@ -313,7 +313,7 @@ impl ActionEngineClient {
                 (genesis_hash, genesis_header)
             });
 
-        let builder_attrs = BasePayloadBuilderAttributes::try_new(effective_parent_hash, attrs, 3)
+        let builder_attrs = UnstablePayloadBuilderAttributes::try_new(effective_parent_hash, attrs, 3)
             .map_err(|e| {
                 TransportError::from(TransportErrorKind::custom_str(&format!(
                     "failed to create builder attributes: {e}"
@@ -331,7 +331,7 @@ impl ActionEngineClient {
         };
 
         let pool = TestPool::new();
-        let payload_builder = BasePayloadBuilder::new(
+        let payload_builder = UnstablePayloadBuilder::new(
             pool,
             inner.blockchain_provider.clone(),
             inner.evm_config.clone(),
@@ -341,7 +341,7 @@ impl ActionEngineClient {
                 "payload builder failed: {e}"
             )))
         })?;
-        let built: BaseBuiltPayload<BasePrimitives> = outcome.into_payload().ok_or_else(|| {
+        let built: UnstableBuiltPayload<UnstablePrimitives> = outcome.into_payload().ok_or_else(|| {
             TransportError::from(TransportErrorKind::custom_str(
                 "payload builder returned no payload",
             ))
@@ -429,8 +429,8 @@ impl ActionEngineClient {
             }
         }
 
-        // Convert ExecutionPayloadV1 into BasePayloadAttributes for the builder.
-        let attrs = BasePayloadAttributes {
+        // Convert ExecutionPayloadV1 into UnstablePayloadAttributes for the builder.
+        let attrs = UnstablePayloadAttributes {
             payload_attributes: alloy_rpc_types_engine::PayloadAttributes {
                 timestamp: payload.timestamp,
                 prev_randao: payload.prev_randao,
@@ -444,7 +444,7 @@ impl ActionEngineClient {
             eip_1559_params: None,
             // Default to Some(0) so that Jovian blocks (which require a non-None
             // min_base_fee) can be re-executed when the skip-check does not fire.
-            // The spec notes: "as long as MinBaseFee is not explicitly set, the
+            // The spec notes: "as long as MinUnstableFee is not explicitly set, the
             // default value (0) will be systematically applied."
             min_base_fee: Some(0),
         };
@@ -470,7 +470,7 @@ impl ActionEngineClient {
         Ok(block_hash)
     }
 
-    /// Execute and commit a block directly from full [`BasePayloadAttributes`], returning
+    /// Execute and commit a block directly from full [`UnstablePayloadAttributes`], returning
     /// the resulting block hash.
     ///
     /// Unlike [`execute_v1_inner`], this method accepts the complete attributes including
@@ -485,7 +485,7 @@ impl ActionEngineClient {
         &self,
         parent_hash: B256,
         block_number: u64,
-        attrs: BasePayloadAttributes,
+        attrs: UnstablePayloadAttributes,
     ) -> TransportResult<B256> {
         let mut guard = self.inner.lock().expect("action engine inner lock poisoned");
 
@@ -520,7 +520,7 @@ impl ActionEngineClient {
         inner: &mut ActionEngineClientInner,
         registry: &SharedBlockHashRegistry,
         parent_hash: B256,
-        attrs: &BasePayloadAttributes,
+        attrs: &UnstablePayloadAttributes,
     ) -> TransportResult<PayloadId> {
         let built = Self::build_and_commit(inner, parent_hash, attrs.clone())?;
 
@@ -563,7 +563,7 @@ impl ActionEngineClient {
         }
     }
 
-    fn header_to_l2_rpc_block(header: &Header, block_hash: B256) -> Block<BaseTransaction> {
+    fn header_to_l2_rpc_block(header: &Header, block_hash: B256) -> Block<UnstableTransaction> {
         let sealed = Sealed::new_unchecked(header.clone(), block_hash);
         let rpc_header = alloy_rpc_types_eth::Header::from_sealed(sealed);
         Block {
@@ -621,7 +621,7 @@ impl EngineClient for ActionEngineClient {
         )
     }
 
-    fn get_l2_block(&self, block: BlockId) -> EthGetBlock<<Base as Network>::BlockResponse> {
+    fn get_l2_block(&self, block: BlockId) -> EthGetBlock<<Unstable as Network>::BlockResponse> {
         let inner = Arc::clone(&self.inner);
         let block_id = block;
         EthGetBlock::new_provider(
@@ -676,7 +676,7 @@ impl EngineClient for ActionEngineClient {
     async fn l2_block_by_label(
         &self,
         numtag: BlockNumberOrTag,
-    ) -> Result<Option<Block<BaseTransaction>>, EngineClientError> {
+    ) -> Result<Option<Block<UnstableTransaction>>, EngineClientError> {
         let guard = self.inner.lock().expect("action engine inner lock poisoned");
         let block = match numtag {
             BlockNumberOrTag::Number(n) => guard
@@ -738,7 +738,7 @@ impl EngineClient for ActionEngineClient {
 }
 
 #[async_trait]
-impl BaseEngineApi for ActionEngineClient {
+impl UnstableEngineApi for ActionEngineClient {
     async fn new_payload_v2(
         &self,
         payload: ExecutionPayloadInputV2,
@@ -765,7 +765,7 @@ impl BaseEngineApi for ActionEngineClient {
 
     async fn new_payload_v4(
         &self,
-        payload: BaseExecutionPayloadV4,
+        payload: UnstableExecutionPayloadV4,
         _parent_beacon_block_root: B256,
     ) -> TransportResult<PayloadStatus> {
         let mut guard = self.inner.lock().expect("action engine inner lock poisoned");
@@ -780,7 +780,7 @@ impl BaseEngineApi for ActionEngineClient {
     async fn fork_choice_updated_v2(
         &self,
         fork_choice_state: ForkchoiceState,
-        payload_attributes: Option<BasePayloadAttributes>,
+        payload_attributes: Option<UnstablePayloadAttributes>,
     ) -> TransportResult<ForkchoiceUpdated> {
         let head = fork_choice_state.head_block_hash;
         let mut guard = self.inner.lock().expect("action engine inner lock poisoned");
@@ -816,7 +816,7 @@ impl BaseEngineApi for ActionEngineClient {
     async fn fork_choice_updated_v3(
         &self,
         fork_choice_state: ForkchoiceState,
-        payload_attributes: Option<BasePayloadAttributes>,
+        payload_attributes: Option<UnstablePayloadAttributes>,
     ) -> TransportResult<ForkchoiceUpdated> {
         self.fork_choice_updated_v2(fork_choice_state, payload_attributes).await
     }
@@ -833,28 +833,28 @@ impl BaseEngineApi for ActionEngineClient {
     async fn get_payload_v3(
         &self,
         payload_id: PayloadId,
-    ) -> TransportResult<BaseExecutionPayloadEnvelopeV3> {
+    ) -> TransportResult<UnstableExecutionPayloadEnvelopeV3> {
         let mut guard = self.inner.lock().expect("action engine inner lock poisoned");
         let p = Self::take_pending(&mut guard, payload_id)?;
-        Ok(BaseExecutionPayloadEnvelopeV3::from(p.built))
+        Ok(UnstableExecutionPayloadEnvelopeV3::from(p.built))
     }
 
     async fn get_payload_v4(
         &self,
         payload_id: PayloadId,
-    ) -> TransportResult<BaseExecutionPayloadEnvelopeV4> {
+    ) -> TransportResult<UnstableExecutionPayloadEnvelopeV4> {
         let mut guard = self.inner.lock().expect("action engine inner lock poisoned");
         let p = Self::take_pending(&mut guard, payload_id)?;
-        Ok(BaseExecutionPayloadEnvelopeV4::from(p.built))
+        Ok(UnstableExecutionPayloadEnvelopeV4::from(p.built))
     }
 
     async fn get_payload_v5(
         &self,
         payload_id: PayloadId,
-    ) -> TransportResult<BaseExecutionPayloadEnvelopeV5> {
+    ) -> TransportResult<UnstableExecutionPayloadEnvelopeV5> {
         let mut guard = self.inner.lock().expect("action engine inner lock poisoned");
         let p = Self::take_pending(&mut guard, payload_id)?;
-        Ok(BaseExecutionPayloadEnvelopeV5::from(p.built))
+        Ok(UnstableExecutionPayloadEnvelopeV5::from(p.built))
     }
 
     async fn get_payload_bodies_by_hash_v1(
@@ -921,7 +921,7 @@ impl SequencerEngineClient for ActionEngineClient {
         &self,
         payload_id: PayloadId,
         _attributes: AttributesWithParent,
-    ) -> Result<BaseExecutionPayloadEnvelope, NodeEngineClientError> {
+    ) -> Result<UnstableExecutionPayloadEnvelope, NodeEngineClientError> {
         let mut guard = self.inner.lock().expect("action engine inner lock poisoned");
         let pending = Self::take_pending(&mut guard, payload_id)
             .map_err(|e| NodeEngineClientError::ResponseError(e.to_string()))?;
@@ -929,13 +929,13 @@ impl SequencerEngineClient for ActionEngineClient {
         let block_hash = block.hash();
         let parent_beacon_block_root = block.header().parent_beacon_block_root();
         let (payload, _sidecar) =
-            BaseExecutionPayload::from_block_unchecked(block_hash, &block.clone_block());
-        Ok(BaseExecutionPayloadEnvelope { parent_beacon_block_root, execution_payload: payload })
+            UnstableExecutionPayload::from_block_unchecked(block_hash, &block.clone_block());
+        Ok(UnstableExecutionPayloadEnvelope { parent_beacon_block_root, execution_payload: payload })
     }
 
     async fn insert_unsafe_payload(
         &self,
-        payload: BaseExecutionPayloadEnvelope,
+        payload: UnstableExecutionPayloadEnvelope,
     ) -> Result<(), NodeEngineClientError> {
         // Extract the V1 payload for execution.
         let v1 = payload.execution_payload.as_v1();

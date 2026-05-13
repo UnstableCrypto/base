@@ -2,7 +2,7 @@
 
 use alloy_consensus::transaction::Recovered;
 use alloy_primitives::TxHash;
-use base_common_consensus::BaseTxEnvelope;
+use base_common_consensus::UnstableTxEnvelope;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -17,7 +17,7 @@ pub struct AcceptedBundle {
     pub uuid: Uuid,
 
     /// Decoded and recovered transactions.
-    pub txs: Vec<Recovered<BaseTxEnvelope>>,
+    pub txs: Vec<Recovered<UnstableTxEnvelope>>,
 
     /// The target block number for inclusion.
     #[serde(with = "alloy_serde::quantity")]

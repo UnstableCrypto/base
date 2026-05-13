@@ -1,8 +1,8 @@
 use alloc::boxed::Box;
 
-/// Custom errors that can occur during Base block execution.
+/// Custom errors that can occur during Unstable block execution.
 #[derive(Debug, thiserror::Error)]
-pub enum BaseBlockExecutionError {
+pub enum UnstableBlockExecutionError {
     /// Failed to load cache account.
     #[error("failed to load cache account")]
     LoadCacheAccount,

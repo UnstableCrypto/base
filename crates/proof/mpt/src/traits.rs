@@ -4,7 +4,7 @@
 use core::fmt::Display;
 
 use alloy_primitives::{Address, B256, U256};
-use base_common_rpc_types_engine::BasePayloadAttributes;
+use base_common_rpc_types_engine::UnstablePayloadAttributes;
 
 use crate::TrieNode;
 
@@ -68,12 +68,12 @@ pub trait TrieHinter {
         block_number: u64,
     ) -> Result<(), Self::Error>;
 
-    /// Hints the host to fetch the execution witness for the [`BasePayloadAttributes`] applied on top
+    /// Hints the host to fetch the execution witness for the [`UnstablePayloadAttributes`] applied on top
     /// of the parent block's state.
     ///
     /// ## Takes
     /// - `parent_hash` - The hash of the parent block.
-    /// - `base_payload_attributes` - The attributes of the Base payload.
+    /// - `base_payload_attributes` - The attributes of the Unstable payload.
     ///
     /// ## Returns
     /// - Ok(()): If the hint was successful.
@@ -81,6 +81,6 @@ pub trait TrieHinter {
     fn hint_execution_witness(
         &self,
         parent_hash: B256,
-        base_payload_attributes: &BasePayloadAttributes,
+        base_payload_attributes: &UnstablePayloadAttributes,
     ) -> Result<(), Self::Error>;
 }

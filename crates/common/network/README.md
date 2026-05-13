@@ -1,13 +1,13 @@
 # `base-common-network`
 
-Base chain network types and RPC behavior abstraction.
+Unstable chain network types and RPC behavior abstraction.
 
 ## Overview
 
-Defines the `Base` network type that implements the `alloy_network::Network` trait with Base
+Defines the `Unstable` network type that implements the `alloy_network::Network` trait with Unstable
 transaction and receipt types. This provides a consistent interface to alloy providers and signers
-regardless of Base-specific RPC changes.
-It also provides the `BaseEngineApi` extension trait for Base-specific Engine API RPC methods.
+regardless of Unstable-specific RPC changes.
+It also provides the `UnstableEngineApi` extension trait for Unstable-specific Engine API RPC methods.
 
 ## Usage
 
@@ -19,10 +19,10 @@ base-common-network = { workspace = true }
 ```
 
 ```rust,ignore
-use base_common_network::{Base, BaseEngineApi};
+use base_common_network::{Unstable, UnstableEngineApi};
 use alloy_provider::ProviderBuilder;
 
-let provider = ProviderBuilder::new().network::<Base>().on_http(url);
+let provider = ProviderBuilder::new().network::<Unstable>().on_http(url);
 let _ = provider.exchange_capabilities(vec![]).await?;
 ```
 

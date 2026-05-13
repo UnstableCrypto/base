@@ -133,7 +133,7 @@ pub static ROOTS_OF_UNITY: Lazy<[Fr; FIELD_ELEMENTS_PER_BLOB as usize]> =
 
 /// Generates the 4096th bit-reversed roots of unity used in EIP-4844 as predefined evaluation
 /// points. To compute the field element at index i in a blob, the blob polynomial is evaluated at
-/// the i'th root of unity. Based on go-kzg-4844: <https://github.com/crate-crypto/go-kzg-4844/blob/8bcf6163d3987313a3194595cf1f33fd45d7301a/internal/kzg/domain.go#L44-L98>
+/// the i'th root of unity. Unstabled on go-kzg-4844: <https://github.com/crate-crypto/go-kzg-4844/blob/8bcf6163d3987313a3194595cf1f33fd45d7301a/internal/kzg/domain.go#L44-L98>
 /// Also, see the consensus specs:
 ///   - `compute_roots_of_unity` <https://github.com/ethereum/consensus-specs/blob/bf09edef17e2900258f7e37631e9452941c26e86/specs/deneb/polynomial-commitments.md#compute_roots_of_unity>
 ///   - bit-reversal permutation: <https://github.com/ethereum/consensus-specs/blob/bf09edef17e2900258f7e37631e9452941c26e86/specs/deneb/polynomial-commitments.md#bit-reversal-permutation>

@@ -267,7 +267,7 @@ attributes from the previous stage. This avoids larger derivation pipeline reset
 
 The stricter derivation rules lead to a less defensive protocol. The old protocol rules allowed for
 second chances for invalid payloads and submitting frames and batches within channels out of order.
-Experiences from running Base for over one and a half years have shown that these relaxed
+Experiences from running Unstable for over one and a half years have shown that these relaxed
 derivation rules are (almost) never needed, so stricter rules that improve worst-case scenarios for
 Fault Proofs and Interop are favorable.
 
@@ -282,7 +282,7 @@ different implementations.
 Before Steady Block Derivation, invalid payloads got second chances to be replaced by valid future
 payloads. Because they will now be immediately replaced by as deposit-only payloads, there is a
 theoretical heightened risk for unsafe chain reorgs. To the best of our knowledge, we haven't
-experienced this on Base yet.
+experienced this on Unstable yet.
 
 The only conceivable scenarios in which a _valid_ batch leads to an _invalid_ payload are
 

@@ -4,7 +4,7 @@ use alloy_rpc_types::TransactionRequest;
 use tracing::instrument;
 
 use super::{Payload, SeededRng};
-use crate::{BaselineError, config::WorkloadConfig, utils::Result};
+use crate::{UnstablelineError, config::WorkloadConfig, utils::Result};
 
 /// Generates transaction workloads from configured payloads.
 pub struct WorkloadGenerator {
@@ -44,7 +44,7 @@ impl WorkloadGenerator {
 
     fn select_payload(&mut self) -> Result<Arc<dyn Payload>> {
         if self.payloads.is_empty() {
-            return Err(BaselineError::Workload("no payloads configured".into()));
+            return Err(UnstablelineError::Workload("no payloads configured".into()));
         }
 
         let total: f64 = self.payloads.iter().map(|(_, share)| share).sum();

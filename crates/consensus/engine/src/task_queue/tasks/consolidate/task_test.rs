@@ -7,9 +7,9 @@ use alloy_eips::{BlockNumberOrTag, Encodable2718};
 use alloy_primitives::{Address, FixedBytes, b256};
 use alloy_rpc_types_engine::{ForkchoiceUpdated, PayloadId, PayloadStatus, PayloadStatusEnum};
 use alloy_rpc_types_eth::{Block as RpcBlock, BlockTransactions};
-use base_common_consensus::{BaseTxEnvelope, TxDeposit};
+use base_common_consensus::{UnstableTxEnvelope, TxDeposit};
 use base_common_genesis::RollupConfig;
-use base_common_rpc_types::Transaction as BaseTransaction;
+use base_common_rpc_types::Transaction as UnstableTransaction;
 use base_protocol::L1BlockInfoBedrock;
 
 use crate::{
@@ -18,15 +18,15 @@ use crate::{
     test_utils::{TestAttributesBuilder, TestEngineStateBuilder, test_engine_client_builder},
 };
 
-fn l1_info_deposit_tx() -> BaseTxEnvelope {
-    BaseTxEnvelope::from(TxDeposit {
+fn l1_info_deposit_tx() -> UnstableTxEnvelope {
+    UnstableTxEnvelope::from(TxDeposit {
         input: L1BlockInfoBedrock::default().encode_calldata(),
         ..Default::default()
     })
 }
 
-fn rpc_transaction(tx: BaseTxEnvelope, block_number: u64) -> BaseTransaction {
-    BaseTransaction {
+fn rpc_transaction(tx: UnstableTxEnvelope, block_number: u64) -> UnstableTransaction {
+    UnstableTransaction {
         inner: alloy_rpc_types_eth::Transaction {
             inner: Recovered::new_unchecked(tx, Address::ZERO),
             block_hash: None,
@@ -71,7 +71,7 @@ async fn consolidate_does_not_crash_when_safe_behind_unsafe_and_attributes_misma
     // Build a block at height 35 that does NOT match the attributes.
     // The key mismatch: parent_hash differs from attributes.parent.block_info.hash.
     // This makes `is_consistent_with_block` return false → triggers reconcile path.
-    let mut mismatched_block = RpcBlock::<BaseTransaction>::default();
+    let mut mismatched_block = RpcBlock::<UnstableTransaction>::default();
     mismatched_block.header.inner.number = 35;
     mismatched_block.header.inner.timestamp = 2000;
     mismatched_block.header.inner.parent_hash =
@@ -133,7 +133,7 @@ async fn consolidate_rejects_attribute_transaction_with_trailing_bytes() {
         .build();
     let block_number = attributes.block_number();
 
-    let mut unsafe_block = RpcBlock::<BaseTransaction>::default();
+    let mut unsafe_block = RpcBlock::<UnstableTransaction>::default();
     unsafe_block.header.inner.number = block_number;
     unsafe_block.header.inner.parent_hash = safe_head.block_info.hash;
     unsafe_block.header.inner.timestamp = attributes.attributes().payload_attributes.timestamp;

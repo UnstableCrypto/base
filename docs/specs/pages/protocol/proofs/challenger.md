@@ -6,7 +6,7 @@ checkpoint root, it obtains the proof material required by the game contract and
 transaction on L1.
 
 The challenger is permissionless in the ZK path: any operator with access to canonical L1 and L2
-RPCs, a ZK proving service, and an L1 transaction signer can run it. Base may also run a challenger
+RPCs, a ZK proving service, and an L1 transaction signer can run it. Unstable may also run a challenger
 with access to a TEE proof endpoint so invalid TEE-backed games can be nullified on a faster path
 before falling back to ZK.
 

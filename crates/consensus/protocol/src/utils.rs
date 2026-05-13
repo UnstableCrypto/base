@@ -5,22 +5,22 @@ use alloc::vec::Vec;
 use alloy_consensus::{Transaction, TxType, Typed2718};
 use alloy_primitives::{B256, U256};
 use alloy_rlp::{Buf, Header};
-use base_common_consensus::{BaseBlock, HoloceneExtraData, JovianExtraData};
+use base_common_consensus::{UnstableBlock, HoloceneExtraData, JovianExtraData};
 use base_common_genesis::{RollupConfig, SystemConfig};
 
 use crate::{
-    BaseBlockConversionError, L1BlockInfoBedrockOnlyFields as _, L1BlockInfoEcotoneBaseFields as _,
+    UnstableBlockConversionError, L1BlockInfoBedrockOnlyFields as _, L1BlockInfoEcotoneUnstableFields as _,
     L1BlockInfoTx, SpanBatchElement, SpanBatchError, SpanDecodingError,
 };
 
-/// Converts the [`BaseBlock`] to a partial [`SystemConfig`].
+/// Converts the [`UnstableBlock`] to a partial [`SystemConfig`].
 pub fn to_system_config(
-    block: &BaseBlock,
+    block: &UnstableBlock,
     rollup_config: &RollupConfig,
-) -> Result<SystemConfig, BaseBlockConversionError> {
+) -> Result<SystemConfig, UnstableBlockConversionError> {
     if block.header.number == rollup_config.genesis.l2.number {
         if block.header.hash_slow() != rollup_config.genesis.l2.hash {
-            return Err(BaseBlockConversionError::InvalidGenesisHash(
+            return Err(UnstableBlockConversionError::InvalidGenesisHash(
                 rollup_config.genesis.l2.hash,
                 block.header.hash_slow(),
             ));
@@ -28,14 +28,14 @@ pub fn to_system_config(
         return rollup_config
             .genesis
             .system_config
-            .ok_or(BaseBlockConversionError::MissingSystemConfigGenesis);
+            .ok_or(UnstableBlockConversionError::MissingSystemConfigGenesis);
     }
 
     if block.body.transactions.is_empty() {
-        return Err(BaseBlockConversionError::EmptyTransactions(block.header.hash_slow()));
+        return Err(UnstableBlockConversionError::EmptyTransactions(block.header.hash_slow()));
     }
     let Some(tx) = block.body.transactions[0].as_deposit() else {
-        return Err(BaseBlockConversionError::InvalidTxType(block.body.transactions[0].ty()));
+        return Err(UnstableBlockConversionError::InvalidTxType(block.body.transactions[0].ty()));
     };
 
     let l1_info = L1BlockInfoTx::decode_calldata(tx.input().as_ref())?;
@@ -182,12 +182,12 @@ mod tests {
 
     #[test]
     fn test_to_system_config_invalid_genesis_hash() {
-        let block = BaseBlock::default();
+        let block = UnstableBlock::default();
         let rollup_config = RollupConfig::default();
         let err = to_system_config(&block, &rollup_config).unwrap_err();
         assert_eq!(
             err,
-            BaseBlockConversionError::InvalidGenesisHash(
+            UnstableBlockConversionError::InvalidGenesisHash(
                 rollup_config.genesis.l2.hash,
                 block.header.hash_slow(),
             )
@@ -196,7 +196,7 @@ mod tests {
 
     #[test]
     fn test_to_system_config_missing_system_config_genesis() {
-        let block = BaseBlock::default();
+        let block = UnstableBlock::default();
         let block_hash = block.header.hash_slow();
         let rollup_config = RollupConfig {
             genesis: ChainGenesis {
@@ -206,12 +206,12 @@ mod tests {
             ..Default::default()
         };
         let err = to_system_config(&block, &rollup_config).unwrap_err();
-        assert_eq!(err, BaseBlockConversionError::MissingSystemConfigGenesis);
+        assert_eq!(err, UnstableBlockConversionError::MissingSystemConfigGenesis);
     }
 
     #[test]
     fn test_to_system_config_from_genesis() {
-        let block = BaseBlock::default();
+        let block = UnstableBlock::default();
         let block_hash = block.header.hash_slow();
         let rollup_config = RollupConfig {
             genesis: ChainGenesis {
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn test_to_system_config_empty_txs() {
-        let block = BaseBlock {
+        let block = UnstableBlock {
             header: alloy_consensus::Header { number: 1, ..Default::default() },
             ..Default::default()
         };
@@ -240,15 +240,15 @@ mod tests {
             ..Default::default()
         };
         let err = to_system_config(&block, &rollup_config).unwrap_err();
-        assert_eq!(err, BaseBlockConversionError::EmptyTransactions(block_hash));
+        assert_eq!(err, UnstableBlockConversionError::EmptyTransactions(block_hash));
     }
 
     #[test]
     fn test_to_system_config_non_deposit() {
-        let block = BaseBlock {
+        let block = UnstableBlock {
             header: alloy_consensus::Header { number: 1, ..Default::default() },
             body: alloy_consensus::BlockBody {
-                transactions: vec![base_common_consensus::BaseTxEnvelope::Legacy(
+                transactions: vec![base_common_consensus::UnstableTxEnvelope::Legacy(
                     alloy_consensus::Signed::new_unchecked(
                         alloy_consensus::TxLegacy {
                             chain_id: Some(1),
@@ -275,15 +275,15 @@ mod tests {
             ..Default::default()
         };
         let err = to_system_config(&block, &rollup_config).unwrap_err();
-        assert_eq!(err, BaseBlockConversionError::InvalidTxType(0));
+        assert_eq!(err, UnstableBlockConversionError::InvalidTxType(0));
     }
 
     #[test]
     fn test_constructs_bedrock_system_config() {
-        let block = BaseBlock {
+        let block = UnstableBlock {
             header: alloy_consensus::Header { number: 1, ..Default::default() },
             body: alloy_consensus::BlockBody {
-                transactions: vec![base_common_consensus::BaseTxEnvelope::Deposit(
+                transactions: vec![base_common_consensus::UnstableTxEnvelope::Deposit(
                     alloy_primitives::Sealed::new(base_common_consensus::TxDeposit {
                         input: alloy_primitives::Bytes::from(&RAW_BEDROCK_INFO_TX),
                         ..Default::default()
@@ -320,7 +320,7 @@ mod tests {
 
     #[test]
     fn test_constructs_ecotone_system_config() {
-        let block = BaseBlock {
+        let block = UnstableBlock {
             header: alloy_consensus::Header {
                 number: 1,
                 // Holocene EIP1559 parameters stored in the extra data.
@@ -328,7 +328,7 @@ mod tests {
                 ..Default::default()
             },
             body: alloy_consensus::BlockBody {
-                transactions: vec![base_common_consensus::BaseTxEnvelope::Deposit(
+                transactions: vec![base_common_consensus::UnstableTxEnvelope::Deposit(
                     alloy_primitives::Sealed::new(base_common_consensus::TxDeposit {
                         input: alloy_primitives::Bytes::from(&RAW_ECOTONE_INFO_TX),
                         ..Default::default()
@@ -369,7 +369,7 @@ mod tests {
 
     #[test]
     fn test_constructs_isthmus_system_config() {
-        let block = BaseBlock {
+        let block = UnstableBlock {
             header: alloy_consensus::Header {
                 number: 1,
                 // Holocene EIP1559 parameters stored in the extra data.
@@ -377,7 +377,7 @@ mod tests {
                 ..Default::default()
             },
             body: alloy_consensus::BlockBody {
-                transactions: vec![base_common_consensus::BaseTxEnvelope::Deposit(
+                transactions: vec![base_common_consensus::UnstableTxEnvelope::Deposit(
                     alloy_primitives::Sealed::new(base_common_consensus::TxDeposit {
                         input: alloy_primitives::Bytes::from(&RAW_ISTHMUS_INFO_TX),
                         ..Default::default()

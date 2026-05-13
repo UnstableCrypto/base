@@ -1,7 +1,7 @@
 //! Contains the [`BatchComposer`] type.
 
 use alloy_eips::eip2718::Encodable2718;
-use base_common_consensus::{BaseBlock, BaseTxEnvelope};
+use base_common_consensus::{UnstableBlock, UnstableTxEnvelope};
 use base_protocol::{L1BlockInfoTx, SingleBatch};
 
 /// Errors returned by [`BatchComposer::block_to_single_batch`].
@@ -26,7 +26,7 @@ pub enum BatchComposeError {
 pub struct BatchComposer;
 
 impl BatchComposer {
-    /// Convert an L2 [`BaseBlock`] into a [`SingleBatch`] and the decoded
+    /// Convert an L2 [`UnstableBlock`] into a [`SingleBatch`] and the decoded
     /// [`L1BlockInfoTx`].
     ///
     /// Mirrors the reference batcher's `BlockToSingularBatch`:
@@ -40,7 +40,7 @@ impl BatchComposer {
     /// access the sequence number for span batch construction without
     /// re-decoding the deposit.
     pub fn block_to_single_batch(
-        block: &BaseBlock,
+        block: &UnstableBlock,
     ) -> Result<(SingleBatch, L1BlockInfoTx), BatchComposeError> {
         if block.body.transactions.is_empty() {
             return Err(BatchComposeError::EmptyBlock);
@@ -58,7 +58,7 @@ impl BatchComposer {
             .body
             .transactions
             .iter()
-            .filter(|tx| !matches!(tx, BaseTxEnvelope::Deposit(_)))
+            .filter(|tx| !matches!(tx, UnstableTxEnvelope::Deposit(_)))
             .map(|tx| tx.encoded_2718().into())
             .collect();
 
@@ -82,38 +82,38 @@ mod tests {
     use alloy_consensus::{BlockBody, Header, SignableTransaction, TxLegacy};
     use alloy_eips::eip2718::Encodable2718;
     use alloy_primitives::{B256, Bytes, Sealed, Signature};
-    use base_common_consensus::{BaseBlock, BaseTxEnvelope, TxDeposit};
+    use base_common_consensus::{UnstableBlock, UnstableTxEnvelope, TxDeposit};
     use base_protocol::{L1BlockInfoBedrock, L1BlockInfoTx};
     use rstest::rstest;
 
     use super::{BatchComposeError, BatchComposer};
 
-    fn make_block(transactions: Vec<BaseTxEnvelope>) -> BaseBlock {
-        BaseBlock {
+    fn make_block(transactions: Vec<UnstableTxEnvelope>) -> UnstableBlock {
+        UnstableBlock {
             header: Header::default(),
             body: BlockBody { transactions, ..Default::default() },
         }
     }
 
-    fn deposit_tx(calldata: Bytes) -> BaseTxEnvelope {
-        BaseTxEnvelope::Deposit(Sealed::new(TxDeposit { input: calldata, ..Default::default() }))
+    fn deposit_tx(calldata: Bytes) -> UnstableTxEnvelope {
+        UnstableTxEnvelope::Deposit(Sealed::new(TxDeposit { input: calldata, ..Default::default() }))
     }
 
-    fn valid_deposit_tx() -> BaseTxEnvelope {
+    fn valid_deposit_tx() -> UnstableTxEnvelope {
         let calldata = L1BlockInfoTx::Bedrock(L1BlockInfoBedrock::default()).encode_calldata();
         deposit_tx(calldata)
     }
 
-    fn non_deposit_tx() -> BaseTxEnvelope {
+    fn non_deposit_tx() -> UnstableTxEnvelope {
         let signed = TxLegacy::default().into_signed(Signature::test_signature());
-        BaseTxEnvelope::Legacy(signed)
+        UnstableTxEnvelope::Legacy(signed)
     }
 
     #[rstest]
     #[case::empty_block(make_block(vec![]), BatchComposeError::EmptyBlock)]
     #[case::not_deposit(make_block(vec![non_deposit_tx()]), BatchComposeError::NotDepositTx)]
     #[case::bad_calldata(make_block(vec![deposit_tx(Bytes::new())]), BatchComposeError::L1InfoDecode)]
-    fn test_errors(#[case] block: BaseBlock, #[case] expected: BatchComposeError) {
+    fn test_errors(#[case] block: UnstableBlock, #[case] expected: BatchComposeError) {
         assert_eq!(BatchComposer::block_to_single_batch(&block).unwrap_err(), expected);
     }
 

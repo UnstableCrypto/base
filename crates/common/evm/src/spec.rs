@@ -1,89 +1,89 @@
-//! Contains the `[BaseSpecId]` type and its implementation.
+//! Contains the `[UnstableSpecId]` type and its implementation.
 
 use alloy_consensus::BlockHeader;
-use base_common_chains::{BaseUpgrade, Upgrades};
+use base_common_chains::{UnstableUpgrade, Upgrades};
 use revm::primitives::hardfork::SpecId;
 
-/// EVM-facing Base spec id.
+/// EVM-facing Unstable spec id.
 ///
-/// This wraps the canonical Base upgrade type and adds revm-specific behavior.
+/// This wraps the canonical Unstable upgrade type and adds revm-specific behavior.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
-pub struct BaseSpecId(BaseUpgrade);
+pub struct UnstableSpecId(UnstableUpgrade);
 
-impl BaseSpecId {
-    /// Creates a new Base EVM spec id for the given Base upgrade.
-    pub const fn new(upgrade: BaseUpgrade) -> Self {
+impl UnstableSpecId {
+    /// Creates a new Unstable EVM spec id for the given Unstable upgrade.
+    pub const fn new(upgrade: UnstableUpgrade) -> Self {
         Self(upgrade)
     }
 
-    /// Returns the wrapped Base upgrade.
-    pub const fn upgrade(self) -> BaseUpgrade {
+    /// Returns the wrapped Unstable upgrade.
+    pub const fn upgrade(self) -> UnstableUpgrade {
         self.0
     }
 
-    /// Converts the [`BaseSpecId`] into a [`SpecId`].
+    /// Converts the [`UnstableSpecId`] into a [`SpecId`].
     pub const fn into_eth_spec(self) -> SpecId {
         self.0.into_eth_spec()
     }
 
-    /// Checks if the given Base upgrade is enabled in this spec.
-    pub const fn is_enabled_in(self, other: BaseUpgrade) -> bool {
+    /// Checks if the given Unstable upgrade is enabled in this spec.
+    pub const fn is_enabled_in(self, other: UnstableUpgrade) -> bool {
         other as u8 <= self.0 as u8
     }
 
-    /// Parses the [`BaseSpecId`] from the chain spec and block header.
+    /// Parses the [`UnstableSpecId`] from the chain spec and block header.
     pub fn from_header(chain_spec: impl Upgrades, header: impl BlockHeader) -> Self {
         Self::from_timestamp(chain_spec, header.timestamp())
     }
 
-    /// Returns the [`BaseSpecId`] at the given timestamp.
+    /// Returns the [`UnstableSpecId`] at the given timestamp.
     ///
     /// # Note
     ///
     /// This is only intended to be used after the Bedrock, when hardforks are activated by
     /// timestamp.
     pub fn from_timestamp(chain_spec: impl Upgrades, timestamp: u64) -> Self {
-        Self(BaseUpgrade::from_timestamp(chain_spec, timestamp))
+        Self(UnstableUpgrade::from_timestamp(chain_spec, timestamp))
     }
 }
 
-impl From<BaseUpgrade> for BaseSpecId {
-    fn from(upgrade: BaseUpgrade) -> Self {
+impl From<UnstableUpgrade> for UnstableSpecId {
+    fn from(upgrade: UnstableUpgrade) -> Self {
         Self(upgrade)
     }
 }
 
-impl From<BaseSpecId> for SpecId {
-    fn from(spec: BaseSpecId) -> Self {
+impl From<UnstableSpecId> for SpecId {
+    fn from(spec: UnstableSpecId) -> Self {
         spec.into_eth_spec()
     }
 }
 
-impl From<BaseSpecId> for BaseUpgrade {
-    fn from(spec: BaseSpecId) -> Self {
+impl From<UnstableSpecId> for UnstableUpgrade {
+    fn from(spec: UnstableSpecId) -> Self {
         spec.upgrade()
     }
 }
 
-impl From<BaseSpecId> for &'static str {
-    fn from(spec: BaseSpecId) -> Self {
+impl From<UnstableSpecId> for &'static str {
+    fn from(spec: UnstableSpecId) -> Self {
         spec.0.name()
     }
 }
 
-impl core::fmt::Display for BaseSpecId {
+impl core::fmt::Display for UnstableSpecId {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.0.fmt(f)
     }
 }
 
-impl core::str::FromStr for BaseSpecId {
-    type Err = <BaseUpgrade as core::str::FromStr>::Err;
+impl core::str::FromStr for UnstableSpecId {
+    type Err = <UnstableUpgrade as core::str::FromStr>::Err;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.parse::<BaseUpgrade>().map(Self)
+        s.parse::<UnstableUpgrade>().map(Self)
     }
 }
 
@@ -95,30 +95,30 @@ mod tests {
 
     #[test]
     fn test_base_spec_id_eth_spec_compatibility() {
-        // Define test cases: (BaseUpgrade, enabled in ETH specs, enabled in Base upgrades)
+        // Define test cases: (UnstableUpgrade, enabled in ETH specs, enabled in Unstable upgrades)
         let test_cases = [
             (
-                BaseUpgrade::Bedrock,
+                UnstableUpgrade::Bedrock,
                 vec![
                     (SpecId::MERGE, true),
                     (SpecId::SHANGHAI, false),
                     (SpecId::CANCUN, false),
                     (SpecId::default(), false),
                 ],
-                vec![(BaseUpgrade::Bedrock, true), (BaseUpgrade::Regolith, false)],
+                vec![(UnstableUpgrade::Bedrock, true), (UnstableUpgrade::Regolith, false)],
             ),
             (
-                BaseUpgrade::Regolith,
+                UnstableUpgrade::Regolith,
                 vec![
                     (SpecId::MERGE, true),
                     (SpecId::SHANGHAI, false),
                     (SpecId::CANCUN, false),
                     (SpecId::default(), false),
                 ],
-                vec![(BaseUpgrade::Bedrock, true), (BaseUpgrade::Regolith, true)],
+                vec![(UnstableUpgrade::Bedrock, true), (UnstableUpgrade::Regolith, true)],
             ),
             (
-                BaseUpgrade::Canyon,
+                UnstableUpgrade::Canyon,
                 vec![
                     (SpecId::MERGE, true),
                     (SpecId::SHANGHAI, true),
@@ -126,13 +126,13 @@ mod tests {
                     (SpecId::default(), false),
                 ],
                 vec![
-                    (BaseUpgrade::Bedrock, true),
-                    (BaseUpgrade::Regolith, true),
-                    (BaseUpgrade::Canyon, true),
+                    (UnstableUpgrade::Bedrock, true),
+                    (UnstableUpgrade::Regolith, true),
+                    (UnstableUpgrade::Canyon, true),
                 ],
             ),
             (
-                BaseUpgrade::Ecotone,
+                UnstableUpgrade::Ecotone,
                 vec![
                     (SpecId::MERGE, true),
                     (SpecId::SHANGHAI, true),
@@ -140,14 +140,14 @@ mod tests {
                     (SpecId::default(), false),
                 ],
                 vec![
-                    (BaseUpgrade::Bedrock, true),
-                    (BaseUpgrade::Regolith, true),
-                    (BaseUpgrade::Canyon, true),
-                    (BaseUpgrade::Ecotone, true),
+                    (UnstableUpgrade::Bedrock, true),
+                    (UnstableUpgrade::Regolith, true),
+                    (UnstableUpgrade::Canyon, true),
+                    (UnstableUpgrade::Ecotone, true),
                 ],
             ),
             (
-                BaseUpgrade::Fjord,
+                UnstableUpgrade::Fjord,
                 vec![
                     (SpecId::MERGE, true),
                     (SpecId::SHANGHAI, true),
@@ -155,15 +155,15 @@ mod tests {
                     (SpecId::default(), false),
                 ],
                 vec![
-                    (BaseUpgrade::Bedrock, true),
-                    (BaseUpgrade::Regolith, true),
-                    (BaseUpgrade::Canyon, true),
-                    (BaseUpgrade::Ecotone, true),
-                    (BaseUpgrade::Fjord, true),
+                    (UnstableUpgrade::Bedrock, true),
+                    (UnstableUpgrade::Regolith, true),
+                    (UnstableUpgrade::Canyon, true),
+                    (UnstableUpgrade::Ecotone, true),
+                    (UnstableUpgrade::Fjord, true),
                 ],
             ),
             (
-                BaseUpgrade::Jovian,
+                UnstableUpgrade::Jovian,
                 vec![
                     (SpecId::PRAGUE, true),
                     (SpecId::SHANGHAI, true),
@@ -171,17 +171,17 @@ mod tests {
                     (SpecId::MERGE, true),
                 ],
                 vec![
-                    (BaseUpgrade::Bedrock, true),
-                    (BaseUpgrade::Regolith, true),
-                    (BaseUpgrade::Canyon, true),
-                    (BaseUpgrade::Ecotone, true),
-                    (BaseUpgrade::Fjord, true),
-                    (BaseUpgrade::Holocene, true),
-                    (BaseUpgrade::Isthmus, true),
+                    (UnstableUpgrade::Bedrock, true),
+                    (UnstableUpgrade::Regolith, true),
+                    (UnstableUpgrade::Canyon, true),
+                    (UnstableUpgrade::Ecotone, true),
+                    (UnstableUpgrade::Fjord, true),
+                    (UnstableUpgrade::Holocene, true),
+                    (UnstableUpgrade::Isthmus, true),
                 ],
             ),
             (
-                BaseUpgrade::Azul,
+                UnstableUpgrade::Azul,
                 vec![
                     (SpecId::OSAKA, true),
                     (SpecId::PRAGUE, true),
@@ -190,18 +190,18 @@ mod tests {
                     (SpecId::MERGE, true),
                 ],
                 vec![
-                    (BaseUpgrade::Bedrock, true),
-                    (BaseUpgrade::Regolith, true),
-                    (BaseUpgrade::Canyon, true),
-                    (BaseUpgrade::Ecotone, true),
-                    (BaseUpgrade::Fjord, true),
-                    (BaseUpgrade::Holocene, true),
-                    (BaseUpgrade::Isthmus, true),
-                    (BaseUpgrade::Jovian, true),
+                    (UnstableUpgrade::Bedrock, true),
+                    (UnstableUpgrade::Regolith, true),
+                    (UnstableUpgrade::Canyon, true),
+                    (UnstableUpgrade::Ecotone, true),
+                    (UnstableUpgrade::Fjord, true),
+                    (UnstableUpgrade::Holocene, true),
+                    (UnstableUpgrade::Isthmus, true),
+                    (UnstableUpgrade::Jovian, true),
                 ],
             ),
             (
-                BaseUpgrade::Beryl,
+                UnstableUpgrade::Beryl,
                 vec![
                     (SpecId::OSAKA, true),
                     (SpecId::PRAGUE, true),
@@ -210,21 +210,21 @@ mod tests {
                     (SpecId::MERGE, true),
                 ],
                 vec![
-                    (BaseUpgrade::Bedrock, true),
-                    (BaseUpgrade::Regolith, true),
-                    (BaseUpgrade::Canyon, true),
-                    (BaseUpgrade::Ecotone, true),
-                    (BaseUpgrade::Fjord, true),
-                    (BaseUpgrade::Holocene, true),
-                    (BaseUpgrade::Isthmus, true),
-                    (BaseUpgrade::Jovian, true),
-                    (BaseUpgrade::Azul, true),
+                    (UnstableUpgrade::Bedrock, true),
+                    (UnstableUpgrade::Regolith, true),
+                    (UnstableUpgrade::Canyon, true),
+                    (UnstableUpgrade::Ecotone, true),
+                    (UnstableUpgrade::Fjord, true),
+                    (UnstableUpgrade::Holocene, true),
+                    (UnstableUpgrade::Isthmus, true),
+                    (UnstableUpgrade::Jovian, true),
+                    (UnstableUpgrade::Azul, true),
                 ],
             ),
         ];
 
         for (base_upgrade, eth_tests, base_tests) in test_cases {
-            let base_spec = BaseSpecId::new(base_upgrade);
+            let base_spec = UnstableSpecId::new(base_upgrade);
 
             // Test ETH spec compatibility
             for (eth_spec, expected) in eth_tests {
@@ -236,12 +236,12 @@ mod tests {
                 );
             }
 
-            // Test Base upgrade compatibility
+            // Test Unstable upgrade compatibility
             for (other_base_upgrade, expected) in base_tests {
                 assert_eq!(
                     base_spec.is_enabled_in(other_base_upgrade),
                     expected,
-                    "{base_spec:?} should {} be enabled in Base {other_base_upgrade:?}",
+                    "{base_spec:?} should {} be enabled in Unstable {other_base_upgrade:?}",
                     if expected { "" } else { "not " },
                 );
             }
@@ -250,6 +250,6 @@ mod tests {
 
     #[test]
     fn default_base_spec_id() {
-        assert_eq!(BaseSpecId::default().upgrade(), BaseUpgrade::LATEST);
+        assert_eq!(UnstableSpecId::default().upgrade(), UnstableUpgrade::LATEST);
     }
 }

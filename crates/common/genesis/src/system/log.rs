@@ -6,7 +6,7 @@ use crate::{
     BatcherUpdate, Eip1559Update, GasConfigUpdate, GasLimitUpdate, LogProcessingError,
     OperatorFeeUpdate, SystemConfigUpdate, SystemConfigUpdateError, SystemConfigUpdateKind,
     UnsafeBlockSignerUpdate,
-    updates::{DaFootprintGasScalarUpdate, MinBaseFeeUpdate},
+    updates::{DaFootprintGasScalarUpdate, MinUnstableFeeUpdate},
 };
 
 /// The system config log is an EVM log entry emitted
@@ -100,9 +100,9 @@ impl SystemConfigLog {
                 let update = UnsafeBlockSignerUpdate::try_from(self)?;
                 Ok(SystemConfigUpdate::UnsafeBlockSigner(update))
             }
-            SystemConfigUpdateKind::MinBaseFee => {
-                let update = MinBaseFeeUpdate::try_from(self)?;
-                Ok(SystemConfigUpdate::MinBaseFee(update))
+            SystemConfigUpdateKind::MinUnstableFee => {
+                let update = MinUnstableFeeUpdate::try_from(self)?;
+                Ok(SystemConfigUpdate::MinUnstableFee(update))
             }
             SystemConfigUpdateKind::DaFootprintGasScalar => {
                 let update = DaFootprintGasScalarUpdate::try_from(self)?;

@@ -3,7 +3,7 @@
 use std::time::{Duration, Instant};
 
 use alloy_eips::eip2718::Decodable2718;
-use base_common_consensus::BaseTxEnvelope;
+use base_common_consensus::UnstableTxEnvelope;
 use base_common_flashblocks::Flashblock;
 use futures::StreamExt;
 use tokio_tungstenite::{
@@ -134,7 +134,7 @@ impl FlashblockWatcher {
             .transactions
             .iter()
             .filter_map(|tx_bytes| {
-                let envelope = BaseTxEnvelope::decode_2718_exact(tx_bytes.as_ref())
+                let envelope = UnstableTxEnvelope::decode_2718_exact(tx_bytes.as_ref())
                     .inspect_err(|e| warn!(error = %e, "failed to decode flashblock transaction"))
                     .ok()?;
                 Some(FlashblockInclusion { tx_hash: envelope.tx_hash(), included_at })

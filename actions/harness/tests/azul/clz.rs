@@ -1,4 +1,4 @@
-//! CLZ opcode activation test across the Base Azul boundary.
+//! CLZ opcode activation test across the Unstable Azul boundary.
 
 use alloy_primitives::{Bytes, TxKind, U256, hex};
 use base_action_harness::{
@@ -47,7 +47,7 @@ async fn azul_clz_op_code() {
         ..Default::default()
     };
 
-    // All forks through Jovian at genesis; Base Azul at ts=6 (block 3).
+    // All forks through Jovian at genesis; Unstable Azul at ts=6 (block 3).
     let base_azul_time = 6u64;
     let rollup_cfg = TestRollupConfigBuilder::base_mainnet(&batcher_cfg)
         .through_isthmus()
@@ -172,6 +172,6 @@ async fn azul_clz_op_code() {
     assert_eq!(
         node.l2_safe().block_info.number,
         4,
-        "all 4 L2 blocks must derive through the Base V1 boundary"
+        "all 4 L2 blocks must derive through the Unstable V1 boundary"
     );
 }

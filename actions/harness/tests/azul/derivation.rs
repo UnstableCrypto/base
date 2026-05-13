@@ -1,4 +1,4 @@
-//! Derivation test across the Base Azul activation boundary.
+//! Derivation test across the Unstable Azul activation boundary.
 
 use base_action_harness::{
     ActionL2Source, ActionTestHarness, Batcher, BatcherConfig, L1MinerConfig, SharedL1Chain,
@@ -6,7 +6,7 @@ use base_action_harness::{
 };
 use base_batcher_encoder::{DaType, EncoderConfig};
 
-/// Derives 4 L2 blocks across the Base Azul activation boundary (ts=4, block 2)
+/// Derives 4 L2 blocks across the Unstable Azul activation boundary (ts=4, block 2)
 /// and asserts each block includes 1 user transaction.
 #[tokio::test]
 async fn azul_derivation_crosses_activation_boundary() {
@@ -15,12 +15,12 @@ async fn azul_derivation_crosses_activation_boundary() {
         ..BatcherConfig::default()
     };
 
-    // All inherited rollup forks through Jovian active from genesis; Base Azul at ts=4.
+    // All inherited rollup forks through Jovian active from genesis; Unstable Azul at ts=4.
     // With block_time=2 and L2 genesis at ts=0:
-    //   block 1 → ts=2  (pre-Base Azul)
-    //   block 2 → ts=4  (first Base Azul block)
-    //   block 3 → ts=6  (post-Base Azul)
-    //   block 4 → ts=8  (post-Base Azul)
+    //   block 1 → ts=2  (pre-Unstable Azul)
+    //   block 2 → ts=4  (first Unstable Azul block)
+    //   block 3 → ts=6  (post-Unstable Azul)
+    //   block 4 → ts=8  (post-Unstable Azul)
     let base_azul_time = 4u64;
     let rollup_cfg = TestRollupConfigBuilder::base_mainnet(&batcher_cfg)
         .through_isthmus()
@@ -53,6 +53,6 @@ async fn azul_derivation_crosses_activation_boundary() {
     assert_eq!(
         node.l2_safe().block_info.number,
         4,
-        "safe head should advance past the Base Azul activation boundary"
+        "safe head should advance past the Unstable Azul activation boundary"
     );
 }

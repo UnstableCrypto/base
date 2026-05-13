@@ -8,9 +8,9 @@ use revm::{
 
 use crate::DEPOSIT_TRANSACTION_TYPE;
 
-/// Base Transaction trait.
+/// Unstable Transaction trait.
 #[auto_impl(&, &mut, Box, Arc)]
-pub trait BaseTxTr: Transaction {
+pub trait UnstableTxTr: Transaction {
     /// Enveloped transaction bytes.
     fn enveloped_tx(&self) -> Option<&Bytes>;
 

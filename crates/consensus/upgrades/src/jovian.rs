@@ -1,8 +1,8 @@
 //! Module containing a [`TxDeposit`] builder for the Jovian network upgrade transactions.
 //!
-//! Jovian network upgrade transactions are defined in the [Base Specs][specs].
+//! Jovian network upgrade transactions are defined in the [Unstable Specs][specs].
 //!
-//! [specs]: https://specs.base.org/upgrades/jovian/derivation#network-upgrade-automation-transactions
+//! [specs]: https://specs.unstable.org/upgrades/jovian/derivation#network-upgrade-automation-transactions
 
 use alloc::vec::Vec;
 

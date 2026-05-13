@@ -4,7 +4,7 @@ use alloy_primitives::{B256, Bytes};
 
 /// Context for base block execution.
 #[derive(Debug, Default, Clone)]
-pub struct BaseBlockExecutionCtx {
+pub struct UnstableBlockExecutionCtx {
     /// Parent block hash.
     pub parent_hash: B256,
     /// Parent beacon block root.

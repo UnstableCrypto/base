@@ -5,14 +5,14 @@
 
 use alloy_consensus::transaction::SignerRecoverable;
 use alloy_primitives::{Address, B256};
-use base_common_consensus::BaseTransactionSigned;
+use base_common_consensus::UnstableTransactionSigned;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rayon::prelude::*;
 use reth_transaction_pool::test_utils::TransactionBuilder;
 use serde_json::Value;
 
 /// Generate signed transactions from multiple unique signers.
-fn generate_transactions(count: usize) -> Vec<BaseTransactionSigned> {
+fn generate_transactions(count: usize) -> Vec<UnstableTransactionSigned> {
     (0..count)
         .map(|i| {
             // Create unique signer for each transaction to simulate varying senders
@@ -24,7 +24,7 @@ fn generate_transactions(count: usize) -> Vec<BaseTransactionSigned> {
 
             let txn = TransactionBuilder::default()
                 .signer(signer)
-                .chain_id(8453) // Base mainnet
+                .chain_id(8453) // Unstable mainnet
                 .to(Address::random())
                 .nonce(0)
                 .value(1_000_000_000u128)
@@ -36,23 +36,23 @@ fn generate_transactions(count: usize) -> Vec<BaseTransactionSigned> {
                 .expect("should convert to eip1559")
                 .clone();
 
-            BaseTransactionSigned::Eip1559(txn)
+            UnstableTransactionSigned::Eip1559(txn)
         })
         .collect()
 }
 
 /// Sequential sender recovery (baseline)
-fn recover_senders_sequential(txs: &[BaseTransactionSigned]) -> Vec<Address> {
+fn recover_senders_sequential(txs: &[UnstableTransactionSigned]) -> Vec<Address> {
     txs.iter().map(|tx| tx.recover_signer().expect("valid signature")).collect()
 }
 
 /// Parallel sender recovery using rayon
-fn recover_senders_parallel(txs: &[BaseTransactionSigned]) -> Vec<Address> {
+fn recover_senders_parallel(txs: &[UnstableTransactionSigned]) -> Vec<Address> {
     txs.par_iter().map(|tx| tx.recover_signer().expect("valid signature")).collect()
 }
 
-/// Load real transactions from Base mainnet blocks fixture
-fn load_real_transactions() -> Vec<BaseTransactionSigned> {
+/// Load real transactions from Unstable mainnet blocks fixture
+fn load_real_transactions() -> Vec<UnstableTransactionSigned> {
     let fixture_data = include_str!("./fixtures/base_mainnet_blocks.json");
     let json: Value = serde_json::from_str(fixture_data).expect("valid JSON");
 
@@ -65,7 +65,7 @@ fn load_real_transactions() -> Vec<BaseTransactionSigned> {
                 for tx_value in txs {
                     // Try direct deserialization first
                     if let Ok(signed_tx) =
-                        serde_json::from_value::<BaseTransactionSigned>(tx_value.clone())
+                        serde_json::from_value::<UnstableTransactionSigned>(tx_value.clone())
                     {
                         transactions.push(signed_tx);
                     }
@@ -103,9 +103,9 @@ fn sender_recovery_benches(c: &mut Criterion) {
 fn sender_recovery_real_txs_benches(c: &mut Criterion) {
     let mut group = c.benchmark_group("sender_recovery_real_txs");
 
-    // Load real Base mainnet transactions
+    // Load real Unstable mainnet transactions
     let all_transactions = load_real_transactions();
-    println!("Loaded {} real transactions from Base mainnet", all_transactions.len());
+    println!("Loaded {} real transactions from Unstable mainnet", all_transactions.len());
 
     // Benchmark with different batch sizes
     for tx_count in [30, 40, 100, 500, 1000] {

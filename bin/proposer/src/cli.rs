@@ -3,7 +3,7 @@
 use clap::Parser;
 use eyre::WrapErr;
 
-/// Base Proposer.
+/// Unstable Proposer.
 #[derive(Parser)]
 #[command(author, version)]
 #[group(skip)]

@@ -1,15 +1,15 @@
 //! Abstraction over receipt building logic to allow plugging different primitive types into
-//! [`super::BaseBlockExecutor`].
+//! [`super::UnstableBlockExecutor`].
 
 use core::fmt::Debug;
 
 use alloy_consensus::{Eip658Value, TransactionEnvelope};
 use alloy_evm::{Evm, eth::receipt_builder::ReceiptBuilderCtx};
-use base_common_consensus::{BaseReceiptEnvelope, BaseTxEnvelope, DepositReceipt, OpTxType};
+use base_common_consensus::{UnstableReceiptEnvelope, UnstableTxEnvelope, DepositReceipt, OpTxType};
 
 /// Type that knows how to build a receipt based on execution result.
 #[auto_impl::auto_impl(&, Arc)]
-pub trait BaseReceiptBuilder: Debug {
+pub trait UnstableReceiptBuilder: Debug {
     /// Transaction type.
     type Transaction: TransactionEnvelope;
     /// Receipt type.
@@ -36,9 +36,9 @@ pub trait BaseReceiptBuilder: Debug {
 #[non_exhaustive]
 pub struct AlloyReceiptBuilder;
 
-impl BaseReceiptBuilder for AlloyReceiptBuilder {
-    type Transaction = BaseTxEnvelope;
-    type Receipt = BaseReceiptEnvelope;
+impl UnstableReceiptBuilder for AlloyReceiptBuilder {
+    type Transaction = UnstableTxEnvelope;
+    type Receipt = UnstableReceiptEnvelope;
 
     fn build_receipt<'a, E: Evm>(
         &self,
@@ -55,10 +55,10 @@ impl BaseReceiptBuilder for AlloyReceiptBuilder {
                 .with_bloom();
 
                 Ok(match ty {
-                    OpTxType::Legacy => BaseReceiptEnvelope::Legacy(receipt),
-                    OpTxType::Eip2930 => BaseReceiptEnvelope::Eip2930(receipt),
-                    OpTxType::Eip1559 => BaseReceiptEnvelope::Eip1559(receipt),
-                    OpTxType::Eip7702 => BaseReceiptEnvelope::Eip7702(receipt),
+                    OpTxType::Legacy => UnstableReceiptEnvelope::Legacy(receipt),
+                    OpTxType::Eip2930 => UnstableReceiptEnvelope::Eip2930(receipt),
+                    OpTxType::Eip1559 => UnstableReceiptEnvelope::Eip1559(receipt),
+                    OpTxType::Eip7702 => UnstableReceiptEnvelope::Eip7702(receipt),
                     OpTxType::Deposit => unreachable!(),
                 })
             }
@@ -66,6 +66,6 @@ impl BaseReceiptBuilder for AlloyReceiptBuilder {
     }
 
     fn build_deposit_receipt(&self, inner: DepositReceipt) -> Self::Receipt {
-        BaseReceiptEnvelope::Deposit(inner.with_bloom())
+        UnstableReceiptEnvelope::Deposit(inner.with_bloom())
     }
 }

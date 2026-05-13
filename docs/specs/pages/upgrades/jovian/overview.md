@@ -9,7 +9,7 @@
 
 ## Execution Layer
 
-- [Minimum Base Fee](/upgrades/jovian/exec-engine#minimum-base-fee)
+- [Minimum Unstable Fee](/upgrades/jovian/exec-engine#minimum-base-fee)
 - [DA Footprint Limit](/upgrades/jovian/exec-engine#da-footprint-limit)
 - [Operator Fee](/upgrades/jovian/exec-engine#operator-fee)
 

@@ -1,4 +1,4 @@
-//! L2 (Base) infrastructure containers.
+//! L2 (Unstable) infrastructure containers.
 
 pub mod config;
 pub use config::L2ContainerConfig;

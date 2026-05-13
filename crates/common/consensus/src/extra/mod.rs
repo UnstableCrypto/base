@@ -4,7 +4,7 @@ mod holocene;
 pub use holocene::HoloceneExtraData;
 
 mod jovian;
-use alloy_eips::eip1559::BaseFeeParams;
+use alloy_eips::eip1559::UnstableFeeParams;
 use alloy_primitives::B64;
 pub use jovian::JovianExtraData;
 
@@ -31,10 +31,10 @@ pub enum EIP1559ParamError {
     InvalidParams,
     /// Minimum base fee must be None before Jovian.
     #[error("Minimum base fee must be None before Jovian")]
-    MinBaseFeeMustBeNone,
+    MinUnstableFeeMustBeNone,
     /// Minimum base fee cannot be None after Jovian.
     #[error("Minimum base fee cannot be None after Jovian")]
-    MinBaseFeeNotSet,
+    MinUnstableFeeNotSet,
 }
 
 /// Encodes the EIP-1559 parameters into `extra_data`.
@@ -43,7 +43,7 @@ pub enum EIP1559ParamError {
 /// Requires `extra_data` to be at least 9 bytes.
 fn encode_eip_1559_params(
     eip_1559_params: B64,
-    default_base_fee_params: BaseFeeParams,
+    default_base_fee_params: UnstableFeeParams,
     extra_data: &mut [u8],
 ) -> Result<(), EIP1559ParamError> {
     if extra_data.len() < 9 {
@@ -68,7 +68,7 @@ fn encode_eip_1559_params(
 
 #[cfg(test)]
 mod tests {
-    use alloy_eips::eip1559::BaseFeeParams;
+    use alloy_eips::eip1559::UnstableFeeParams;
     use alloy_primitives::B64;
 
     use super::{EIP1559ParamError, encode_eip_1559_params};
@@ -76,7 +76,7 @@ mod tests {
     #[test]
     fn test_encode_eip_1559_params_invalid_length() {
         let mut extra_data = [0u8; 8];
-        let result = encode_eip_1559_params(B64::ZERO, BaseFeeParams::new(80, 60), &mut extra_data);
+        let result = encode_eip_1559_params(B64::ZERO, UnstableFeeParams::new(80, 60), &mut extra_data);
         assert_eq!(result.unwrap_err(), EIP1559ParamError::InvalidExtraDataLength);
     }
 }

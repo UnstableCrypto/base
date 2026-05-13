@@ -25,11 +25,11 @@ use reth_transaction_pool::{
     error::{InvalidPoolTransactionError, PoolTransactionError},
 };
 
-use crate::BasePooledTx;
+use crate::UnstablePooledTx;
 
-/// Base-specific transaction pool validation errors.
+/// Unstable-specific transaction pool validation errors.
 #[derive(Debug, thiserror::Error)]
-pub enum BaseTxPoolError {
+pub enum UnstableTxPoolError {
     /// The transaction's DA footprint exceeds the block gas limit.
     #[error(
         "transaction DA footprint ({transaction_da_footprint}) exceeds block gas limit ({block_gas_limit})"
@@ -42,7 +42,7 @@ pub enum BaseTxPoolError {
     },
 }
 
-impl PoolTransactionError for BaseTxPoolError {
+impl PoolTransactionError for UnstableTxPoolError {
     fn is_bad_transaction(&self) -> bool {
         true
     }
@@ -54,34 +54,34 @@ impl PoolTransactionError for BaseTxPoolError {
 
 /// Tracks additional infos for the current block.
 #[derive(Debug, Default)]
-pub struct BaseL1BlockInfo {
+pub struct UnstableL1BlockInfo {
     /// The current L1 block info.
     l1_block_info: RwLock<L1BlockInfo>,
     /// Current block timestamp.
     timestamp: AtomicU64,
 }
 
-impl BaseL1BlockInfo {
+impl UnstableL1BlockInfo {
     /// Returns the most recent timestamp
     pub fn timestamp(&self) -> u64 {
         self.timestamp.load(Ordering::Relaxed)
     }
 }
 
-/// Validator for Base transactions.
+/// Validator for Unstable transactions.
 #[derive(Debug, Clone)]
-pub struct BaseTransactionValidator<Client, Tx, Evm> {
+pub struct UnstableTransactionValidator<Client, Tx, Evm> {
     /// The type that performs the actual validation.
     inner: Arc<EthTransactionValidator<Client, Tx, Evm>>,
     /// Additional block info required for validation.
-    block_info: Arc<BaseL1BlockInfo>,
+    block_info: Arc<UnstableL1BlockInfo>,
     /// If true, ensure that the transaction's sender has enough balance to cover the L1 gas fee
     /// derived from the tracked L1 block info that is extracted from the first transaction in the
     /// L2 block.
     require_l1_data_gas_fee: bool,
 }
 
-impl<Client, Tx, Evm> BaseTransactionValidator<Client, Tx, Evm> {
+impl<Client, Tx, Evm> UnstableTransactionValidator<Client, Tx, Evm> {
     /// Returns the configured chain spec
     pub fn chain_spec(&self) -> Arc<Client::ChainSpec>
     where
@@ -113,15 +113,15 @@ impl<Client, Tx, Evm> BaseTransactionValidator<Client, Tx, Evm> {
     }
 }
 
-impl<Client, Tx, Evm> BaseTransactionValidator<Client, Tx, Evm>
+impl<Client, Tx, Evm> UnstableTransactionValidator<Client, Tx, Evm>
 where
     Client: ChainSpecProvider<ChainSpec: Upgrades> + StateProviderFactory + BlockReaderIdExt + Sync,
-    Tx: EthPoolTransaction + BasePooledTx,
+    Tx: EthPoolTransaction + UnstablePooledTx,
     Evm: ConfigureEvm,
 {
-    /// Create a new [`BaseTransactionValidator`].
+    /// Create a new [`UnstableTransactionValidator`].
     pub fn new(inner: EthTransactionValidator<Client, Tx, Evm>) -> Self {
-        let this = Self::with_block_info(inner, BaseL1BlockInfo::default());
+        let this = Self::with_block_info(inner, UnstableL1BlockInfo::default());
         if let Ok(Some(block)) =
             this.inner.client().block_by_number_or_tag(alloy_eips::BlockNumberOrTag::Latest)
         {
@@ -137,10 +137,10 @@ where
         this
     }
 
-    /// Create a new [`BaseTransactionValidator`] with the given [`BaseL1BlockInfo`].
+    /// Create a new [`UnstableTransactionValidator`] with the given [`UnstableL1BlockInfo`].
     pub fn with_block_info(
         inner: EthTransactionValidator<Client, Tx, Evm>,
-        block_info: BaseL1BlockInfo,
+        block_info: UnstableL1BlockInfo,
     ) -> Self {
         Self {
             inner: Arc::new(inner),
@@ -168,7 +168,7 @@ where
     ///
     /// See also [`TransactionValidator::validate_transaction`]
     ///
-    /// This behaves the same as [`BaseTransactionValidator::validate_one_with_state`], but creates
+    /// This behaves the same as [`UnstableTransactionValidator::validate_one_with_state`], but creates
     /// a new state provider internally.
     pub async fn validate_one(
         &self,
@@ -185,7 +185,7 @@ where
     /// See also [`TransactionValidator::validate_transaction`]
     ///
     /// This behaves the same as [`EthTransactionValidator::validate_one_with_state`], but in
-    /// addition applies Base-specific validity checks:
+    /// addition applies Unstable-specific validity checks:
     /// - ensures tx is not eip4844
     /// - ensures that the account has enough balance to cover the L1 gas cost
     pub async fn validate_one_with_state(
@@ -206,7 +206,7 @@ where
         self.apply_base_checks(outcome)
     }
 
-    /// Performs the necessary Base-specific checks based on top of the regular eth outcome.
+    /// Performs the necessary Unstable-specific checks based on top of the regular eth outcome.
     fn apply_base_checks(
         &self,
         outcome: TransactionValidationOutcome<Tx>,
@@ -240,7 +240,7 @@ where
                     return TransactionValidationOutcome::Invalid(
                         valid_tx.into_transaction(),
                         InvalidPoolTransactionError::other(
-                            BaseTxPoolError::DaFootprintExceedsBlockGasLimit {
+                            UnstableTxPoolError::DaFootprintExceedsBlockGasLimit {
                                 transaction_da_footprint: da_footprint,
                                 block_gas_limit,
                             },
@@ -288,10 +288,10 @@ where
     }
 }
 
-impl<Client, Tx, Evm> TransactionValidator for BaseTransactionValidator<Client, Tx, Evm>
+impl<Client, Tx, Evm> TransactionValidator for UnstableTransactionValidator<Client, Tx, Evm>
 where
     Client: ChainSpecProvider<ChainSpec: Upgrades> + StateProviderFactory + BlockReaderIdExt + Sync,
-    Tx: EthPoolTransaction + BasePooledTx,
+    Tx: EthPoolTransaction + UnstablePooledTx,
     Evm: ConfigureEvm,
 {
     type Transaction = Tx;

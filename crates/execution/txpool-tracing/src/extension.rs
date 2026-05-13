@@ -1,10 +1,10 @@
 //! Contains the [`TxPoolExtension`] which wires up the transaction pool tracing
-//! subscription on the Base node builder.
+//! subscription on the Unstable node builder.
 
 use std::sync::Arc;
 
 use base_flashblocks::{FlashblocksConfig, FlashblocksState};
-use base_node_runner::{BaseNodeExtension, FromExtensionConfig, NodeHooks};
+use base_node_runner::{UnstableNodeExtension, FromExtensionConfig, NodeHooks};
 use reth_provider::CanonStateSubscriptions;
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::info;
@@ -36,7 +36,7 @@ impl TxPoolExtension {
     }
 }
 
-impl BaseNodeExtension for TxPoolExtension {
+impl UnstableNodeExtension for TxPoolExtension {
     /// Applies the extension to the supplied builder.
     fn apply(self: Box<Self>, builder: NodeHooks) -> NodeHooks {
         let config = self.config;

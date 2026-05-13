@@ -1,8 +1,8 @@
 //! Contains the [`TxForwardingExtension`] which wires up the transaction
-//! forwarding pipeline on the Base node builder.
+//! forwarding pipeline on the Unstable node builder.
 
 use base_execution_txpool::{SpawnedConsumer, SpawnedForwarder};
-use base_node_runner::{BaseNodeExtension, FromExtensionConfig, NodeHooks};
+use base_node_runner::{UnstableNodeExtension, FromExtensionConfig, NodeHooks};
 use tracing::info;
 
 use crate::TxForwardingConfig;
@@ -21,7 +21,7 @@ impl TxForwardingExtension {
     }
 }
 
-impl BaseNodeExtension for TxForwardingExtension {
+impl UnstableNodeExtension for TxForwardingExtension {
     /// Applies the extension to the supplied hooks.
     fn apply(self: Box<Self>, hooks: NodeHooks) -> NodeHooks {
         if !self.config.enabled || self.config.builder_urls.is_empty() {

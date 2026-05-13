@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use alloy_primitives::Address;
 use async_trait::async_trait;
 use base_common_rpc_types_engine::{
-    BaseExecutionPayloadEnvelope, NetworkPayloadEnvelope, PayloadHash,
+    UnstableExecutionPayloadEnvelope, NetworkPayloadEnvelope, PayloadHash,
 };
 use base_consensus_disc::{Discv5Handler, HandlerRequest};
 use base_consensus_gossip::{
@@ -114,7 +114,7 @@ impl NetworkHandler {
 impl GossipTransport for NetworkHandler {
     type Error = NetworkActorError;
 
-    async fn publish(&mut self, block: BaseExecutionPayloadEnvelope) -> Result<(), Self::Error> {
+    async fn publish(&mut self, block: UnstableExecutionPayloadEnvelope) -> Result<(), Self::Error> {
         let timestamp = block.execution_payload.timestamp();
         let selector = |handler: &BlockHandler| handler.topic(timestamp);
 

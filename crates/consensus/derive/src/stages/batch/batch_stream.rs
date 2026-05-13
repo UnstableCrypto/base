@@ -32,7 +32,7 @@ pub trait BatchStreamProvider {
 /// It slots in between the [`ChannelReader`] and [`BatchQueue`]
 /// stages, buffering span batches until they are validated.
 ///
-/// [`Holocene`]: https://specs.base.org/upgrades/holocene/overview
+/// [`Holocene`]: https://specs.unstable.org/upgrades/holocene/overview
 /// [`ChannelReader`]: crate::stages::ChannelReader
 /// [`BatchQueue`]: crate::stages::BatchQueue
 #[derive(Debug)]
@@ -257,7 +257,7 @@ mod tests {
     use alloy_consensus::{BlockBody, Header};
     use alloy_eips::{BlockNumHash, NumHash};
     use alloy_primitives::{FixedBytes, b256};
-    use base_common_consensus::BaseBlock;
+    use base_common_consensus::UnstableBlock;
     use base_common_genesis::{ChainGenesis, HardForkConfig, SystemConfig};
     use base_protocol::{SingleBatch, SpanBatchElement};
     use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -466,7 +466,7 @@ mod tests {
             l1_origin: BlockNumHash { number: 9, ..Default::default() },
             ..Default::default()
         };
-        let base_block = BaseBlock {
+        let base_block = UnstableBlock {
             header: Header { number: 41, ..Default::default() },
             body: BlockBody { transactions: vec![], ommers: vec![], withdrawals: None },
         };

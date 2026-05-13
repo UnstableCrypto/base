@@ -1,6 +1,6 @@
 # `base-execution-exex`
 
-Execution extensions (`ExEx`) for Base.
+Execution extensions (`ExEx`) for Unstable.
 
 ## Overview
 
@@ -140,7 +140,7 @@ Per-operation `duration_seconds` histograms are recorded for: `store_account_bra
 
 ## Performance
 
-Benchmarked on Base Sepolia (~700k block window, WETH contract):
+Benchmarked on Unstable Sepolia (~700k block window, WETH contract):
 
 | Metric         | Value                                        |
 | -------------- | -------------------------------------------- |

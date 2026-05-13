@@ -3,10 +3,10 @@ use core::fmt::Debug;
 
 use alloy_evm::{EvmFactory, FromRecoveredTx, FromTxWithEncoded, revm::context::BlockEnv};
 use alloy_primitives::B256;
-use base_common_evm::{BaseSpecId, BaseTxEnv};
+use base_common_evm::{UnstableSpecId, UnstableTxEnv};
 use base_consensus_derive::EthereumDataSource;
 use base_proof::{
-    BaseExecutor, CachingOracle, OracleBlobProvider, OracleL1ChainProvider, OracleL2ChainProvider,
+    UnstableExecutor, CachingOracle, OracleBlobProvider, OracleL1ChainProvider, OracleL2ChainProvider,
     OraclePipeline,
 };
 use base_proof_driver::Driver;
@@ -32,7 +32,7 @@ pub struct FaultProofDriver<P, H, F>
 where
     P: PreimageOracleClient + Send + Sync + Clone + Debug + 'static,
     H: HintWriterClient + Send + Sync + Clone + Debug + 'static,
-    F: EvmFactory<Spec = BaseSpecId, BlockEnv = BlockEnv> + Send + Sync + Clone + 'static,
+    F: EvmFactory<Spec = UnstableSpecId, BlockEnv = BlockEnv> + Send + Sync + Clone + 'static,
 {
     rollup_config: Arc<base_common_genesis::RollupConfig>,
     claimed_l2_block_number: u64,
@@ -47,10 +47,10 @@ impl<P, H, F> FaultProofDriver<P, H, F>
 where
     P: PreimageOracleClient + Send + Sync + Clone + Debug + 'static,
     H: HintWriterClient + Send + Sync + Clone + Debug + 'static,
-    F: EvmFactory<Spec = BaseSpecId, BlockEnv = BlockEnv> + Send + Sync + Clone + Debug + 'static,
-    F::Tx: FromTxWithEncoded<base_common_consensus::BaseTxEnvelope>
-        + FromRecoveredTx<base_common_consensus::BaseTxEnvelope>
-        + BaseTxEnv,
+    F: EvmFactory<Spec = UnstableSpecId, BlockEnv = BlockEnv> + Send + Sync + Clone + Debug + 'static,
+    F::Tx: FromTxWithEncoded<base_common_consensus::UnstableTxEnvelope>
+        + FromRecoveredTx<base_common_consensus::UnstableTxEnvelope>
+        + UnstableTxEnv,
 {
     /// Creates a new driver.
     pub const fn new(
@@ -98,7 +98,7 @@ where
         self,
         on_block: impl FnMut(base_protocol::L2BlockInfo, B256),
     ) -> Result<Epilogue, FaultProofProgramError> {
-        let executor = BaseExecutor::new(
+        let executor = UnstableExecutor::new(
             self.rollup_config.as_ref(),
             self.l2_provider.clone(),
             self.l2_provider.clone(),

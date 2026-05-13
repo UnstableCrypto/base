@@ -27,7 +27,7 @@ pub struct WitnessParams<'a> {
     pub sequence_window: u64,
     /// L1 execution-layer RPC, used for the sequence-window fallback path.
     pub l1_node_url: &'a str,
-    /// Base consensus-layer RPC, used for the sequence-window fallback path.
+    /// Unstable consensus-layer RPC, used for the sequence-window fallback path.
     pub base_consensus_url: &'a str,
     /// Optional caller-pinned L1 head hash. When `None`, `SafeDB` is tried first then
     /// sequence-window fallback.

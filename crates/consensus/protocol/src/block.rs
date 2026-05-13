@@ -1,4 +1,4 @@
-//! Block Types for Base.
+//! Block Types for Unstable.
 
 use alloc::vec::Vec;
 
@@ -7,10 +7,10 @@ use alloy_eips::{BlockNumHash, eip2718::Eip2718Error, eip7685::EMPTY_REQUESTS_HA
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::{CancunPayloadFields, PraguePayloadFields};
 use alloy_rpc_types_eth::Block as RpcBlock;
-use base_common_consensus::{BaseBlock, BaseTxEnvelope};
+use base_common_consensus::{UnstableBlock, UnstableTxEnvelope};
 use base_common_genesis::ChainGenesis;
 use base_common_rpc_types_engine::{
-    BaseExecutionPayload, BaseExecutionPayloadSidecar, BasePayloadError,
+    UnstableExecutionPayload, UnstableExecutionPayloadSidecar, UnstablePayloadError,
 };
 use derive_more::Display;
 
@@ -140,8 +140,8 @@ pub enum FromBlockError {
     /// The first payload transaction has an unexpected type.
     #[error("First payload transaction has unexpected type: {0}")]
     UnexpectedTxType(u8),
-    /// Failed to decode the first transaction into a Base transaction.
-    #[error("Failed to decode the first transaction into a Base transaction: {0}")]
+    /// Failed to decode the first transaction into a Unstable transaction.
+    #[error("Failed to decode the first transaction into a Unstable transaction: {0}")]
     TxEnvelopeDecodeError(Eip2718Error),
     /// The first payload transaction is not a deposit transaction.
     #[error("First payload transaction is not a deposit transaction, type: {0}")]
@@ -149,9 +149,9 @@ pub enum FromBlockError {
     /// Failed to decode the [`L1BlockInfoTx`] from the deposit transaction.
     #[error("Failed to decode the L1BlockInfoTx from the deposit transaction: {0}")]
     BlockInfoDecodeError(#[from] DecodeError),
-    /// Failed to convert [`BaseExecutionPayload`] to [`BaseBlock`].
+    /// Failed to convert [`UnstableExecutionPayload`] to [`UnstableBlock`].
     #[error(transparent)]
-    BasePayload(#[from] BasePayloadError),
+    UnstablePayload(#[from] UnstablePayloadError),
 }
 
 impl PartialEq<Self> for FromBlockError {
@@ -180,8 +180,8 @@ impl L2BlockInfo {
         Self { block_info, l1_origin, seq_num }
     }
 
-    /// Constructs an [`L2BlockInfo`] from a given Base [`Block`] and [`ChainGenesis`].
-    pub fn from_block_and_genesis<T: AsRef<BaseTxEnvelope>>(
+    /// Constructs an [`L2BlockInfo`] from a given Unstable [`Block`] and [`ChainGenesis`].
+    pub fn from_block_and_genesis<T: AsRef<UnstableTxEnvelope>>(
         block: &Block<T>,
         genesis: &ChainGenesis,
     ) -> Result<Self, FromBlockError> {
@@ -210,15 +210,15 @@ impl L2BlockInfo {
         Ok(Self { block_info, l1_origin, seq_num: sequence_number })
     }
 
-    /// Constructs an [`L2BlockInfo`] From a given [`BaseExecutionPayload`] and [`ChainGenesis`].
+    /// Constructs an [`L2BlockInfo`] From a given [`UnstableExecutionPayload`] and [`ChainGenesis`].
     pub fn from_payload_and_genesis(
-        payload: BaseExecutionPayload,
+        payload: UnstableExecutionPayload,
         parent_beacon_block_root: Option<B256>,
         genesis: &ChainGenesis,
     ) -> Result<Self, FromBlockError> {
-        let block: BaseBlock = match payload {
-            BaseExecutionPayload::V4(_) => {
-                let sidecar = BaseExecutionPayloadSidecar::v4(
+        let block: UnstableBlock = match payload {
+            UnstableExecutionPayload::V4(_) => {
+                let sidecar = UnstableExecutionPayloadSidecar::v4(
                     CancunPayloadFields::new(
                         parent_beacon_block_root.unwrap_or_default(),
                         Vec::new(),
@@ -227,8 +227,8 @@ impl L2BlockInfo {
                 );
                 payload.try_into_block_with_sidecar(&sidecar)?
             }
-            BaseExecutionPayload::V3(_) => {
-                let sidecar = BaseExecutionPayloadSidecar::v3(CancunPayloadFields::new(
+            UnstableExecutionPayload::V3(_) => {
+                let sidecar = UnstableExecutionPayloadSidecar::v3(CancunPayloadFields::new(
                     parent_beacon_block_root.unwrap_or_default(),
                     Vec::new(),
                 ));
@@ -246,14 +246,14 @@ mod tests {
 
     use alloy_consensus::{Header, TxEnvelope};
     use alloy_primitives::b256;
-    use base_common_consensus::BaseBlock;
+    use base_common_consensus::UnstableBlock;
 
     use super::*;
     use crate::test_utils::RAW_BEDROCK_INFO_TX;
 
     #[test]
     fn test_rpc_block_into_info() {
-        let block: alloy_rpc_types_eth::Block<BaseTxEnvelope> = alloy_rpc_types_eth::Block {
+        let block: alloy_rpc_types_eth::Block<UnstableTxEnvelope> = alloy_rpc_types_eth::Block {
             header: alloy_rpc_types_eth::Header {
                 hash: b256!("04d6fefc87466405ba0e5672dcf5c75325b33e5437da2a42423080aab8be889b"),
                 inner: alloy_consensus::Header {
@@ -287,7 +287,7 @@ mod tests {
         };
         let tx_env = alloy_rpc_types_eth::Transaction {
             inner: alloy_consensus::transaction::Recovered::new_unchecked(
-                base_common_consensus::BaseTxEnvelope::Deposit(alloy_primitives::Sealed::new(
+                base_common_consensus::UnstableTxEnvelope::Deposit(alloy_primitives::Sealed::new(
                     base_common_consensus::TxDeposit {
                         input: alloy_primitives::Bytes::from(&RAW_BEDROCK_INFO_TX),
                         ..Default::default()
@@ -373,7 +373,7 @@ mod tests {
             l2: BlockNumHash { hash: B256::from([5; 32]), number: 1 },
             ..Default::default()
         };
-        let base_block = BaseBlock {
+        let base_block = UnstableBlock {
             header: Header {
                 number: 1,
                 parent_hash: B256::from([2; 32]),

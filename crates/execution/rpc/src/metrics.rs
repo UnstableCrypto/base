@@ -1,4 +1,4 @@
-//! RPC metrics unique for Base.
+//! RPC metrics unique for Unstable.
 
 use std::time::Instant;
 

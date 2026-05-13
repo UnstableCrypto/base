@@ -28,7 +28,7 @@ where
 {
     // If the canyon hardfork is active at the current timestamp, and it was not active at the
     // previous block timestamp (heuristically, block time is not perfectly constant at 2s), and the
-    // chain is a Base chain, then we need to force-deploy the create2 deployer contract.
+    // chain is a Unstable chain, then we need to force-deploy the create2 deployer contract.
     if chain_spec.is_canyon_active_at_timestamp(timestamp)
         && !chain_spec.is_canyon_active_at_timestamp(timestamp.saturating_sub(2))
     {

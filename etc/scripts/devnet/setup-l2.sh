@@ -24,9 +24,9 @@ echo "L1 RPC URL: $L1_RPC_URL"
 echo "L1 Chain ID: $L1_CHAIN_ID"
 echo "L2 Chain ID: $L2_CHAIN_ID"
 if [ -n "$L2_BASE_AZUL_BLOCK" ]; then
-  echo "Base Azul activation block: $L2_BASE_AZUL_BLOCK"
+  echo "Unstable Azul activation block: $L2_BASE_AZUL_BLOCK"
 else
-  echo "Base Azul activation block: <unset>"
+  echo "Unstable Azul activation block: <unset>"
 fi
 echo "Output directory: $OUTPUT_DIR"
 
@@ -140,11 +140,11 @@ if [ -n "$L2_BASE_AZUL_BLOCK" ]; then
   L2_BASE_AZUL_TIME=$((L2_GENESIS_TIME + L2_BLOCK_TIME * L2_BASE_AZUL_BLOCK))
 
   echo ""
-  echo "=== Configuring Base Azul Activation ==="
+  echo "=== Configuring Unstable Azul Activation ==="
   echo "L2 genesis time: $L2_GENESIS_TIME"
   echo "L2 block time: $L2_BLOCK_TIME"
-  echo "Base Azul activation block: $L2_BASE_AZUL_BLOCK"
-  echo "Derived Base Azul activation timestamp: $L2_BASE_AZUL_TIME"
+  echo "Unstable Azul activation block: $L2_BASE_AZUL_BLOCK"
+  echo "Derived Unstable Azul activation timestamp: $L2_BASE_AZUL_TIME"
 
   TMP_ROLLUP=$(mktemp)
   jq \
@@ -163,13 +163,13 @@ if [ -n "$L2_BASE_AZUL_BLOCK" ]; then
     >"$TMP_GENESIS"
   mv "$TMP_GENESIS" "$OUTPUT_DIR/genesis.json"
 
-  echo "Patched Base Azul activation into rollup and genesis configs"
+  echo "Patched Unstable Azul activation into rollup and genesis configs"
 else
   echo ""
-  echo "=== Configuring Base Azul Activation ==="
+  echo "=== Configuring Unstable Azul Activation ==="
   echo "L2 genesis time: $L2_GENESIS_TIME"
   echo "L2 block time: $L2_BLOCK_TIME"
-  echo "Base Azul activation block is unset; leaving base.azul and osakaTime unchanged"
+  echo "Unstable Azul activation block is unset; leaving base.azul and osakaTime unchanged"
 fi
 
 echo "Writing rollup-conductor.json (base fields stripped for op-conductor compatibility)..."

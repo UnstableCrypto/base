@@ -3,7 +3,7 @@
 use alloy_eips::Encodable2718;
 use alloy_primitives::{Address, B256, keccak256};
 use base_common_consensus::{OpTxType, TxDeposit};
-use base_common_evm::{BaseSpecId, BaseUpgrade, DefaultBase, DepositTransactionParts};
+use base_common_evm::{UnstableSpecId, UnstableUpgrade, DefaultUnstable, DepositTransactionParts};
 use revm::{
     Context, ExecuteCommitEvm, MainBuilder,
     context::{
@@ -22,9 +22,9 @@ pub fn check_deployment_code(
     expected_code_hash: B256,
 ) {
     let ctx = Context::base()
-        .with_cfg(CfgEnv::new_with_spec(BaseSpecId::new(BaseUpgrade::Jovian)))
+        .with_cfg(CfgEnv::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Jovian)))
         .modify_tx_chained(|tx| {
-            // Deposit + Base metadata.
+            // Deposit + Unstable metadata.
             tx.deposit = DepositTransactionParts {
                 source_hash: deployment_tx.source_hash,
                 mint: Some(deployment_tx.mint),
@@ -32,7 +32,7 @@ pub fn check_deployment_code(
             };
             tx.enveloped_tx = Some(deployment_tx.encoded_2718().into());
 
-            // Base meta
+            // Unstable meta
             tx.base.tx_type = OpTxType::Deposit as u8;
             tx.base.caller = deployment_tx.from;
             tx.base.kind = deployment_tx.to;

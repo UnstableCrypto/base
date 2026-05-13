@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 use core::fmt::Display;
 
 use async_trait::async_trait;
-use base_common_consensus::BaseBlock;
+use base_common_consensus::UnstableBlock;
 
 use crate::L2BlockInfo;
 
@@ -19,8 +19,8 @@ pub trait BatchValidationProvider {
     /// Errors if the block does not exist.
     async fn l2_block_info_by_number(&mut self, number: u64) -> Result<L2BlockInfo, Self::Error>;
 
-    /// Returns the [`BaseBlock`] for a given number.
+    /// Returns the [`UnstableBlock`] for a given number.
     ///
     /// Errors if no block is available for the given block number.
-    async fn block_by_number(&mut self, number: u64) -> Result<BaseBlock, Self::Error>;
+    async fn block_by_number(&mut self, number: u64) -> Result<UnstableBlock, Self::Error>;
 }

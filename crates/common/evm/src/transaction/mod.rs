@@ -1,19 +1,19 @@
-//! Contains the `[BaseTransaction]` type and its implementation.
+//! Contains the `[UnstableTransaction]` type and its implementation.
 
 mod traits;
-pub use traits::BaseTxTr;
+pub use traits::UnstableTxTr;
 
 mod core;
-pub use core::BaseTransaction;
+pub use core::UnstableTransaction;
 
 mod builder;
-pub use builder::BaseTransactionBuilder;
+pub use builder::UnstableTransactionBuilder;
 
 mod deposit;
 pub use deposit::{DEPOSIT_TRANSACTION_TYPE, DepositTransactionParts};
 
 mod error;
-pub use error::{BaseTransactionError, BuildError};
+pub use error::{UnstableTransactionError, BuildError};
 
 #[cfg(test)]
 mod tests {
@@ -26,7 +26,7 @@ mod tests {
     };
     use rstest::rstest;
 
-    use crate::{BaseTransaction, Builder, DefaultBase};
+    use crate::{UnstableTransaction, Builder, DefaultUnstable};
 
     #[rstest]
     #[case::short_hex(bytes!("FACADE"))]
@@ -56,7 +56,7 @@ mod tests {
         let mut evm =
             Context::base().with_db(BenchmarkDB::new_bytecode(contract_bytecode)).build_base();
 
-        let tx = BaseTransaction::builder()
+        let tx = UnstableTransaction::builder()
             .base(
                 TxEnv::builder()
                     .caller(EEADDRESS)

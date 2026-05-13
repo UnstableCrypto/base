@@ -58,9 +58,9 @@ impl SingleBatch {
 
     /// Checks if the batch is valid.
     ///
-    /// The batch format type is defined in the [Base Specs][specs].
+    /// The batch format type is defined in the [Unstable Specs][specs].
     ///
-    /// [specs]: https://specs.base.org/protocol/consensus/derivation#batch-format
+    /// [specs]: https://specs.unstable.org/protocol/consensus/derivation#batch-format
     pub fn check_batch(
         &self,
         cfg: &RollupConfig,
@@ -193,7 +193,7 @@ mod tests {
     use alloy_eips::eip2718::{Decodable2718, Encodable2718};
     use alloy_primitives::{Address, Sealed, Signature, TxKind, U256};
     use alloy_rlp::{Decodable, Encodable};
-    use base_common_consensus::{BaseTxEnvelope, TxDeposit};
+    use base_common_consensus::{UnstableTxEnvelope, TxDeposit};
     use base_common_genesis::HardForkConfig;
     use tracing::Level;
     use tracing_subscriber::layer::SubscriberExt;
@@ -569,7 +569,7 @@ mod tests {
             is_system_transaction: false,
             input: Default::default(),
         };
-        let envelope = BaseTxEnvelope::Deposit(Sealed::new(tx));
+        let envelope = UnstableTxEnvelope::Deposit(Sealed::new(tx));
         let encoded = envelope.encoded_2718();
         transactions.push(encoded.into());
 

@@ -8,10 +8,10 @@ use ambassador::{self, Delegate};
 use crate::{
     DecodeError, L1BlockInfoIsthmus,
     info::{
-        L1BlockInfoBedrockBaseFields, L1BlockInfoEcotoneBaseFields,
-        bedrock_base::ambassador_impl_L1BlockInfoBedrockBaseFields,
-        ecotone_base::ambassador_impl_L1BlockInfoEcotoneBaseFields,
-        isthmus::{L1BlockInfoIsthmusBaseFields, ambassador_impl_L1BlockInfoIsthmusBaseFields},
+        L1BlockInfoBedrockUnstableFields, L1BlockInfoEcotoneUnstableFields,
+        bedrock_base::ambassador_impl_L1BlockInfoBedrockUnstableFields,
+        ecotone_base::ambassador_impl_L1BlockInfoEcotoneUnstableFields,
+        isthmus::{L1BlockInfoIsthmusUnstableFields, ambassador_impl_L1BlockInfoIsthmusUnstableFields},
     },
 };
 
@@ -22,13 +22,13 @@ use crate::{
 /// | Bytes   | Field                    |
 /// +---------+--------------------------+
 /// | 4       | Function signature       |
-/// | 4       | `BaseFeeScalar`            |
-/// | 4       | `BlobBaseFeeScalar`        |
+/// | 4       | `UnstableFeeScalar`            |
+/// | 4       | `BlobUnstableFeeScalar`        |
 /// | 8       | `SequenceNumber`           |
 /// | 8       | Timestamp                |
 /// | 8       | `L1BlockNumber`            |
-/// | 32      | `BaseFee`                  |
-/// | 32      | `BlobBaseFee`              |
+/// | 32      | `UnstableFee`                  |
+/// | 32      | `BlobUnstableFee`              |
 /// | 32      | `BlockHash`                |
 /// | 32      | `BatcherHash`              |
 /// | 4       | `OperatorFeeScalar`        |
@@ -38,9 +38,9 @@ use crate::{
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Default, Copy, Delegate)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(clippy::duplicated_attributes)]
-#[delegate(L1BlockInfoBedrockBaseFields, target = "base")]
-#[delegate(L1BlockInfoEcotoneBaseFields, target = "base")]
-#[delegate(L1BlockInfoIsthmusBaseFields, target = "base")]
+#[delegate(L1BlockInfoBedrockUnstableFields, target = "base")]
+#[delegate(L1BlockInfoEcotoneUnstableFields, target = "base")]
+#[delegate(L1BlockInfoIsthmusUnstableFields, target = "base")]
 pub struct L1BlockInfoJovian {
     /// Fields inherited from Isthmus.
     #[cfg_attr(feature = "serde", serde(flatten))]
@@ -49,12 +49,12 @@ pub struct L1BlockInfoJovian {
     pub da_footprint_gas_scalar: u16,
 }
 /// Accessors to fields available in Jovian and later.
-pub trait L1BlockInfoJovianBaseFields: L1BlockInfoIsthmusBaseFields {
+pub trait L1BlockInfoJovianUnstableFields: L1BlockInfoIsthmusUnstableFields {
     /// The DA footprint gas scalar
     fn da_footprint_gas_scalar(&self) -> u16;
 }
 
-impl L1BlockInfoJovianBaseFields for L1BlockInfoJovian {
+impl L1BlockInfoJovianUnstableFields for L1BlockInfoJovian {
     fn da_footprint_gas_scalar(&self) -> u16 {
         self.da_footprint_gas_scalar
     }
@@ -62,7 +62,7 @@ impl L1BlockInfoJovianBaseFields for L1BlockInfoJovian {
 
 /// Accessors for all Jovian fields.
 pub trait L1BlockInfoJovianFields:
-    L1BlockInfoIsthmusBaseFields + L1BlockInfoJovianBaseFields
+    L1BlockInfoIsthmusUnstableFields + L1BlockInfoJovianUnstableFields
 {
 }
 

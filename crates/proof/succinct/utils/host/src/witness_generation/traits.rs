@@ -14,7 +14,7 @@ use sp1_sdk::SP1Stdin;
 use crate::witness_generation::{OnlineBlobStore, PreimageWitnessCollector};
 
 /// Default oracle type backed by native preimage channels.
-pub type DefaultOracleBase = CachingOracle<OracleReader<NativeChannel>, HintWriter<NativeChannel>>;
+pub type DefaultOracleUnstable = CachingOracle<OracleReader<NativeChannel>, HintWriter<NativeChannel>>;
 
 /// Generates witness data by driving derivation and execution pipelines.
 #[async_trait]
@@ -23,10 +23,10 @@ pub trait WitnessGenerator {
     type WitnessData: WitnessData;
     /// Executor that creates and runs the derivation pipeline.
     type WitnessExecutor: WitnessExecutor<
-            O = PreimageWitnessCollector<DefaultOracleBase>,
-            B = OnlineBlobStore<OracleBlobProvider<DefaultOracleBase>>,
-            L1 = OracleL1ChainProvider<PreimageWitnessCollector<DefaultOracleBase>>,
-            L2 = OracleL2ChainProvider<PreimageWitnessCollector<DefaultOracleBase>>,
+            O = PreimageWitnessCollector<DefaultOracleUnstable>,
+            B = OnlineBlobStore<OracleBlobProvider<DefaultOracleUnstable>>,
+            L1 = OracleL1ChainProvider<PreimageWitnessCollector<DefaultOracleUnstable>>,
+            L2 = OracleL2ChainProvider<PreimageWitnessCollector<DefaultOracleUnstable>>,
         > + Sync
         + Send;
 

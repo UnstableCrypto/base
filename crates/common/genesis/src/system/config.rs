@@ -30,7 +30,7 @@ pub struct SystemConfig {
     pub scalar: U256,
     /// Gas limit value
     pub gas_limit: u64,
-    /// Base fee scalar value
+    /// Unstable fee scalar value
     pub base_fee_scalar: Option<u64>,
     /// Blob base fee scalar value
     pub blob_base_fee_scalar: Option<u64>,
@@ -43,7 +43,7 @@ pub struct SystemConfig {
     /// The operator fee constant (isthmus hardfork)
     pub operator_fee_constant: Option<u64>,
     /// Min base fee (jovian hardfork)
-    /// Note: according to the [spec](https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/jovian/system-config.md#initialization), as long as the `MinBaseFee` is not
+    /// Note: according to the [spec](https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/jovian/system-config.md#initialization), as long as the `MinUnstableFee` is not
     /// explicitly set, the default value (`0`) will be systematically applied.
     pub min_base_fee: Option<u64>,
     /// DA footprint gas scalar (Jovian hardfork)

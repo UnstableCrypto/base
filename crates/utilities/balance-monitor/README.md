@@ -1,6 +1,6 @@
 # `base-balance-monitor`
 
-Block-driven onchain balance monitoring for Base services.
+Block-driven onchain balance monitoring for Unstable services.
 
 Provides [`BalanceMonitorLayer`], an alloy [`ProviderLayer`] that spawns a
 background task to poll an account's balance on every new block and publish it

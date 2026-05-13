@@ -9,13 +9,13 @@ mod app;
 mod cli;
 mod config;
 
-use app::BaseApp;
-use cli::BaseCli;
+use app::UnstableApp;
+use cli::UnstableCli;
 
 fn main() {
     base_cli_utils::init_common!();
 
-    if let Err(err) = BaseApp::new(BaseCli::parse()).run() {
+    if let Err(err) = UnstableApp::new(UnstableCli::parse()).run() {
         eprintln!("Error: {err:?}");
         std::process::exit(1);
     }

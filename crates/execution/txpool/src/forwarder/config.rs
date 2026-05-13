@@ -19,7 +19,7 @@ pub struct ForwarderConfig {
     pub max_batch_size: usize,
     /// Maximum RPC send retries before dropping a batch.
     pub max_retries: u32,
-    /// Base delay between retries (doubles each attempt).
+    /// Unstable delay between retries (doubles each attempt).
     pub retry_backoff: Duration,
     /// Per-request timeout for the HTTP client.
     pub request_timeout: Duration,

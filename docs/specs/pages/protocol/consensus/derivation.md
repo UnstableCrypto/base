@@ -87,7 +87,7 @@ denominated in seconds):
   - `prev_l2_timestamp` is the timestamp of the L2 block immediately preceding this one. If there
     is no preceding block, then this is the genesis block, and its timestamp is explicitly
     specified.
-  - `l2_block_time` is a configurable parameter of the time between L2 blocks (2s on Base).
+  - `l2_block_time` is a configurable parameter of the time between L2 blocks (2s on Unstable).
 
 - `l1_origin.timestamp <= block.timestamp <= max_l2_timestamp`, where
   - `max_l2_timestamp = max(l1_origin.timestamp + max_sequencer_drift, prev_l2_timestamp + l2_block_time)`
@@ -144,7 +144,7 @@ protocol upgrades.
 The `SystemConfig` is an L1 contract that emits rollup configuration changes as log events.
 The derivation pipeline picks up these events and applies them to L2 state, ensuring every
 node converges on the same configuration at the same L2 block height. `SystemConfig` is the
-source of truth for configuration values within Base.
+source of truth for configuration values within Unstable.
 
 ### System Config Updates
 
@@ -160,12 +160,12 @@ In version `0`, the following update types are supported:
 - Type `0`: `batcherHash` overwrite, as `bytes32` payload
 - Type `1`: Pre-Ecotone, `overhead` and `scalar` overwrite, as two packed `uint256` entries. After
   Ecotone upgrade, `overhead` is ignored and `scalar` is interpreted as a versioned encoding that
-  updates `baseFeeScalar` and `blobBaseFeeScalar`
+  updates `baseFeeScalar` and `blobUnstableFeeScalar`
 - Type `2`: `gasLimit` overwrite, as `uint64` payload
 - Type `3`: `unsafeBlockSigner` overwrite, as `address` payload
 - Type `4`: `eip1559Params` overwrite, as `uint256` payload encoding denomination and elasticity
 - Type `5`: `operatorFeeParams` overwrite, as `uint256` payload encoding scalar and constant
-- Type `6`: `minBaseFee` overwrite, as `uint64` payload
+- Type `6`: `minUnstableFee` overwrite, as `uint64` payload
 - Type `7`: `daFootprintGasScalar` overwrite, as `uint16` payload
 
 If a System Config Update cannot be parsed for any reason, it is not applied and is instead skipped.
@@ -486,7 +486,7 @@ transaction is one with the following properties:
 - The [`to`] field is equal to the configured batcher inbox address.
 
 - The transaction type is one of `0`, `1`, `2`, `3`, or `0x7e` (L2 [Deposited transaction type][g-deposit-tx-type], to
-  support force-inclusion of batcher transactions on Base).
+  support force-inclusion of batcher transactions on Unstable).
 
 - The sender, as recovered from the transaction signature (`v`, `r`, and `s`), is the batcher
   address loaded from the system config matching the L1 block of the data.

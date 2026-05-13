@@ -7,7 +7,7 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblockDecodeError,
+    ExecutionPayloadUnstableV1, ExecutionPayloadFlashblockDeltaV1, FlashblockDecodeError,
     FlashblocksPayloadV1, Metadata,
 };
 
@@ -21,8 +21,8 @@ pub struct Flashblock {
     pub payload_id: PayloadId,
     /// Index of this flashblock within the block.
     pub index: u64,
-    /// Base payload data (only present on first flashblock).
-    pub base: Option<ExecutionPayloadBaseV1>,
+    /// Unstable payload data (only present on first flashblock).
+    pub base: Option<ExecutionPayloadUnstableV1>,
     /// Delta containing transactions and state changes.
     pub diff: ExecutionPayloadFlashblockDeltaV1,
     /// Associated metadata.
@@ -335,7 +335,7 @@ mod tests {
         FlashblocksPayloadV1 {
             payload_id: PayloadId::default(),
             index: 7,
-            base: Some(ExecutionPayloadBaseV1 {
+            base: Some(ExecutionPayloadUnstableV1 {
                 parent_beacon_block_root: B256::from([1u8; 32]),
                 parent_hash: B256::from([2u8; 32]),
                 fee_recipient: Address::ZERO,

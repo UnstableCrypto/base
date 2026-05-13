@@ -170,7 +170,7 @@ impl From<ProofType> for BackendType {
 pub enum BackendConfig {
     /// Succinct backend settings.
     OpSuccinct {
-        /// Base consensus node RPC URL.
+        /// Unstable consensus node RPC URL.
         base_consensus_url: String,
         /// L1 execution node RPC URL.
         l1_node_url: String,
@@ -195,7 +195,7 @@ pub enum BackendConfig {
     },
     /// SP1 Network backend settings.
     Network {
-        /// Base consensus node RPC URL.
+        /// Unstable consensus node RPC URL.
         base_consensus_url: String,
         /// L1 execution node RPC URL.
         l1_node_url: String,

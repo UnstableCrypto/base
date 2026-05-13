@@ -11,7 +11,7 @@ use alloy_genesis::ChainConfig as GenesisChainConfig;
 use alloy_provider::RootProvider;
 use base_common_chains::ChainConfig;
 use base_common_genesis::RollupConfig;
-use base_common_network::Base;
+use base_common_network::Unstable;
 use base_consensus_derive::{Pipeline, SignalReceiver, StatefulAttributesBuilder};
 use base_consensus_engine::{Engine, EngineClient, EngineState};
 use base_consensus_providers::{
@@ -82,7 +82,7 @@ impl L1Config {
     }
 }
 
-/// The standard implementation of the [`RollupNode`] service, using the governance approved Base
+/// The standard implementation of the [`RollupNode`] service, using the governance approved Unstable
 /// configuration of components.
 #[derive(Debug)]
 pub struct RollupNode {
@@ -91,7 +91,7 @@ pub struct RollupNode {
     /// The L1 configuration.
     pub l1_config: L1Config,
     /// The L2 EL provider.
-    pub l2_provider: RootProvider<Base>,
+    pub l2_provider: RootProvider<Unstable>,
     /// Whether to trust the L2 RPC.
     pub l2_trust_rpc: bool,
     /// The [`EngineConfig`] for the node.

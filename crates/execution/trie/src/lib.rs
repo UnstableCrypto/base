@@ -12,7 +12,7 @@
 use reth_ethereum_primitives as _;
 
 pub mod api;
-pub use api::{BaseProofsInitialStateStore, BaseProofsStore, BlockStateDiff};
+pub use api::{UnstableProofsInitialStateStore, UnstableProofsStore, BlockStateDiff};
 
 pub mod initialize;
 pub use initialize::InitializationJob;
@@ -28,13 +28,13 @@ pub use db::{MdbxAccountCursor, MdbxProofsStorage, MdbxStorageCursor, MdbxTrieCu
 pub mod metrics;
 #[cfg(feature = "metrics")]
 pub use metrics::{
-    BaseProofsHashedAccountCursor, BaseProofsHashedStorageCursor, BaseProofsStorage,
-    BaseProofsTrieCursor, StorageMetrics,
+    UnstableProofsHashedAccountCursor, UnstableProofsHashedStorageCursor, UnstableProofsStorage,
+    UnstableProofsTrieCursor, StorageMetrics,
 };
 
 #[cfg(not(feature = "metrics"))]
-/// Alias for [`BaseProofsStore`] type without metrics (`metrics` feature is disabled).
-pub type BaseProofsStorage<S> = S;
+/// Alias for [`UnstableProofsStore`] type without metrics (`metrics` feature is disabled).
+pub type UnstableProofsStorage<S> = S;
 
 pub mod proof;
 
@@ -45,17 +45,17 @@ pub mod live;
 pub mod cursor;
 #[cfg(not(feature = "metrics"))]
 pub use cursor::{
-    BaseProofsHashedAccountCursor, BaseProofsHashedStorageCursor, BaseProofsTrieCursor,
+    UnstableProofsHashedAccountCursor, UnstableProofsHashedStorageCursor, UnstableProofsTrieCursor,
 };
 
 pub mod cursor_factory;
-pub use cursor_factory::{BaseProofsHashedAccountCursorFactory, BaseProofsTrieCursorFactory};
+pub use cursor_factory::{UnstableProofsHashedAccountCursorFactory, UnstableProofsTrieCursorFactory};
 
 pub mod error;
-pub use error::{BaseProofsStorageError, BaseProofsStorageResult};
+pub use error::{UnstableProofsStorageError, UnstableProofsStorageResult};
 
 mod prune;
 pub use prune::{
-    BaseProofStoragePruner, BaseProofStoragePrunerResult, BaseProofStoragePrunerTask, PrunerError,
+    UnstableProofStoragePruner, UnstableProofStoragePrunerResult, UnstableProofStoragePrunerTask, PrunerError,
     PrunerOutput,
 };

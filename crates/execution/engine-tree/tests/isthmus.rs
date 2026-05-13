@@ -6,10 +6,10 @@ use alloy_chains::Chain;
 use alloy_consensus::Header;
 use alloy_primitives::{Address, B256, U256, keccak256};
 use base_common_consensus::{
-    BaseBlock, BasePrimitives, BaseReceipt, BaseTransactionSigned, Predeploys,
+    UnstableBlock, UnstablePrimitives, UnstableReceipt, UnstableTransactionSigned, Predeploys,
 };
-use base_execution_chainspec::{BaseChainSpec, BaseChainSpecBuilder};
-use base_node_core::{BaseEngineTypes, BaseNode, engine::BaseEngineValidator};
+use base_execution_chainspec::{UnstableChainSpec, UnstableChainSpecBuilder};
+use base_node_core::{UnstableEngineTypes, UnstableNode, engine::UnstableEngineValidator};
 use reth_chain_state::{ComputedTrieData, ExecutedBlock};
 use reth_db_common::init::init_genesis;
 use reth_engine_primitives::PayloadValidator;
@@ -32,12 +32,12 @@ fn legacy_isthmus_validation_errors_when_parent_is_only_in_memory() {
     let parent_hash = parent_executed_block.recovered_block().hash();
     let child_block = recovered_empty_block(2, parent_hash, Some(B256::ZERO));
     let child_state_updates = HashedPostState::default();
-    let validator = BaseEngineValidator::<_, BaseTransactionSigned, BaseChainSpec>::new::<
+    let validator = UnstableEngineValidator::<_, UnstableTransactionSigned, UnstableChainSpec>::new::<
         KeccakKeyHasher,
     >(Arc::clone(&chain_spec), provider.clone());
 
     let legacy_result =
-        PayloadValidator::<BaseEngineTypes>::validate_block_post_execution_with_hashed_state(
+        PayloadValidator::<UnstableEngineTypes>::validate_block_post_execution_with_hashed_state(
             &validator,
             &child_state_updates,
             &child_block,
@@ -68,7 +68,7 @@ fn isthmus_validation_rejects_bad_withdrawals_root_with_in_memory_parent_overlay
     );
     let parent_state_provider =
         parent_state_provider_builder.build().expect("build overlay parent state provider");
-    let validator = BaseEngineValidator::<_, BaseTransactionSigned, BaseChainSpec>::new::<
+    let validator = UnstableEngineValidator::<_, UnstableTransactionSigned, UnstableChainSpec>::new::<
         KeccakKeyHasher,
     >(chain_spec, provider);
 
@@ -98,7 +98,7 @@ fn isthmus_validation_accepts_valid_withdrawals_root_with_in_memory_parent_overl
     );
     let parent_state_provider =
         parent_state_provider_builder.build().expect("build overlay parent state provider");
-    let validator = BaseEngineValidator::<_, BaseTransactionSigned, BaseChainSpec>::new::<
+    let validator = UnstableEngineValidator::<_, UnstableTransactionSigned, UnstableChainSpec>::new::<
         KeccakKeyHasher,
     >(chain_spec, provider);
 
@@ -112,28 +112,28 @@ fn isthmus_validation_accepts_valid_withdrawals_root_with_in_memory_parent_overl
 }
 
 fn isthmus_parent_overlay_fixture() -> (
-    Arc<BaseChainSpec>,
+    Arc<UnstableChainSpec>,
     impl BlockReader + StateProviderFactory + StateReader + Clone,
     B256,
-    ExecutedBlock<BasePrimitives>,
+    ExecutedBlock<UnstablePrimitives>,
     B256,
 ) {
     let chain_spec = Arc::new(
-        BaseChainSpecBuilder::default()
+        UnstableChainSpecBuilder::default()
             .chain(Chain::dev())
             .genesis(Default::default())
             .isthmus_activated()
             .build(),
     );
     let provider_factory =
-        create_test_provider_factory_with_node_types::<BaseNode>(Arc::clone(&chain_spec));
+        create_test_provider_factory_with_node_types::<UnstableNode>(Arc::clone(&chain_spec));
     let genesis_hash = init_genesis(&provider_factory).expect("initialize genesis");
     let provider = BlockchainProvider::new(provider_factory).expect("create blockchain provider");
 
     let parent_block = recovered_empty_block(1, genesis_hash, None);
     let (parent_execution_output, parent_hashed_state, parent_withdrawals_root) =
         parent_message_passer_update();
-    let parent_executed_block = ExecutedBlock::<BasePrimitives>::new(
+    let parent_executed_block = ExecutedBlock::<UnstablePrimitives>::new(
         Arc::new(parent_block),
         Arc::new(parent_execution_output),
         ComputedTrieData {
@@ -145,7 +145,7 @@ fn isthmus_parent_overlay_fixture() -> (
     (chain_spec, provider, genesis_hash, parent_executed_block, parent_withdrawals_root)
 }
 
-fn parent_message_passer_update() -> (BlockExecutionOutput<BaseReceipt>, HashedPostState, B256) {
+fn parent_message_passer_update() -> (BlockExecutionOutput<UnstableReceipt>, HashedPostState, B256) {
     let storage_slots = [(U256::from(1), U256::from(11)), (U256::from(2), U256::from(22))];
     let parent_storage = HashedStorage::from_iter(
         false,
@@ -183,10 +183,10 @@ fn recovered_empty_block(
     number: u64,
     parent_hash: B256,
     withdrawals_root: Option<B256>,
-) -> RecoveredBlock<BaseBlock> {
+) -> RecoveredBlock<UnstableBlock> {
     let header =
         Header { parent_hash, number, timestamp: number, withdrawals_root, ..Default::default() };
-    let block = BaseBlock { header, body: Default::default() };
+    let block = UnstableBlock { header, body: Default::default() };
 
     RecoveredBlock::new_sealed(SealedBlock::seal_slow(block), Vec::new())
 }

@@ -12,7 +12,7 @@ use alloy_rpc_types_engine::{
     CancunPayloadFields, ExecutionPayloadInputV2, ExecutionPayloadV3, PraguePayloadFields,
 };
 
-use crate::{BaseExecutionPayload, BaseExecutionPayloadSidecar, BaseExecutionPayloadV4};
+use crate::{UnstableExecutionPayload, UnstableExecutionPayloadSidecar, UnstableExecutionPayloadV4};
 
 /// Maximum allowed decoded size for a snappy-compressed [`NetworkPayloadEnvelope`].
 ///
@@ -23,21 +23,21 @@ use crate::{BaseExecutionPayload, BaseExecutionPayloadSidecar, BaseExecutionPayl
 /// downstream length, SSZ, or signature check runs.
 pub const MAX_DECOMPRESSED_ENVELOPE_BYTES: usize = 10 * (1 << 20);
 
-/// A thin wrapper around [`BaseExecutionPayload`] that includes the parent beacon block root.
+/// A thin wrapper around [`UnstableExecutionPayload`] that includes the parent beacon block root.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct BaseExecutionPayloadEnvelope {
+pub struct UnstableExecutionPayloadEnvelope {
     /// The parent beacon block root, if any.
     pub parent_beacon_block_root: Option<B256>,
     /// The execution payload.
-    pub execution_payload: BaseExecutionPayload,
+    pub execution_payload: UnstableExecutionPayload,
 }
 
-impl BaseExecutionPayloadEnvelope {
+impl UnstableExecutionPayloadEnvelope {
     /// Returns the payload hash over the ssz encoded payload envelope data.
     ///
-    /// <https://specs.base.org/protocol/consensus/p2p#block-signatures>
+    /// <https://specs.unstable.org/protocol/consensus/p2p#block-signatures>
     #[cfg(feature = "std")]
     pub fn payload_hash(&self) -> crate::PayloadHash {
         use ssz::Encode;
@@ -47,17 +47,17 @@ impl BaseExecutionPayloadEnvelope {
 }
 
 #[cfg(feature = "std")]
-impl ssz::Encode for BaseExecutionPayloadEnvelope {
+impl ssz::Encode for UnstableExecutionPayloadEnvelope {
     fn is_ssz_fixed_len() -> bool {
         false
     }
 
     fn ssz_append(&self, buf: &mut Vec<u8>) {
         // Write parent beacon block root only if the payload is not a v1 or v2 payload.
-        // <https://specs.base.org/protocol/consensus/p2p#block-encoding>
+        // <https://specs.unstable.org/protocol/consensus/p2p#block-encoding>
         if !matches!(
             self.execution_payload,
-            BaseExecutionPayload::V1(_) | BaseExecutionPayload::V2(_)
+            UnstableExecutionPayload::V1(_) | UnstableExecutionPayload::V2(_)
         ) {
             buf.extend_from_slice(self.parent_beacon_block_root.unwrap_or_default().as_slice());
         }
@@ -75,7 +75,7 @@ impl ssz::Encode for BaseExecutionPayloadEnvelope {
 }
 
 #[cfg(feature = "std")]
-impl ssz::Decode for BaseExecutionPayloadEnvelope {
+impl ssz::Decode for UnstableExecutionPayloadEnvelope {
     fn is_ssz_fixed_len() -> bool {
         false
     }
@@ -100,13 +100,13 @@ impl ssz::Decode for BaseExecutionPayloadEnvelope {
 
         // Decode payload
         let execution_payload =
-            BaseExecutionPayload::from_ssz_bytes(&bytes[B256::ssz_fixed_len()..])?;
+            UnstableExecutionPayload::from_ssz_bytes(&bytes[B256::ssz_fixed_len()..])?;
 
         Ok(Self { parent_beacon_block_root, execution_payload })
     }
 }
 
-impl From<NetworkPayloadEnvelope> for BaseExecutionPayloadEnvelope {
+impl From<NetworkPayloadEnvelope> for UnstableExecutionPayloadEnvelope {
     fn from(envelope: NetworkPayloadEnvelope) -> Self {
         Self {
             execution_payload: envelope.payload,
@@ -115,27 +115,27 @@ impl From<NetworkPayloadEnvelope> for BaseExecutionPayloadEnvelope {
     }
 }
 
-/// Struct aggregating [`BaseExecutionPayload`] and [`BaseExecutionPayloadSidecar`] and encapsulating
+/// Struct aggregating [`UnstableExecutionPayload`] and [`UnstableExecutionPayloadSidecar`] and encapsulating
 /// complete payload supplied for execution.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ExecutionData {
     /// Execution payload.
-    pub payload: BaseExecutionPayload,
+    pub payload: UnstableExecutionPayload,
     /// Additional fork-specific fields.
-    pub sidecar: BaseExecutionPayloadSidecar,
+    pub sidecar: UnstableExecutionPayloadSidecar,
 }
 
 impl ExecutionData {
     /// Creates new instance of [`ExecutionData`].
-    pub const fn new(payload: BaseExecutionPayload, sidecar: BaseExecutionPayloadSidecar) -> Self {
+    pub const fn new(payload: UnstableExecutionPayload, sidecar: UnstableExecutionPayloadSidecar) -> Self {
         Self { payload, sidecar }
     }
 
-    /// Conversion from [`alloy_consensus::Block`]. Also returns the [`BaseExecutionPayloadSidecar`]
+    /// Conversion from [`alloy_consensus::Block`]. Also returns the [`UnstableExecutionPayloadSidecar`]
     /// extracted from the block.
     ///
-    /// See also [`from_block_unchecked`](BaseExecutionPayload::from_block_slow).
+    /// See also [`from_block_unchecked`](UnstableExecutionPayload::from_block_slow).
     ///
     /// Note: This re-calculates the block hash.
     pub fn from_block_slow<T, H>(block: &Block<T, H>) -> Self
@@ -143,43 +143,43 @@ impl ExecutionData {
         T: Encodable2718 + Transaction,
         H: BlockHeader + Sealable,
     {
-        let (payload, sidecar) = BaseExecutionPayload::from_block_slow(block);
+        let (payload, sidecar) = UnstableExecutionPayload::from_block_slow(block);
 
         Self::new(payload, sidecar)
     }
 
-    /// Conversion from [`alloy_consensus::Block`]. Also returns the [`BaseExecutionPayloadSidecar`]
+    /// Conversion from [`alloy_consensus::Block`]. Also returns the [`UnstableExecutionPayloadSidecar`]
     /// extracted from the block.
     ///
-    /// See also [`BaseExecutionPayload::from_block_unchecked`].
+    /// See also [`UnstableExecutionPayload::from_block_unchecked`].
     pub fn from_block_unchecked<T, H>(block_hash: B256, block: &Block<T, H>) -> Self
     where
         T: Encodable2718 + Transaction,
         H: BlockHeader,
     {
-        let (payload, sidecar) = BaseExecutionPayload::from_block_unchecked(block_hash, block);
+        let (payload, sidecar) = UnstableExecutionPayload::from_block_unchecked(block_hash, block);
 
         Self::new(payload, sidecar)
     }
 
     /// Creates a new instance from args to engine API method `newPayloadV2`.
     ///
-    /// Spec: <https://specs.base.org/protocol/execution#engine_newpayloadv2>
+    /// Spec: <https://specs.unstable.org/protocol/execution#engine_newpayloadv2>
     pub fn v2(payload: ExecutionPayloadInputV2) -> Self {
-        Self::new(BaseExecutionPayload::v2(payload), BaseExecutionPayloadSidecar::default())
+        Self::new(UnstableExecutionPayload::v2(payload), UnstableExecutionPayloadSidecar::default())
     }
 
     /// Creates a new instance from args to engine API method `newPayloadV3`.
     ///
-    /// Spec: <https://specs.base.org/protocol/execution#engine_newpayloadv3>
+    /// Spec: <https://specs.unstable.org/protocol/execution#engine_newpayloadv3>
     pub fn v3(
         payload: ExecutionPayloadV3,
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
     ) -> Self {
         Self::new(
-            BaseExecutionPayload::v3(payload),
-            BaseExecutionPayloadSidecar::v3(CancunPayloadFields::new(
+            UnstableExecutionPayload::v3(payload),
+            UnstableExecutionPayloadSidecar::v3(CancunPayloadFields::new(
                 parent_beacon_block_root,
                 versioned_hashes,
             )),
@@ -188,16 +188,16 @@ impl ExecutionData {
 
     /// Creates a new instance from args to engine API method `newPayloadV4`.
     ///
-    /// Spec: <https://specs.base.org/protocol/execution#engine_newpayloadv4>
+    /// Spec: <https://specs.unstable.org/protocol/execution#engine_newpayloadv4>
     pub fn v4(
-        payload: BaseExecutionPayloadV4,
+        payload: UnstableExecutionPayloadV4,
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
         execution_requests: Requests,
     ) -> Self {
         Self::new(
-            BaseExecutionPayload::v4(payload),
-            BaseExecutionPayloadSidecar::v4(
+            UnstableExecutionPayload::v4(payload),
+            UnstableExecutionPayloadSidecar::v4(
                 CancunPayloadFields::new(parent_beacon_block_root, versioned_hashes),
                 PraguePayloadFields::new(execution_requests),
             ),
@@ -212,14 +212,14 @@ impl ExecutionData {
     /// Return the withdrawals for the payload or attributes.
     pub const fn withdrawals(&self) -> Option<&Vec<Withdrawal>> {
         match &self.payload {
-            BaseExecutionPayload::V1(_) => None,
-            BaseExecutionPayload::V2(execution_payload_v2) => {
+            UnstableExecutionPayload::V1(_) => None,
+            UnstableExecutionPayload::V2(execution_payload_v2) => {
                 Some(&execution_payload_v2.withdrawals)
             }
-            BaseExecutionPayload::V3(execution_payload_v3) => {
+            UnstableExecutionPayload::V3(execution_payload_v3) => {
                 Some(execution_payload_v3.withdrawals())
             }
-            BaseExecutionPayload::V4(base_execution_payload_v4) => {
+            UnstableExecutionPayload::V4(base_execution_payload_v4) => {
                 Some(base_execution_payload_v4.payload_inner.withdrawals())
             }
         }
@@ -248,7 +248,7 @@ impl ExecutionData {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NetworkPayloadEnvelope {
     /// The execution payload.
-    pub payload: BaseExecutionPayload,
+    pub payload: UnstableExecutionPayload,
     /// A signature for the payload.
     pub signature: Signature,
     /// The hash of the payload.
@@ -294,7 +294,7 @@ impl NetworkPayloadEnvelope {
         let signature = Signature::try_from(sig_data)?;
         let hash = PayloadHash::from(block_data);
 
-        let payload = BaseExecutionPayload::V1(
+        let payload = UnstableExecutionPayload::V1(
             alloy_rpc_types_engine::ExecutionPayloadV1::from_ssz_bytes(block_data)?,
         );
 
@@ -306,7 +306,7 @@ impl NetworkPayloadEnvelope {
     pub fn encode_v1(&self) -> Result<Vec<u8>, PayloadEnvelopeEncodeError> {
         use ssz::Encode;
         let execution_payload_v1 = match &self.payload {
-            BaseExecutionPayload::V1(execution_payload_v1) => execution_payload_v1,
+            UnstableExecutionPayload::V1(execution_payload_v1) => execution_payload_v1,
             _ => return Err(PayloadEnvelopeEncodeError::WrongVersion),
         };
 
@@ -337,7 +337,7 @@ impl NetworkPayloadEnvelope {
         let signature = Signature::try_from(sig_data)?;
         let hash = PayloadHash::from(block_data);
 
-        let payload = BaseExecutionPayload::V2(
+        let payload = UnstableExecutionPayload::V2(
             alloy_rpc_types_engine::ExecutionPayloadV2::from_ssz_bytes(block_data)?,
         );
 
@@ -349,7 +349,7 @@ impl NetworkPayloadEnvelope {
     pub fn encode_v2(&self) -> Result<Vec<u8>, PayloadEnvelopeEncodeError> {
         use ssz::Encode;
         let execution_payload_v2 = match &self.payload {
-            BaseExecutionPayload::V2(execution_payload_v2) => execution_payload_v2,
+            UnstableExecutionPayload::V2(execution_payload_v2) => execution_payload_v2,
             _ => return Err(PayloadEnvelopeEncodeError::WrongVersion),
         };
 
@@ -384,7 +384,7 @@ impl NetworkPayloadEnvelope {
             [parent_beacon_block_root.as_slice(), block_data].concat().as_slice(),
         );
 
-        let payload = BaseExecutionPayload::V3(
+        let payload = UnstableExecutionPayload::V3(
             alloy_rpc_types_engine::ExecutionPayloadV3::from_ssz_bytes(block_data)?,
         );
 
@@ -401,7 +401,7 @@ impl NetworkPayloadEnvelope {
     pub fn encode_v3(&self) -> Result<Vec<u8>, PayloadEnvelopeEncodeError> {
         use ssz::Encode;
         let execution_payload_v3 = match &self.payload {
-            BaseExecutionPayload::V3(execution_payload_v3) => execution_payload_v3,
+            UnstableExecutionPayload::V3(execution_payload_v3) => execution_payload_v3,
             _ => return Err(PayloadEnvelopeEncodeError::WrongVersion),
         };
 
@@ -439,7 +439,7 @@ impl NetworkPayloadEnvelope {
             [parent_beacon_block_root.as_slice(), block_data].concat().as_slice(),
         );
 
-        let payload = BaseExecutionPayload::V4(BaseExecutionPayloadV4::from_ssz_bytes(block_data)?);
+        let payload = UnstableExecutionPayload::V4(UnstableExecutionPayloadV4::from_ssz_bytes(block_data)?);
 
         Ok(Self {
             payload,
@@ -454,7 +454,7 @@ impl NetworkPayloadEnvelope {
     pub fn encode_v4(&self) -> Result<Vec<u8>, PayloadEnvelopeEncodeError> {
         use ssz::Encode;
         let execution_payload_v4 = match &self.payload {
-            BaseExecutionPayload::V4(execution_payload_v4) => execution_payload_v4,
+            UnstableExecutionPayload::V4(execution_payload_v4) => execution_payload_v4,
             _ => return Err(PayloadEnvelopeEncodeError::WrongVersion),
         };
 
@@ -571,7 +571,7 @@ mod tests {
             "00000000000000000000000000000000000000000000000000000000000001230000000000000000000000000000000000000000000000000000000000000123000000000000000000000000000000000000045600000000000000000000000000000000000000000000000000000000000007890000000000000000000000000000000000000000000000000000000000000abc0d0e0f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000111de000000000000004d01000000000000bc010000000000002b02000000000000300200000903000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000088832020000380200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001236666040000009999"
         );
 
-        let payload = BaseExecutionPayloadEnvelope::from_ssz_bytes(&data).unwrap();
+        let payload = UnstableExecutionPayloadEnvelope::from_ssz_bytes(&data).unwrap();
         let serialized = payload.as_ssz_bytes();
         assert_eq!(data, &serialized[..]);
     }
@@ -584,7 +584,7 @@ mod tests {
             "parentBeaconBlockRoot": "0x9999999999999999999999999999999999999999999999999999999999999999"
         }"#;
 
-        let envelope: BaseExecutionPayloadEnvelope = serde_json::from_str(envelope_str).unwrap();
+        let envelope: UnstableExecutionPayloadEnvelope = serde_json::from_str(envelope_str).unwrap();
         let expected = b256!("9999999999999999999999999999999999999999999999999999999999999999");
         assert_eq!(envelope.parent_beacon_block_root.unwrap(), expected);
         let _ = serde_json::to_string(&envelope).unwrap();

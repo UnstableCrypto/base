@@ -1,7 +1,7 @@
 [package]
 name = "base-common-genesis"
 version.workspace = true
-description = "Base genesis types"
+description = "Unstable genesis types"
 
 edition.workspace = true
 rust-version.workspace = true

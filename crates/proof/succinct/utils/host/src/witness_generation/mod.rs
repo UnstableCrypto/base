@@ -2,7 +2,7 @@
 
 /// Core witness generation trait and type aliases.
 pub mod traits;
-pub use traits::{DefaultOracleBase, WitnessGenerator};
+pub use traits::{DefaultOracleUnstable, WitnessGenerator};
 
 /// Blob store that records blobs fetched online.
 pub mod online_blob_store;

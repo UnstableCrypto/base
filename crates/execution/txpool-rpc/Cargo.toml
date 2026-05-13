@@ -1,6 +1,6 @@
 [package]
 name = "base-txpool-rpc"
-description = "Transaction pool RPC APIs for Base"
+description = "Transaction pool RPC APIs for Unstable"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

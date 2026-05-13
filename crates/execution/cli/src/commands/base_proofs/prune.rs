@@ -1,11 +1,11 @@
-//! Command that prunes the Base Proofs storage.
+//! Command that prunes the Unstable Proofs storage.
 
 use std::{path::PathBuf, sync::Arc};
 
-use base_common_consensus::BasePrimitives;
-use base_execution_chainspec::BaseChainSpec;
+use base_common_consensus::UnstablePrimitives;
+use base_execution_chainspec::UnstableChainSpec;
 use base_execution_trie::{
-    BaseProofStoragePruner, BaseProofsStorage, BaseProofsStore, db::MdbxProofsStorage,
+    UnstableProofStoragePruner, UnstableProofsStorage, UnstableProofsStore, db::MdbxProofsStorage,
 };
 use clap::Parser;
 use reth_cli::chainspec::ChainSpecParser;
@@ -46,18 +46,18 @@ pub struct PruneCommand<C: ChainSpecParser> {
     pub proofs_history_prune_batch_size: u64,
 }
 
-impl<C: ChainSpecParser<ChainSpec = BaseChainSpec>> PruneCommand<C> {
+impl<C: ChainSpecParser<ChainSpec = UnstableChainSpec>> PruneCommand<C> {
     /// Execute [`PruneCommand`].
-    pub async fn execute<N: CliNodeTypes<ChainSpec = C::ChainSpec, Primitives = BasePrimitives>>(
+    pub async fn execute<N: CliNodeTypes<ChainSpec = C::ChainSpec, Primitives = UnstablePrimitives>>(
         self,
     ) -> eyre::Result<()> {
         info!(target: "reth::cli", version = %version_metadata().short_version, "reth starting");
-        info!(target: "reth::cli", path = ?self.storage_path, "Pruning Base proofs storage");
+        info!(target: "reth::cli", path = ?self.storage_path, "Pruning Unstable proofs storage");
 
         // Initialize the environment with read-only access
         let Environment { provider_factory, .. } = self.env.init::<N>(AccessRights::RO)?;
 
-        let storage: BaseProofsStorage<Arc<MdbxProofsStorage>> = Arc::new(
+        let storage: UnstableProofsStorage<Arc<MdbxProofsStorage>> = Arc::new(
             MdbxProofsStorage::new(&self.storage_path)
                 .map_err(|e| eyre::eyre!("Failed to create MdbxProofsStorage: {e}"))?,
         )
@@ -72,7 +72,7 @@ impl<C: ChainSpecParser<ChainSpec = BaseChainSpec>> PruneCommand<C> {
             "Current proofs storage block range"
         );
 
-        let pruner = BaseProofStoragePruner::new(
+        let pruner = UnstableProofStoragePruner::new(
             storage,
             provider_factory,
             self.proofs_history_window,

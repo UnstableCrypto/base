@@ -1,6 +1,6 @@
 # `base-proof-primitives`
 
-Shared primitive types and traits for the Base proof system.
+Shared primitive types and traits for the Unstable proof system.
 
 ## Overview
 

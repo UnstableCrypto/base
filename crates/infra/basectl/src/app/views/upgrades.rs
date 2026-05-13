@@ -115,13 +115,13 @@ fn all_chains() -> [ChainUpgrades; 4] {
         ChainUpgrades {
             display_name: "Sepolia",
             rpc: user_config_rpc("sepolia")
-                .or_else(|| Some("https://sepolia.base.org".to_string())),
+                .or_else(|| Some("https://sepolia.unstable.org".to_string())),
             specs: specs_from_config(ChainConfig::sepolia()),
         },
         ChainUpgrades {
             display_name: "Mainnet",
             rpc: user_config_rpc("mainnet")
-                .or_else(|| Some("https://mainnet.base.org".to_string())),
+                .or_else(|| Some("https://mainnet.unstable.org".to_string())),
             specs: specs_from_config(ChainConfig::mainnet()),
         },
     ]

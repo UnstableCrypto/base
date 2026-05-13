@@ -1,10 +1,10 @@
 # `base-comp`
 
-Compression types for Base.
+Compression types for Unstable.
 
 ## Overview
 
-Provides channel encoding and compression utilities for the Base derivation pipeline. `ChannelOut`
+Provides channel encoding and compression utilities for the Unstable derivation pipeline. `ChannelOut`
 encodes batches into compressed frames using a pluggable `VariantCompressor` (Brotli or zlib).
 Supports multiple compression algorithms selectable via `CompressionAlgo`. The `MockCompressor`
 is available under the `test-utils` feature for deterministic testing.

@@ -335,7 +335,7 @@ These tables do **not** contain historical versions; they represent a single fin
 
 ### Destination database (Proofs storage)
 
-The data is copied into the **proofs history database** (`BaseProofsStore`), which is a **versioned, append-only** store designed for historical proof generation.
+The data is copied into the **proofs history database** (`UnstableProofsStore`), which is a **versioned, append-only** store designed for historical proof generation.
 
 ---
 

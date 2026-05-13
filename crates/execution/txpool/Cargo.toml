@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository.workspace = true
-description = "Base Transaction Pool"
+description = "Unstable Transaction Pool"
 
 [lints]
 workspace = true

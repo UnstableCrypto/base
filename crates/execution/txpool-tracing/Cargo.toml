@@ -1,6 +1,6 @@
 [package]
 name = "base-txpool-tracing"
-description = "Transaction tracing extensions for Base"
+description = "Transaction tracing extensions for Unstable"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

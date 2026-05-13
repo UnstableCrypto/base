@@ -6,22 +6,22 @@ use alloy_rpc_types_engine::{
 };
 use alloy_transport::TransportResult;
 use base_common_rpc_types_engine::{
-    BaseExecutionPayloadEnvelopeV3, BaseExecutionPayloadEnvelopeV4, BaseExecutionPayloadEnvelopeV5,
-    BaseExecutionPayloadV4, BasePayloadAttributes,
+    UnstableExecutionPayloadEnvelopeV3, UnstableExecutionPayloadEnvelopeV4, UnstableExecutionPayloadEnvelopeV5,
+    UnstableExecutionPayloadV4, UnstablePayloadAttributes,
 };
 
-use crate::Base;
+use crate::Unstable;
 
-/// Extension trait for Base Engine API RPC methods.
+/// Extension trait for Unstable Engine API RPC methods.
 ///
 /// Note:
 /// > The provider should use a JWT authentication layer.
 ///
-/// This follows the Base specs:
-/// <https://specs.base.org/protocol/execution#engine-api>
+/// This follows the Unstable specs:
+/// <https://specs.unstable.org/protocol/execution#engine-api>
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
-pub trait BaseEngineApi {
+pub trait UnstableEngineApi {
     /// Sends the given payload to the execution layer client, as specified for the Shanghai fork.
     ///
     /// See also <https://github.com/ethereum/execution-apis/blob/584905270d8ad665718058060267061ecfd79ca5/src/engine/shanghai.md#engine_newpayloadv2>
@@ -58,7 +58,7 @@ pub trait BaseEngineApi {
     /// - execution requests MUST be an empty array.
     async fn new_payload_v4(
         &self,
-        payload: BaseExecutionPayloadV4,
+        payload: UnstableExecutionPayloadV4,
         parent_beacon_block_root: B256,
     ) -> TransportResult<PayloadStatus>;
 
@@ -70,12 +70,12 @@ pub trait BaseEngineApi {
     /// See also <https://github.com/ethereum/execution-apis/blob/6709c2a795b707202e93c4f2867fa0bf2640a84f/src/engine/shanghai.md#engine_forkchoiceupdatedv2>
     ///
     /// Rollup modifications:
-    /// - The `payload_attributes` parameter is extended with the [`BasePayloadAttributes`] type
-    ///   as described in <https://specs.base.org/protocol/execution#extended-payloadattributesv2>
+    /// - The `payload_attributes` parameter is extended with the [`UnstablePayloadAttributes`] type
+    ///   as described in <https://specs.unstable.org/protocol/execution#extended-payloadattributesv2>
     async fn fork_choice_updated_v2(
         &self,
         fork_choice_state: ForkchoiceState,
-        payload_attributes: Option<BasePayloadAttributes>,
+        payload_attributes: Option<UnstablePayloadAttributes>,
     ) -> TransportResult<ForkchoiceUpdated>;
 
     /// Updates the execution layer client with the given fork choice, as specified for the Cancun
@@ -86,12 +86,12 @@ pub trait BaseEngineApi {
     /// Rollup modifications:
     /// - Must be called with an Ecotone payload
     /// - Attributes must contain the parent beacon block root field
-    /// - The `payload_attributes` parameter is extended with the [`BasePayloadAttributes`] type
-    ///   as described in <https://specs.base.org/protocol/execution#extended-payloadattributesv2>
+    /// - The `payload_attributes` parameter is extended with the [`UnstablePayloadAttributes`] type
+    ///   as described in <https://specs.unstable.org/protocol/execution#extended-payloadattributesv2>
     async fn fork_choice_updated_v3(
         &self,
         fork_choice_state: ForkchoiceState,
-        payload_attributes: Option<BasePayloadAttributes>,
+        payload_attributes: Option<UnstablePayloadAttributes>,
     ) -> TransportResult<ForkchoiceUpdated>;
 
     /// Retrieves an execution payload from a previously started build process, as specified for the
@@ -117,11 +117,11 @@ pub trait BaseEngineApi {
     /// > Provider software MAY stop the corresponding build process after serving this call.
     ///
     /// Rollup modifications:
-    /// - the response type is extended to [`BaseExecutionPayloadEnvelopeV3`].
+    /// - the response type is extended to [`UnstableExecutionPayloadEnvelopeV3`].
     async fn get_payload_v3(
         &self,
         payload_id: PayloadId,
-    ) -> TransportResult<BaseExecutionPayloadEnvelopeV3>;
+    ) -> TransportResult<UnstableExecutionPayloadEnvelopeV3>;
 
     /// Returns the most recent version of the payload that is available in the corresponding
     /// payload build process at the time of receiving this call.
@@ -132,11 +132,11 @@ pub trait BaseEngineApi {
     /// > Provider software MAY stop the corresponding build process after serving this call.
     ///
     /// Rollup modifications:
-    /// - the response type is extended to [`BaseExecutionPayloadEnvelopeV4`].
+    /// - the response type is extended to [`UnstableExecutionPayloadEnvelopeV4`].
     async fn get_payload_v4(
         &self,
         payload_id: PayloadId,
-    ) -> TransportResult<BaseExecutionPayloadEnvelopeV4>;
+    ) -> TransportResult<UnstableExecutionPayloadEnvelopeV4>;
 
     /// Returns the most recent version of the payload that is available in the corresponding
     /// payload build process at the time of receiving this call.
@@ -144,13 +144,13 @@ pub trait BaseEngineApi {
     /// See also <https://github.com/ethereum/execution-apis/blob/main/src/engine/osaka.md#engine_getpayloadv5>
     ///
     /// Rollup modifications:
-    /// - the response type is [`BaseExecutionPayloadEnvelopeV5`], which uses
-    ///   [`BaseExecutionPayloadV4`](base_common_rpc_types_engine::BaseExecutionPayloadV4) for the
+    /// - the response type is [`UnstableExecutionPayloadEnvelopeV5`], which uses
+    ///   [`UnstableExecutionPayloadV4`](base_common_rpc_types_engine::UnstableExecutionPayloadV4) for the
     ///   execution payload and otherwise follows the V5 envelope shape.
     async fn get_payload_v5(
         &self,
         payload_id: PayloadId,
-    ) -> TransportResult<BaseExecutionPayloadEnvelopeV5>;
+    ) -> TransportResult<UnstableExecutionPayloadEnvelopeV5>;
 
     /// Returns the execution payload bodies by the given hash.
     ///
@@ -200,9 +200,9 @@ pub trait BaseEngineApi {
 
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
-impl<P> BaseEngineApi for P
+impl<P> UnstableEngineApi for P
 where
-    P: Provider<Base>,
+    P: Provider<Unstable>,
 {
     async fn new_payload_v2(
         &self,
@@ -225,7 +225,7 @@ where
 
     async fn new_payload_v4(
         &self,
-        payload: BaseExecutionPayloadV4,
+        payload: UnstableExecutionPayloadV4,
         parent_beacon_block_root: B256,
     ) -> TransportResult<PayloadStatus> {
         let versioned_hashes: Vec<B256> = vec![];
@@ -242,7 +242,7 @@ where
     async fn fork_choice_updated_v2(
         &self,
         fork_choice_state: ForkchoiceState,
-        payload_attributes: Option<BasePayloadAttributes>,
+        payload_attributes: Option<UnstablePayloadAttributes>,
     ) -> TransportResult<ForkchoiceUpdated> {
         self.client()
             .request("engine_forkchoiceUpdatedV2", (fork_choice_state, payload_attributes))
@@ -252,7 +252,7 @@ where
     async fn fork_choice_updated_v3(
         &self,
         fork_choice_state: ForkchoiceState,
-        payload_attributes: Option<BasePayloadAttributes>,
+        payload_attributes: Option<UnstablePayloadAttributes>,
     ) -> TransportResult<ForkchoiceUpdated> {
         self.client()
             .request("engine_forkchoiceUpdatedV3", (fork_choice_state, payload_attributes))
@@ -269,21 +269,21 @@ where
     async fn get_payload_v3(
         &self,
         payload_id: PayloadId,
-    ) -> TransportResult<BaseExecutionPayloadEnvelopeV3> {
+    ) -> TransportResult<UnstableExecutionPayloadEnvelopeV3> {
         self.client().request("engine_getPayloadV3", (payload_id,)).await
     }
 
     async fn get_payload_v4(
         &self,
         payload_id: PayloadId,
-    ) -> TransportResult<BaseExecutionPayloadEnvelopeV4> {
+    ) -> TransportResult<UnstableExecutionPayloadEnvelopeV4> {
         self.client().request("engine_getPayloadV4", (payload_id,)).await
     }
 
     async fn get_payload_v5(
         &self,
         payload_id: PayloadId,
-    ) -> TransportResult<BaseExecutionPayloadEnvelopeV5> {
+    ) -> TransportResult<UnstableExecutionPayloadEnvelopeV5> {
         self.client().request("engine_getPayloadV5", (payload_id,)).await
     }
 

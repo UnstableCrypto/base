@@ -6,8 +6,8 @@ use alloy_provider::Provider;
 use alloy_rpc_types_eth::BlockNumberOrTag;
 use async_trait::async_trait;
 use base_batcher_source::{PollingSource, SourceError};
-use base_common_consensus::BaseBlock;
-use base_common_network::Base;
+use base_common_consensus::UnstableBlock;
+use base_common_network::Unstable;
 
 /// Polling source that fetches the latest unsafe head block from an L2 RPC.
 ///
@@ -19,7 +19,7 @@ use base_common_network::Base;
 pub struct RpcPollingSource {
     /// The L2 RPC provider.
     #[debug(skip)]
-    provider: Arc<dyn Provider<Base> + Send + Sync>,
+    provider: Arc<dyn Provider<Unstable> + Send + Sync>,
     /// When `Some(n)`, the next `unsafe_head` call fetches block `n`
     /// sequentially (for startup catchup). Cleared when `n` is strictly
     /// greater than the current latest (i.e. block `n` hasn't been produced yet).
@@ -29,21 +29,21 @@ pub struct RpcPollingSource {
 
 impl RpcPollingSource {
     /// Create a new [`RpcPollingSource`] that polls `Latest` on every call.
-    pub fn new(provider: Arc<dyn Provider<Base> + Send + Sync>) -> Self {
+    pub fn new(provider: Arc<dyn Provider<Unstable> + Send + Sync>) -> Self {
         Self { provider, next_sequential: Mutex::new(None) }
     }
 
     /// Create a new [`RpcPollingSource`] that begins sequential catchup from
     /// `start_from`, fetching blocks `start_from, start_from+1, …` in order
     /// before switching to `Latest` polling once it has caught up.
-    pub fn new_from(provider: Arc<dyn Provider<Base> + Send + Sync>, start_from: u64) -> Self {
+    pub fn new_from(provider: Arc<dyn Provider<Unstable> + Send + Sync>, start_from: u64) -> Self {
         Self { provider, next_sequential: Mutex::new(Some(start_from)) }
     }
 }
 
 #[async_trait]
 impl PollingSource for RpcPollingSource {
-    async fn unsafe_head(&self) -> Result<BaseBlock, SourceError> {
+    async fn unsafe_head(&self) -> Result<UnstableBlock, SourceError> {
         let sequential = *self.next_sequential.lock().unwrap();
 
         if let Some(n) = sequential {

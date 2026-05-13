@@ -2,7 +2,7 @@
 
 use metrics::gauge;
 
-/// Encapsulates versioning utilities for Base binaries.
+/// Encapsulates versioning utilities for Unstable binaries.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct Version;
 

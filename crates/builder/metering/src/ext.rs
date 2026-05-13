@@ -12,7 +12,7 @@ use tracing::info;
 /// RPC trait for metering-related operations.
 #[cfg_attr(not(test), rpc(server, namespace = "base"))]
 #[cfg_attr(test, rpc(server, client, namespace = "base"))]
-pub trait BaseApiExt {
+pub trait UnstableApiExt {
     /// Sets metering information for a transaction.
     #[method(name = "setMeteringInformation")]
     async fn set_metering_information(
@@ -44,7 +44,7 @@ impl MeteringStoreExt {
 }
 
 #[async_trait]
-impl BaseApiExtServer for MeteringStoreExt {
+impl UnstableApiExtServer for MeteringStoreExt {
     async fn set_metering_information(
         &self,
         tx_hash: TxHash,

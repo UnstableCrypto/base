@@ -7,7 +7,7 @@ use base_common_genesis::RollupConfig;
 
 use super::{
     error::RpcResult,
-    types::{BaseBlock, OutputAtBlock, SyncStatus},
+    types::{UnstableBlock, OutputAtBlock, SyncStatus},
 };
 
 /// L1 RPC provider trait for interacting with Ethereum.
@@ -43,7 +43,7 @@ pub trait L1Provider: Send + Sync {
     async fn get_balance(&self, address: Address) -> RpcResult<U256>;
 }
 
-/// L2 RPC provider trait for interacting with Base.
+/// L2 RPC provider trait for interacting with Unstable.
 #[async_trait]
 pub trait L2Provider: Send + Sync {
     /// Gets the chain configuration via `debug_chainConfig`.
@@ -62,13 +62,13 @@ pub trait L2Provider: Send + Sync {
 
     /// Gets a block by number with full transactions.
     /// If `number` is `None`, returns the latest block.
-    async fn block_by_number(&self, number: Option<u64>) -> RpcResult<BaseBlock>;
+    async fn block_by_number(&self, number: Option<u64>) -> RpcResult<UnstableBlock>;
 
     /// Gets a block by hash with full transactions.
-    async fn block_by_hash(&self, hash: B256) -> RpcResult<BaseBlock>;
+    async fn block_by_hash(&self, hash: B256) -> RpcResult<UnstableBlock>;
 }
 
-/// Rollup RPC provider trait for interacting with Base rollup nodes.
+/// Rollup RPC provider trait for interacting with Unstable rollup nodes.
 #[async_trait]
 pub trait RollupProvider: Send + Sync {
     /// Gets the rollup configuration via `optimism_rollupConfig`.

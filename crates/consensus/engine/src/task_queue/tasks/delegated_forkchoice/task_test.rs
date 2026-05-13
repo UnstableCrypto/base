@@ -7,7 +7,7 @@ use alloy_primitives::B256;
 use alloy_rpc_types_engine::{ForkchoiceUpdated, PayloadStatus, PayloadStatusEnum};
 use alloy_rpc_types_eth::Block as RpcBlock;
 use base_common_genesis::RollupConfig;
-use base_common_rpc_types::Transaction as BaseTransaction;
+use base_common_rpc_types::Transaction as UnstableTransaction;
 use base_protocol::{BlockInfo, L2BlockInfo};
 
 use crate::{
@@ -25,8 +25,8 @@ fn syncing_fcu() -> ForkchoiceUpdated {
     }
 }
 
-fn block_with_hash(number: u64, hash: B256) -> RpcBlock<BaseTransaction> {
-    let mut block = RpcBlock::<BaseTransaction>::default();
+fn block_with_hash(number: u64, hash: B256) -> RpcBlock<UnstableTransaction> {
+    let mut block = RpcBlock::<UnstableTransaction>::default();
     block.header.hash = hash;
     block.header.inner.number = number;
     block.header.inner.timestamp = number * 2;

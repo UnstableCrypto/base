@@ -1,6 +1,6 @@
 # base-batcher-source
 
-L2 unsafe block source for the Base batcher.
+L2 unsafe block source for the Unstable batcher.
 
 Provides the `UnsafeBlockSource` trait and `HybridBlockSource` implementation
 that combines WebSocket subscription and HTTP polling with built-in

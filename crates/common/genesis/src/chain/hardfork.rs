@@ -3,13 +3,13 @@
 use alloc::string::{String, ToString};
 use core::fmt::Display;
 
-/// Hardfork configuration for Base-specific upgrades.
+/// Hardfork configuration for Unstable-specific upgrades.
 #[derive(Debug, Copy, Clone, Default, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
 pub struct HardforkConfig {
-    /// `azul` sets the activation time for the Base Azul network upgrade.
+    /// `azul` sets the activation time for the Unstable Azul network upgrade.
     /// Active if `azul` != None && L2 block timestamp >= `Some(azul)`, inactive otherwise.
     #[cfg_attr(feature = "serde", serde(alias = "v1", skip_serializing_if = "Option::is_none"))]
     pub azul: Option<u64>,
@@ -20,7 +20,7 @@ pub struct HardforkConfig {
 }
 
 impl HardforkConfig {
-    /// Returns true if no Base-specific hardforks are configured.
+    /// Returns true if no Unstable-specific hardforks are configured.
     pub const fn is_empty(&self) -> bool {
         self.azul.is_none() && self.beryl.is_none()
     }
@@ -73,7 +73,7 @@ pub struct HardForkConfig {
     pub holocene_time: Option<u64>,
     /// `pectra_blob_schedule_time` sets the activation time for the activation of the Pectra blob
     /// fee schedule for the L1 block info transaction. This is an optional fork, only present
-    /// on Base sepolia chains that observed the L1 Pectra network upgrade with the reference node
+    /// on Unstable sepolia chains that observed the L1 Pectra network upgrade with the reference node
     /// <=v1.11.1 sequencing the network.
     ///
     /// Active if `pectra_blob_schedule_time` != None && L2 block timestamp >=
@@ -90,7 +90,7 @@ pub struct HardForkConfig {
     /// otherwise.
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub jovian_time: Option<u64>,
-    /// `base` contains Base-specific hardfork activation times.
+    /// `base` contains Unstable-specific hardfork activation times.
     #[cfg_attr(
         feature = "serde",
         serde(default, skip_serializing_if = "HardforkConfig::is_empty")

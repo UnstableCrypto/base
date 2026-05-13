@@ -1,6 +1,6 @@
 [package]
 name = "base-batcher-bin"
-description = "Base Batcher Binary"
+description = "Unstable Batcher Binary"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

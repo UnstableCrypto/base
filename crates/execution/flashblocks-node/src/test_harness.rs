@@ -18,17 +18,17 @@ use alloy_consensus::{Receipt, Transaction};
 use alloy_eips::{BlockHashOrNumber, Decodable2718, Encodable2718};
 use alloy_primitives::{Address, B256, BlockNumber, Bytes, U256, hex::FromHex, map::HashMap};
 use alloy_rpc_types_engine::PayloadId;
-use base_common_consensus::{BaseBlock, BaseReceipt, BaseTransactionSigned, TxDeposit};
+use base_common_consensus::{UnstableBlock, UnstableReceipt, UnstableTransactionSigned, TxDeposit};
 use base_common_flashblocks::{
-    ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
+    ExecutionPayloadUnstableV1, ExecutionPayloadFlashblockDeltaV1, Flashblock, Metadata,
 };
-use base_execution_chainspec::BaseChainSpec;
+use base_execution_chainspec::UnstableChainSpec;
 use base_flashblocks::{
     EthApiExt, EthApiOverrideServer, EthPubSub, EthPubSubApiServer, FlashblocksAPI,
     FlashblocksReceiver, FlashblocksState, PendingBlocksAPI,
 };
 use base_node_runner::{
-    BaseNodeExtension, NodeHooks,
+    UnstableNodeExtension, NodeHooks,
     test_utils::{
         L1_BLOCK_INFO_DEPOSIT_TX, LocalNode, LocalNodeProvider, NODE_STARTUP_DELAY_MS, TestHarness,
         init_silenced_tracing,
@@ -130,7 +130,7 @@ impl FlashblocksTestExtension {
     }
 }
 
-impl BaseNodeExtension for FlashblocksTestExtension {
+impl UnstableNodeExtension for FlashblocksTestExtension {
     fn apply(self: Box<Self>, hooks: NodeHooks) -> NodeHooks {
         let state = Arc::clone(&self.inner.state);
         let receiver = Arc::clone(&self.inner.receiver);
@@ -240,7 +240,7 @@ impl FlashblocksLocalNode {
     async fn with_options(process_canonical: bool) -> Result<Self> {
         // Build default chain spec programmatically
         let genesis = build_test_genesis_azul();
-        let chain_spec = Arc::new(BaseChainSpec::from_genesis(genesis));
+        let chain_spec = Arc::new(UnstableChainSpec::from_genesis(genesis));
 
         let extension = FlashblocksTestExtension::new(process_canonical);
         let parts_source = extension.clone();
@@ -299,7 +299,7 @@ impl FlashblocksHarness {
 
         // Build default chain spec programmatically
         let genesis = build_test_genesis_azul();
-        let chain_spec = Arc::new(BaseChainSpec::from_genesis(genesis));
+        let chain_spec = Arc::new(UnstableChainSpec::from_genesis(genesis));
 
         // Create the extension and keep a reference to get parts after launch
         let extension = FlashblocksTestExtension::new(process_canonical);
@@ -405,7 +405,7 @@ impl FlashblocksBuilderTestHarness {
         from: Account,
         to: Account,
         amount: u128,
-    ) -> BaseTransactionSigned {
+    ) -> UnstableTransactionSigned {
         let txn = TransactionBuilder::default()
             .signer(Self::decode_private_key(from))
             .chain_id(self.provider.chain_spec().chain_id())
@@ -420,7 +420,7 @@ impl FlashblocksBuilderTestHarness {
             .unwrap()
             .clone();
 
-        BaseTransactionSigned::Eip1559(txn)
+        UnstableTransactionSigned::Eip1559(txn)
     }
 
     /// Build a transaction to send ETH from one account to another with a specific nonce.
@@ -430,7 +430,7 @@ impl FlashblocksBuilderTestHarness {
         to: Account,
         amount: u128,
         nonce: u64,
-    ) -> BaseTransactionSigned {
+    ) -> UnstableTransactionSigned {
         let txn = TransactionBuilder::default()
             .signer(Self::decode_private_key(from))
             .chain_id(self.provider.chain_spec().chain_id())
@@ -445,7 +445,7 @@ impl FlashblocksBuilderTestHarness {
             .unwrap()
             .clone();
 
-        BaseTransactionSigned::Eip1559(txn)
+        UnstableTransactionSigned::Eip1559(txn)
     }
 
     /// Send a flashblock through the harness.
@@ -460,8 +460,8 @@ impl FlashblocksBuilderTestHarness {
     /// Build a new canonical block without processing.
     pub async fn new_canonical_block_without_processing(
         &mut self,
-        user_transactions: Vec<BaseTransactionSigned>,
-    ) -> RecoveredBlock<BaseBlock> {
+        user_transactions: Vec<UnstableTransactionSigned>,
+    ) -> RecoveredBlock<UnstableBlock> {
         let previous_tip =
             self.provider.best_block_number().expect("able to read best block number");
         let txs: Vec<Bytes> =
@@ -479,7 +479,7 @@ impl FlashblocksBuilderTestHarness {
     }
 
     /// Build a new canonical block with processing.
-    pub async fn new_canonical_block(&mut self, user_transactions: Vec<BaseTransactionSigned>) {
+    pub async fn new_canonical_block(&mut self, user_transactions: Vec<UnstableTransactionSigned>) {
         let block = self.new_canonical_block_without_processing(user_transactions).await;
         self.flashblocks.on_canonical_block_received(block);
         sleep(Duration::from_millis(SLEEP_TIME)).await;
@@ -492,7 +492,7 @@ pub struct FlashblockBuilder<'a> {
     /// The transactions to include in the flashblock.
     transactions: Vec<Bytes>,
     /// The receipts to include in the flashblock.
-    receipts: Option<HashMap<B256, BaseReceipt>>,
+    receipts: Option<HashMap<B256, UnstableReceipt>>,
     /// The harness to use for building the flashblock.
     harness: &'a FlashblocksBuilderTestHarness,
     /// The canonical block number to use for the flashblock.
@@ -531,13 +531,13 @@ impl<'a> FlashblockBuilder<'a> {
     }
 
     /// Set the receipts for the flashblock.
-    pub fn with_receipts(&mut self, receipts: Option<HashMap<B256, BaseReceipt>>) -> &mut Self {
+    pub fn with_receipts(&mut self, receipts: Option<HashMap<B256, UnstableReceipt>>) -> &mut Self {
         self.receipts = receipts;
         self
     }
 
     /// Set the transactions for the flashblock.
-    pub fn with_transactions(&mut self, transactions: Vec<BaseTransactionSigned>) -> &mut Self {
+    pub fn with_transactions(&mut self, transactions: Vec<UnstableTransactionSigned>) -> &mut Self {
         assert_ne!(self.index, 0, "Cannot set txns for initial flashblock");
         self.transactions.clear();
 
@@ -548,7 +548,7 @@ impl<'a> FlashblockBuilder<'a> {
             if let Some(ref mut receipts) = self.receipts {
                 receipts.insert(
                     *txn.hash(),
-                    BaseReceipt::Eip1559(Receipt {
+                    UnstableReceipt::Eip1559(Receipt {
                         status: true.into(),
                         cumulative_gas_used,
                         logs: vec![],
@@ -572,7 +572,7 @@ impl<'a> FlashblockBuilder<'a> {
             self.canonical_block_number.unwrap_or_else(|| current_block.number) + 1;
 
         let base = if self.index == 0 {
-            Some(ExecutionPayloadBaseV1 {
+            Some(ExecutionPayloadUnstableV1 {
                 parent_beacon_block_root: current_block.hash(),
                 parent_hash: current_block.hash(),
                 fee_recipient: Address::random(),

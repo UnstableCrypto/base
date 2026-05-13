@@ -1,6 +1,6 @@
 [package]
 name = "base-proof-executor"
-description = "A no_std stateless block builder for Base"
+description = "A no_std stateless block builder for Unstable"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -26,7 +26,7 @@ alloy-trie.workspace = true
 alloy-consensus = { workspace = true, features = ["k256"] }
 alloy-primitives = { workspace = true, features = ["rlp"] }
 
-# Base Alloy
+# Unstable Alloy
 base-common-consensus.workspace = true
 base-common-rpc-types-engine = { workspace = true, features = ["serde", "k256"] }
 

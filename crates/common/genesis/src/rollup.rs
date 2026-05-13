@@ -87,7 +87,7 @@ impl<'a> arbitrary::Arbitrary<'a> for RollupConfig {
     }
 }
 
-// Need to manually implement Default because [`BaseFeeParams`] has no Default impl.
+// Need to manually implement Default because [`UnstableFeeParams`] has no Default impl.
 impl Default for RollupConfig {
     fn default() -> Self {
         Self {
@@ -112,7 +112,7 @@ impl Default for RollupConfig {
 
 impl EthereumHardforks for RollupConfig {
     fn ethereum_fork_activation(&self, fork: EthereumHardfork) -> ForkCondition {
-        // Helper: cascade through the Base upgrade chain, returning the first set timestamp.
+        // Helper: cascade through the Unstable upgrade chain, returning the first set timestamp.
         let cascade = |starting: &[Option<u64>]| -> ForkCondition {
             if let Some(ts) = starting.iter().flatten().next() {
                 return ForkCondition::Timestamp(*ts);
@@ -121,13 +121,13 @@ impl EthereumHardforks for RollupConfig {
         };
 
         if fork <= EthereumHardfork::Berlin {
-            // Pre-Bedrock Ethereum forks all activate at block 0 on Base chains.
+            // Pre-Bedrock Ethereum forks all activate at block 0 on Unstable chains.
             ForkCondition::Block(0)
         } else if fork <= EthereumHardfork::Paris {
             // Bedrock activates everything from London through Paris at block 0.
             ForkCondition::Block(0)
         } else if fork <= EthereumHardfork::Shanghai {
-            // Canyon activates Shanghai; cascade through later Base upgrades if unset.
+            // Canyon activates Shanghai; cascade through later Unstable upgrades if unset.
             cascade(&[
                 self.hardforks.canyon_time,
                 self.hardforks.ecotone_time,
@@ -138,7 +138,7 @@ impl EthereumHardforks for RollupConfig {
                 self.hardforks.jovian_time,
             ])
         } else if fork <= EthereumHardfork::Cancun {
-            // Ecotone activates Cancun; cascade through later Base upgrades if unset.
+            // Ecotone activates Cancun; cascade through later Unstable upgrades if unset.
             cascade(&[
                 self.hardforks.ecotone_time,
                 self.hardforks.fjord_time,
@@ -148,7 +148,7 @@ impl EthereumHardforks for RollupConfig {
                 self.hardforks.jovian_time,
             ])
         } else if fork <= EthereumHardfork::Prague {
-            // Isthmus activates Prague; cascade through later Base upgrades if unset.
+            // Isthmus activates Prague; cascade through later Unstable upgrades if unset.
             cascade(&[self.hardforks.isthmus_time, self.hardforks.jovian_time])
         } else if fork <= EthereumHardfork::Osaka {
             self.hardforks.base.azul.map(ForkCondition::Timestamp).unwrap_or(ForkCondition::Never)
@@ -277,12 +277,12 @@ impl RollupConfig {
             && !self.is_jovian_active(timestamp.saturating_sub(self.block_time))
     }
 
-    /// Returns true if Base Azul is active at the given timestamp.
+    /// Returns true if Unstable Azul is active at the given timestamp.
     pub fn is_base_azul_active(&self, timestamp: u64) -> bool {
         self.hardforks.base.azul.is_some_and(|t| timestamp >= t)
     }
 
-    /// Returns true if the timestamp marks the first Base Azul block.
+    /// Returns true if the timestamp marks the first Unstable Azul block.
     pub fn is_first_base_azul_block(&self, timestamp: u64) -> bool {
         self.is_base_azul_active(timestamp)
             && !self.is_base_azul_active(timestamp.saturating_sub(self.block_time))
@@ -377,7 +377,7 @@ impl RollupConfig {
         Self::GRANITE_CHANNEL_TIMEOUT
     }
 
-    /// The activation banner for the Base Azul hardfork, printed when the first block of the fork is built or processed.
+    /// The activation banner for the Unstable Azul hardfork, printed when the first block of the fork is built or processed.
     const AZUL_ACTIVATION_BANNER: &str = include_str!("../static/azul_activation_banner.txt");
 
     /// Logs hardfork activation when building or processing the first block of a fork.
@@ -407,7 +407,7 @@ impl RollupConfig {
 
 /// Serializes a [`Chain`] as its numeric chain ID.
 ///
-/// `alloy_chains::Chain` serializes named chains (e.g. Base Sepolia) as a string like
+/// `alloy_chains::Chain` serializes named chains (e.g. Unstable Sepolia) as a string like
 /// `"base-sepolia"`, but external Go consumers expect a plain integer.
 /// This helper forces numeric serialization for all chains.
 #[cfg(feature = "serde")]
@@ -516,7 +516,7 @@ mod tests {
         assert!(cfg.is_first_jovian_block(100));
         assert!(!cfg.is_first_jovian_block(102));
 
-        // Base Azul
+        // Unstable Azul
         assert!(!cfg.is_first_base_azul_block(108));
         assert!(cfg.is_first_base_azul_block(110));
         assert!(!cfg.is_first_base_azul_block(112));
@@ -570,12 +570,12 @@ mod tests {
               "scalar": "0x00000000000000000000000000000000000000000000000000000000000f4240",
               "gasLimit": 30000000,
               "baseFeeScalar": 1234,
-              "blobBaseFeeScalar": 5678,
+              "blobUnstableFeeScalar": 5678,
               "eip1559Denominator": 10,
               "eip1559Elasticity": 20,
               "operatorFeeScalar": 30,
               "operatorFeeConstant": 40,
-              "minBaseFee": 50,
+              "minUnstableFee": 50,
               "daFootprintGasScalar": 10
             }
           },
@@ -708,7 +708,7 @@ mod tests {
     #[test]
     #[cfg(feature = "serde")]
     fn test_l2_chain_id_serializes_as_number() {
-        // Named chains (e.g. Base Sepolia, ID 84532) must serialize as a numeric JSON value,
+        // Named chains (e.g. Unstable Sepolia, ID 84532) must serialize as a numeric JSON value,
         // not as the string "base-sepolia". Go consumers expect *big.Int.
         let cfg = RollupConfig { l2_chain_id: Chain::from_id(84532), ..Default::default() };
         let json = serde_json::to_value(&cfg).unwrap();
@@ -728,7 +728,7 @@ mod tests {
     fn test_ethereum_fork_activation() {
         use alloy_hardforks::{EthereumHardfork, EthereumHardforks};
 
-        // Pre-Bedrock Ethereum forks always activate at block 0 on Base chains.
+        // Pre-Bedrock Ethereum forks always activate at block 0 on Unstable chains.
         let cfg = RollupConfig::default();
         assert_eq!(cfg.ethereum_fork_activation(EthereumHardfork::Berlin), ForkCondition::Block(0));
         assert_eq!(cfg.ethereum_fork_activation(EthereumHardfork::Paris), ForkCondition::Block(0));

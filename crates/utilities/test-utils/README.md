@@ -1,6 +1,6 @@
 # `base-test-utils`
 
-Shared test utilities for integration testing across Base crates.
+Shared test utilities for integration testing across Unstable crates.
 
 ## Overview
 
@@ -23,7 +23,7 @@ base-test-utils = { workspace = true }
 use base_test_utils::{build_test_genesis, DEVNET_CHAIN_ID};
 
 let genesis = build_test_genesis();
-let chain_spec = BaseChainSpec::from_genesis(genesis);
+let chain_spec = UnstableChainSpec::from_genesis(genesis);
 ```
 
 ## License

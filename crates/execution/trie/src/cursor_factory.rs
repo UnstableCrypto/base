@@ -1,4 +1,4 @@
-//! Implements [`TrieCursorFactory`] and [`HashedCursorFactory`] for [`BaseProofsStore`] types.
+//! Implements [`TrieCursorFactory`] and [`HashedCursorFactory`] for [`UnstableProofsStore`] types.
 
 use std::marker::PhantomData;
 
@@ -7,40 +7,40 @@ use reth_db::DatabaseError;
 use reth_trie::{hashed_cursor::HashedCursorFactory, trie_cursor::TrieCursorFactory};
 
 use crate::{
-    BaseProofsHashedAccountCursor, BaseProofsHashedStorageCursor, BaseProofsStorage,
-    BaseProofsStore, BaseProofsTrieCursor,
+    UnstableProofsHashedAccountCursor, UnstableProofsHashedStorageCursor, UnstableProofsStorage,
+    UnstableProofsStore, UnstableProofsTrieCursor,
 };
 
-/// Factory for creating trie cursors for [`BaseProofsStore`].
+/// Factory for creating trie cursors for [`UnstableProofsStore`].
 #[derive(Debug, Clone)]
-pub struct BaseProofsTrieCursorFactory<'tx, S: BaseProofsStore> {
-    storage: &'tx BaseProofsStorage<S>,
+pub struct UnstableProofsTrieCursorFactory<'tx, S: UnstableProofsStore> {
+    storage: &'tx UnstableProofsStorage<S>,
     block_number: u64,
     _marker: PhantomData<&'tx ()>,
 }
 
-impl<'tx, S: BaseProofsStore> BaseProofsTrieCursorFactory<'tx, S> {
-    /// Initializes new `BaseProofsTrieCursorFactory`
-    pub const fn new(storage: &'tx BaseProofsStorage<S>, block_number: u64) -> Self {
+impl<'tx, S: UnstableProofsStore> UnstableProofsTrieCursorFactory<'tx, S> {
+    /// Initializes new `UnstableProofsTrieCursorFactory`
+    pub const fn new(storage: &'tx UnstableProofsStorage<S>, block_number: u64) -> Self {
         Self { storage, block_number, _marker: PhantomData }
     }
 }
 
-impl<'tx, S> TrieCursorFactory for BaseProofsTrieCursorFactory<'tx, S>
+impl<'tx, S> TrieCursorFactory for UnstableProofsTrieCursorFactory<'tx, S>
 where
-    for<'a> S: BaseProofsStore + 'tx,
+    for<'a> S: UnstableProofsStore + 'tx,
 {
     type AccountTrieCursor<'a>
-        = BaseProofsTrieCursor<S::AccountTrieCursor<'a>>
+        = UnstableProofsTrieCursor<S::AccountTrieCursor<'a>>
     where
         Self: 'a;
     type StorageTrieCursor<'a>
-        = BaseProofsTrieCursor<S::StorageTrieCursor<'a>>
+        = UnstableProofsTrieCursor<S::StorageTrieCursor<'a>>
     where
         Self: 'a;
 
     fn account_trie_cursor(&self) -> Result<Self::AccountTrieCursor<'_>, DatabaseError> {
-        Ok(BaseProofsTrieCursor::new(
+        Ok(UnstableProofsTrieCursor::new(
             self.storage
                 .account_trie_cursor(self.block_number)
                 .map_err(Into::<DatabaseError>::into)?,
@@ -51,7 +51,7 @@ where
         &self,
         hashed_address: B256,
     ) -> Result<Self::StorageTrieCursor<'_>, DatabaseError> {
-        Ok(BaseProofsTrieCursor::new(
+        Ok(UnstableProofsTrieCursor::new(
             self.storage
                 .storage_trie_cursor(hashed_address, self.block_number)
                 .map_err(Into::<DatabaseError>::into)?,
@@ -59,36 +59,36 @@ where
     }
 }
 
-/// Factory for creating hashed account cursors for [`BaseProofsStore`].
+/// Factory for creating hashed account cursors for [`UnstableProofsStore`].
 #[derive(Debug, Clone)]
-pub struct BaseProofsHashedAccountCursorFactory<'tx, S: BaseProofsStore> {
-    storage: &'tx BaseProofsStorage<S>,
+pub struct UnstableProofsHashedAccountCursorFactory<'tx, S: UnstableProofsStore> {
+    storage: &'tx UnstableProofsStorage<S>,
     block_number: u64,
     _marker: PhantomData<&'tx ()>,
 }
 
-impl<'tx, S: BaseProofsStore> BaseProofsHashedAccountCursorFactory<'tx, S> {
-    /// Creates a new `BaseProofsHashedAccountCursorFactory` instance.
-    pub const fn new(storage: &'tx BaseProofsStorage<S>, block_number: u64) -> Self {
+impl<'tx, S: UnstableProofsStore> UnstableProofsHashedAccountCursorFactory<'tx, S> {
+    /// Creates a new `UnstableProofsHashedAccountCursorFactory` instance.
+    pub const fn new(storage: &'tx UnstableProofsStorage<S>, block_number: u64) -> Self {
         Self { storage, block_number, _marker: PhantomData }
     }
 }
 
-impl<'tx, S> HashedCursorFactory for BaseProofsHashedAccountCursorFactory<'tx, S>
+impl<'tx, S> HashedCursorFactory for UnstableProofsHashedAccountCursorFactory<'tx, S>
 where
-    S: BaseProofsStore + 'tx,
+    S: UnstableProofsStore + 'tx,
 {
     type AccountCursor<'a>
-        = BaseProofsHashedAccountCursor<S::AccountHashedCursor<'a>>
+        = UnstableProofsHashedAccountCursor<S::AccountHashedCursor<'a>>
     where
         Self: 'a;
     type StorageCursor<'a>
-        = BaseProofsHashedStorageCursor<S::StorageCursor<'a>>
+        = UnstableProofsHashedStorageCursor<S::StorageCursor<'a>>
     where
         Self: 'a;
 
     fn hashed_account_cursor(&self) -> Result<Self::AccountCursor<'_>, DatabaseError> {
-        Ok(BaseProofsHashedAccountCursor::new(
+        Ok(UnstableProofsHashedAccountCursor::new(
             self.storage.account_hashed_cursor(self.block_number)?,
         ))
     }
@@ -97,7 +97,7 @@ where
         &self,
         hashed_address: B256,
     ) -> Result<Self::StorageCursor<'_>, DatabaseError> {
-        Ok(BaseProofsHashedStorageCursor::new(
+        Ok(UnstableProofsHashedStorageCursor::new(
             self.storage.storage_hashed_cursor(hashed_address, self.block_number)?,
         ))
     }

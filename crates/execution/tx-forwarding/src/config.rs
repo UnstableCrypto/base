@@ -7,7 +7,7 @@ use base_execution_txpool::{
 };
 use url::Url;
 
-/// Default resend-after window in milliseconds (~2 blocks on Base).
+/// Default resend-after window in milliseconds (~2 blocks on Unstable).
 pub const DEFAULT_RESEND_AFTER_MS: u64 = 4000;
 /// Default maximum number of transactions per RPC batch.
 pub const DEFAULT_MAX_BATCH_SIZE: usize = 100;
@@ -33,7 +33,7 @@ impl Default for TxForwardingConfig {
         Self {
             enabled: false,
             builder_urls: Vec::new(),
-            // Default: 2 blocks (~4 seconds on Base)
+            // Default: 2 blocks (~4 seconds on Unstable)
             resend_after_ms: DEFAULT_RESEND_AFTER_MS,
             max_batch_size: DEFAULT_MAX_BATCH_SIZE,
             max_rps: DEFAULT_MAX_RPS,

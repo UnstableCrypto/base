@@ -1,24 +1,24 @@
 use base_cli_utils::{LogConfig, MetricsConfig};
 use eyre::WrapErr;
 
-use crate::{cli::BaseCli, config::ChainResolver};
+use crate::{cli::UnstableCli, config::ChainResolver};
 
 /// Runs the `base` binary.
 #[derive(Debug, Clone)]
-pub(crate) struct BaseApp {
+pub(crate) struct UnstableApp {
     /// Parsed CLI input.
-    pub cli: BaseCli,
+    pub cli: UnstableCli,
 }
 
-impl BaseApp {
+impl UnstableApp {
     /// Creates a new app from parsed CLI input.
-    pub(crate) const fn new(cli: BaseCli) -> Self {
+    pub(crate) const fn new(cli: UnstableCli) -> Self {
         Self { cli }
     }
 
     /// Runs the requested command.
     pub(crate) fn run(self) -> eyre::Result<()> {
-        let BaseCli { chain, logging, metrics, command } = self.cli;
+        let UnstableCli { chain, logging, metrics, command } = self.cli;
 
         LogConfig::from(logging)
             .init_tracing_subscriber()

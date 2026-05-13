@@ -1,6 +1,6 @@
 [package]
 name = "base-builder-core"
-description = "Block builder for Base"
+description = "Block builder for Unstable"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

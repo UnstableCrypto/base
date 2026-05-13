@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, string::String};
 
-use base_common_chains::BaseUpgrade;
+use base_common_chains::UnstableUpgrade;
 use revm::{
     context::Cfg,
     context_interface::ContextTr,
@@ -10,39 +10,39 @@ use revm::{
     primitives::{Address, OnceLock, hardfork::SpecId},
 };
 
-use crate::{BasePrecompileSpec, bls12_381, bn254_pair};
+use crate::{UnstablePrecompileSpec, bls12_381, bn254_pair};
 
-/// Base precompile provider.
+/// Unstable precompile provider.
 #[derive(Debug, Clone)]
-pub struct BasePrecompiles<S = BaseUpgrade> {
+pub struct UnstablePrecompiles<S = UnstableUpgrade> {
     /// Inner precompile provider is the same as Ethereum's.
     inner: EthPrecompiles,
     /// Spec id of the precompile provider.
     spec: S,
 }
 
-impl<S: BasePrecompileSpec> BasePrecompiles<S> {
+impl<S: UnstablePrecompileSpec> UnstablePrecompiles<S> {
     /// Create a new precompile provider with the given spec.
     #[inline]
     pub fn new_with_spec(spec: S) -> Self {
         let precompiles = match spec.upgrade() {
-            BaseUpgrade::Bedrock
-            | BaseUpgrade::Regolith
-            | BaseUpgrade::Canyon
-            | BaseUpgrade::Ecotone => Precompiles::new(Self::eth_spec(spec.upgrade()).into()),
-            BaseUpgrade::Fjord => Self::fjord(),
-            BaseUpgrade::Granite | BaseUpgrade::Holocene => Self::granite(),
-            BaseUpgrade::Isthmus => Self::isthmus(),
-            BaseUpgrade::Jovian => Self::jovian(),
-            BaseUpgrade::Azul | BaseUpgrade::Beryl => Self::azul(),
-            upgrade => panic!("unsupported Base precompile upgrade: {upgrade}"),
+            UnstableUpgrade::Bedrock
+            | UnstableUpgrade::Regolith
+            | UnstableUpgrade::Canyon
+            | UnstableUpgrade::Ecotone => Precompiles::new(Self::eth_spec(spec.upgrade()).into()),
+            UnstableUpgrade::Fjord => Self::fjord(),
+            UnstableUpgrade::Granite | UnstableUpgrade::Holocene => Self::granite(),
+            UnstableUpgrade::Isthmus => Self::isthmus(),
+            UnstableUpgrade::Jovian => Self::jovian(),
+            UnstableUpgrade::Azul | UnstableUpgrade::Beryl => Self::azul(),
+            upgrade => panic!("unsupported Unstable precompile upgrade: {upgrade}"),
         };
 
         Self { inner: EthPrecompiles { precompiles, spec: SpecId::default() }, spec }
     }
 
-    /// Converts a Base upgrade into its Ethereum precompile spec.
-    pub const fn eth_spec(upgrade: BaseUpgrade) -> SpecId {
+    /// Converts a Unstable upgrade into its Ethereum precompile spec.
+    pub const fn eth_spec(upgrade: UnstableUpgrade) -> SpecId {
         upgrade.into_eth_spec()
     }
 
@@ -119,13 +119,13 @@ impl<S: BasePrecompileSpec> BasePrecompiles<S> {
         })
     }
 
-    /// Returns precompiles for the Base Azul spec.
+    /// Returns precompiles for the Unstable Azul spec.
     pub fn azul() -> &'static Precompiles {
         static INSTANCE: OnceLock<Precompiles> = OnceLock::new();
         INSTANCE.get_or_init(|| {
             let mut precompiles = Self::jovian().clone();
 
-            // Base Azul adopts Osaka pricing and bounds for MODEXP and P256VERIFY.
+            // Unstable Azul adopts Osaka pricing and bounds for MODEXP and P256VERIFY.
             precompiles.extend([modexp::OSAKA, secp256r1::P256VERIFY_OSAKA]);
 
             precompiles
@@ -133,9 +133,9 @@ impl<S: BasePrecompileSpec> BasePrecompiles<S> {
     }
 }
 
-impl<CTX, S> PrecompileProvider<CTX> for BasePrecompiles<S>
+impl<CTX, S> PrecompileProvider<CTX> for UnstablePrecompiles<S>
 where
-    S: BasePrecompileSpec,
+    S: UnstablePrecompileSpec,
     CTX: ContextTr<Cfg: Cfg<Spec = S>>,
 {
     type Output = InterpreterResult;
@@ -169,7 +169,7 @@ where
     }
 }
 
-impl<S: BasePrecompileSpec> Default for BasePrecompiles<S> {
+impl<S: UnstablePrecompileSpec> Default for UnstablePrecompiles<S> {
     fn default() -> Self {
         Self::new_with_spec(S::default_precompile_spec())
     }
@@ -187,7 +187,7 @@ mod tests {
     use super::*;
     use crate::{bls12_381, bn254_pair};
 
-    type TestPrecompiles = BasePrecompiles<BaseUpgrade>;
+    type TestPrecompiles = UnstablePrecompiles<UnstableUpgrade>;
 
     fn encode_length(len: usize) -> [u8; 32] {
         let mut encoded = [0u8; 32];
@@ -225,8 +225,8 @@ mod tests {
         );
     }
 
-    fn assert_jovian_input_limits_accept_max(spec: BaseUpgrade) {
-        let precompiles = BasePrecompiles::new_with_spec(spec);
+    fn assert_jovian_input_limits_accept_max(spec: UnstableUpgrade) {
+        let precompiles = UnstablePrecompiles::new_with_spec(spec);
 
         assert_precompile_accepts_input_len(
             precompiles.precompiles(),
@@ -250,8 +250,8 @@ mod tests {
         );
     }
 
-    fn assert_jovian_input_limits(spec: BaseUpgrade) {
-        let precompiles = BasePrecompiles::new_with_spec(spec);
+    fn assert_jovian_input_limits(spec: UnstableUpgrade) {
+        let precompiles = UnstablePrecompiles::new_with_spec(spec);
         let bn254_pair_precompile = precompiles.precompiles().get(&bn254::pair::ADDRESS).unwrap();
 
         let mut bad_input_len = bn254_pair::JOVIAN_MAX_INPUT_SIZE + 1;
@@ -289,28 +289,28 @@ mod tests {
 
     #[test]
     fn test_get_jovian_precompile_at_max_input_len() {
-        assert_jovian_input_limits_accept_max(BaseUpgrade::Jovian);
+        assert_jovian_input_limits_accept_max(UnstableUpgrade::Jovian);
     }
 
     #[test]
     fn test_get_jovian_precompile_with_bad_input_len() {
-        assert_jovian_input_limits(BaseUpgrade::Jovian);
+        assert_jovian_input_limits(UnstableUpgrade::Jovian);
     }
 
     #[test]
     fn test_get_azul_precompile_at_max_input_len() {
-        assert_jovian_input_limits_accept_max(BaseUpgrade::Azul);
+        assert_jovian_input_limits_accept_max(UnstableUpgrade::Azul);
     }
 
     #[test]
     fn test_get_azul_precompile_with_bad_input_len() {
-        assert_jovian_input_limits(BaseUpgrade::Azul);
+        assert_jovian_input_limits(UnstableUpgrade::Azul);
     }
 
     #[test]
     fn test_get_azul_precompile_with_osaka_rules() {
-        let jovian_precompiles = BasePrecompiles::new_with_spec(BaseUpgrade::Jovian);
-        let azul_precompiles = BasePrecompiles::new_with_spec(BaseUpgrade::Azul);
+        let jovian_precompiles = UnstablePrecompiles::new_with_spec(UnstableUpgrade::Jovian);
+        let azul_precompiles = UnstablePrecompiles::new_with_spec(UnstableUpgrade::Azul);
 
         let jovian_p256 =
             jovian_precompiles.precompiles().get(secp256r1::P256VERIFY.address()).unwrap();
@@ -373,7 +373,7 @@ mod tests {
 
     #[test]
     fn test_default_precompiles_matches_latest() {
-        let latest = BasePrecompiles::new_with_spec(BaseUpgrade::LATEST).inner.precompiles;
+        let latest = UnstablePrecompiles::new_with_spec(UnstableUpgrade::LATEST).inner.precompiles;
         let default = TestPrecompiles::default().inner.precompiles;
         assert_eq!(latest.len(), default.len());
 
@@ -383,8 +383,8 @@ mod tests {
 
     #[test]
     fn test_all_base_upgrades_have_precompile_sets() {
-        for upgrade in BaseUpgrade::VARIANTS {
-            let _ = BasePrecompiles::new_with_spec(*upgrade);
+        for upgrade in UnstableUpgrade::VARIANTS {
+            let _ = UnstablePrecompiles::new_with_spec(*upgrade);
         }
     }
 

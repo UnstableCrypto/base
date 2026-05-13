@@ -8,25 +8,25 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
 mod builder;
-pub use builder::{BaseNodeAdapter, BaseRpcContext, NodeHooks, RethNodeBuilder};
+pub use builder::{UnstableNodeAdapter, UnstableRpcContext, NodeHooks, RethNodeBuilder};
 
 mod extension;
-pub use extension::{BaseNodeExtension, FromExtensionConfig};
+pub use extension::{UnstableNodeExtension, FromExtensionConfig};
 
 mod runner;
-pub use runner::BaseNodeRunner;
+pub use runner::UnstableNodeRunner;
 
 mod service;
 pub use service::{DefaultPayloadServiceBuilder, PayloadServiceBuilder};
 
 mod types;
-pub use types::{BaseComponentsBuilder, BaseNodeBuilder, BaseNodeTypes, BaseProvider};
+pub use types::{UnstableComponentsBuilder, UnstableNodeBuilder, UnstableNodeTypes, UnstableProvider};
 
 mod node;
-pub use node::BaseNode;
+pub use node::UnstableNode;
 
 mod add_ons;
-pub use add_ons::{BaseAddOns, BaseAddOnsBuilder};
+pub use add_ons::{UnstableAddOns, UnstableAddOnsBuilder};
 
 #[cfg(feature = "test-utils")]
 pub mod test_utils;

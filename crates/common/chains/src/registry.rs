@@ -15,7 +15,7 @@ static ROLLUP_CONFIGS: Lazy<HashMap<u64, RollupConfig>> = Lazy::new(|| {
     map
 });
 
-/// A registry of chain configurations for Base networks.
+/// A registry of chain configurations for Unstable networks.
 ///
 /// Provides access to rollup configs and the unsafe block signer for supported chain IDs.
 /// Rollup configs are derived from the compile-time [`ChainConfig`] instances in this crate.

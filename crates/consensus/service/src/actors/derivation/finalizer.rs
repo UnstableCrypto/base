@@ -74,7 +74,7 @@ mod tests {
     //! Unit tests for [`L2Finalizer`] queue management.
 
     use alloy_eips::BlockNumHash;
-    use base_common_rpc_types_engine::BasePayloadAttributes;
+    use base_common_rpc_types_engine::UnstablePayloadAttributes;
     use base_protocol::{AttributesWithParent, BlockInfo, L2BlockInfo};
 
     use super::L2Finalizer;
@@ -89,7 +89,7 @@ mod tests {
         };
         let derived_from = BlockInfo { number: l1_origin_number, ..Default::default() };
         AttributesWithParent::new(
-            BasePayloadAttributes::default(),
+            UnstablePayloadAttributes::default(),
             parent,
             Some(derived_from),
             false,

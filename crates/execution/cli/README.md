@@ -1,11 +1,11 @@
 # `base-execution-cli`
 
-CLI extensions for the Base execution node.
+CLI extensions for the Unstable execution node.
 
 ## Overview
 
-Provides the command-line interface for the Base execution node. Wraps argument parsing with
-Base-specific chain spec resolution via `BaseChainSpecParser`, and exposes a `Cli` type that
+Provides the command-line interface for the Unstable execution node. Wraps argument parsing with
+Unstable-specific chain spec resolution via `UnstableChainSpecParser`, and exposes a `Cli` type that
 drives node startup from parsed arguments.
 
 ## Usage

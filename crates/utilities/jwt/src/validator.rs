@@ -6,9 +6,9 @@ use alloy_rpc_types_engine::JwtSecret;
 #[cfg(feature = "engine-validation")]
 use backon::{ExponentialBuilder, Retryable};
 #[cfg(feature = "engine-validation")]
-use base_common_network::{Base, BaseEngineApi};
+use base_common_network::{Unstable, UnstableEngineApi};
 #[cfg(feature = "engine-validation")]
-use base_consensus_engine::BaseEngineClient;
+use base_consensus_engine::UnstableEngineClient;
 #[cfg(feature = "engine-validation")]
 use tracing::{debug, error};
 
@@ -93,14 +93,14 @@ impl JwtValidator {
             // This allows startup retries to cover the initial socket connect when the engine
             // listener is not ready yet. HTTP URLs are lazy and would not need this, but
             // recreating them is harmless.
-            let engine = BaseEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(
+            let engine = UnstableEngineClient::<RootProvider, RootProvider<Unstable>>::rpc_client::<Unstable>(
                 engine_url.clone(),
                 self.secret,
             )
             .await
             .map_err(|e| eyre::eyre!(JwtValidationError::CapabilityExchange(e.to_string())))?;
 
-            match <RootProvider<Base> as BaseEngineApi>::exchange_capabilities(&engine, vec![])
+            match <RootProvider<Unstable> as UnstableEngineApi>::exchange_capabilities(&engine, vec![])
                 .await
             {
                 Ok(_) => {

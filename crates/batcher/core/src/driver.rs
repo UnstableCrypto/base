@@ -6,7 +6,7 @@ use base_batcher_encoder::{BatchPipeline, StepResult};
 use base_batcher_source::{
     L1HeadEvent, L1HeadSource, L2BlockEvent, SourceError, UnsafeBlockSource,
 };
-use base_common_consensus::BaseBlock;
+use base_common_consensus::UnstableBlock;
 use base_runtime::Runtime;
 use base_tx_manager::TxManager;
 use tokio::sync::mpsc;
@@ -254,7 +254,7 @@ where
     /// discards in-flight submissions, resets the pipeline, and restarts
     /// sequential catchup from `safe_head + 1`. The triggering block will be
     /// re-delivered by the sequential poller.
-    fn on_block(&mut self, block: Box<BaseBlock>) {
+    fn on_block(&mut self, block: Box<UnstableBlock>) {
         let number = block.header.number;
         match self.pipeline.add_block(*block) {
             Ok(()) => {

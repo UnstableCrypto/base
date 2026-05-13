@@ -13,7 +13,7 @@ pub enum ProtocolError {
 
     /// First flashblock in a sequence must contain a base payload.
     #[error("missing base: first flashblock in sequence must contain a base payload")]
-    MissingBase,
+    MissingUnstable,
 
     /// Cannot build from an empty flashblocks collection.
     #[error("empty flashblocks: cannot build state from zero flashblocks")]
@@ -179,7 +179,7 @@ mod tests {
         "invalid flashblock sequence: flashblocks must be processed in order"
     )]
     #[case::missing_base(
-        ProtocolError::MissingBase,
+        ProtocolError::MissingUnstable,
         "missing base: first flashblock in sequence must contain a base payload"
     )]
     #[case::empty_flashblocks(

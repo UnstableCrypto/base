@@ -1,4 +1,4 @@
-//! Contains ZLIB compression and decompression primitives for Base.
+//! Contains ZLIB compression and decompression primitives for Unstable.
 
 use alloc::vec::Vec;
 use core::cell::{Cell, RefCell};

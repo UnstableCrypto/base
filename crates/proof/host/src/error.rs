@@ -97,12 +97,12 @@ pub enum HostError {
     /// Preimage oracle error.
     #[error("Preimage oracle error: {0}")]
     PreimageOracle(PreimageOracleError),
-    /// Base derive error.
-    #[error("Base derive error: {0}")]
-    BaseDerive(String),
-    /// Base executor error.
-    #[error("Base executor error: {0}")]
-    BaseExecutor(String),
+    /// Unstable derive error.
+    #[error("Unstable derive error: {0}")]
+    UnstableDerive(String),
+    /// Unstable executor error.
+    #[error("Unstable executor error: {0}")]
+    UnstableExecutor(String),
     /// Proof program error.
     #[error(transparent)]
     ProofProgram(Box<FaultProofProgramError>),

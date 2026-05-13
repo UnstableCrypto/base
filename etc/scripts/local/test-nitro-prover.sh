@@ -4,14 +4,14 @@
 # Fetches real L1/L2 data from RPCs and sends a `prover_prove` request
 # to the locally running nitro prover server (started via `just tee nitro-local`).
 #
-# Uses `optimism_outputAtBlock` on the Base consensus node to get canonical output
+# Uses `optimism_outputAtBlock` on the Unstable consensus node to get canonical output
 # roots and L2 block references, rather than recomputing them manually.
 #
 # Usage:
 #   ./etc/scripts/local/test-nitro-prover.sh
 #
 # Environment variables (defaults match `just tee nitro-local`):
-#   CONSENSUS_NODE_URL - Base consensus node RPC (default: base mainnet reth proofs)
+#   CONSENSUS_NODE_URL - Unstable consensus node RPC (default: base mainnet reth proofs)
 #   L1_ETH_URL      - L1 execution RPC           (default: https://ethereum-rpc.publicnode.com)
 #   PROVER_RPC_URL  - Prover JSON-RPC endpoint   (default: http://localhost:8000)
 

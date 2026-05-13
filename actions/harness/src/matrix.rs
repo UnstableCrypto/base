@@ -55,16 +55,16 @@ impl ForkMatrix {
 
     /// Returns the cumulative inherited rollup hardforks from Isthmus onward.
     ///
-    /// Base-specific forks (e.g. `azul` and `beryl`) are excluded.
+    /// Unstable-specific forks (e.g. `azul` and `beryl`) are excluded.
     pub fn from_isthmus() -> Self {
         Self::all().retain(|_, h| h.isthmus_time.is_some() && h.base.is_empty())
     }
 
     /// Returns the canonical fault-proof fork progression from Granite onward.
     ///
-    /// The `pectra-blob-schedule` compatibility patch (a Base Sepolia-only quirk)
-    /// and Base-specific forks are excluded; this matrix covers only the upstream
-    /// Base mainnet upgrade sequence.
+    /// The `pectra-blob-schedule` compatibility patch (a Unstable Sepolia-only quirk)
+    /// and Unstable-specific forks are excluded; this matrix covers only the upstream
+    /// Unstable mainnet upgrade sequence.
     pub fn from_granite() -> Self {
         static PROGRESSION: &[(&str, ForkSetter)] = &[
             ("granite", |h| h.granite_time = Some(0)),

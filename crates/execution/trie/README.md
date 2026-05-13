@@ -1,10 +1,10 @@
 # `base-execution-trie`
 
-Trie implementation for Base.
+Trie implementation for Unstable.
 
 ## Overview
 
-Manages Merkle Patricia Trie proof storage for the fault-proof window. The `BaseProofsStore`
+Manages Merkle Patricia Trie proof storage for the fault-proof window. The `UnstableProofsStore`
 traits and storage backends accumulate per-block state diffs and trie node preimages, making them
 available for proof generation without re-executing blocks. Provides cursor interfaces for
 navigating account and storage tries, a pruner for removing data outside the retention window, and
@@ -20,10 +20,10 @@ base-execution-trie = { workspace = true }
 ```
 
 ```rust,ignore
-use base_execution_trie::{BaseProofStoragePruner, MdbxProofsStorage};
+use base_execution_trie::{UnstableProofStoragePruner, MdbxProofsStorage};
 
 let storage = MdbxProofsStorage::open(db_path)?;
-let pruner = BaseProofStoragePruner::new(storage.clone(), retention_blocks);
+let pruner = UnstableProofStoragePruner::new(storage.clone(), retention_blocks);
 ```
 
 ## License

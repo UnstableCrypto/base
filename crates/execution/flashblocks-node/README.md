@@ -5,20 +5,20 @@
 
 ## Overview
 
-This crate provides the Flashblocks extension for the Base node, which enables real-time streaming of pending block state and extended RPC capabilities.
+This crate provides the Flashblocks extension for the Unstable node, which enables real-time streaming of pending block state and extended RPC capabilities.
 
 ## Usage
 
 ### Programmatic Integration
 
-To integrate the Flashblocks extension into your node, use the `install_ext` method on your `BaseNodeRunner`:
+To integrate the Flashblocks extension into your node, use the `install_ext` method on your `UnstableNodeRunner`:
 
 ```rust,ignore
 use base_flashblocks::FlashblocksConfig;
 use base_flashblocks_node::FlashblocksExtension;
-use base_node_runner::BaseNodeRunner;
+use base_node_runner::UnstableNodeRunner;
 
-let mut runner = BaseNodeRunner::new(rollup_args);
+let mut runner = UnstableNodeRunner::new(rollup_args);
 
 // Create flashblocks configuration
 let flashblocks_config = FlashblocksConfig::new(flashblocks_url, max_pending_blocks_depth);
@@ -42,7 +42,7 @@ When running the node binary, Flashblocks can be configured with the following C
 ### Example
 
 ```bash
-# Run the Base node with Flashblocks enabled
+# Run the Unstable node with Flashblocks enabled
 base-node \
   --flashblocks-url ws://flashblock-service:8080 \
   --max-pending-blocks-depth 5

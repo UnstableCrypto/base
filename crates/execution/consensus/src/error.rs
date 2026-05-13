@@ -1,12 +1,12 @@
-//! Base consensus errors
+//! Unstable consensus errors
 
 use alloy_primitives::B256;
 use reth_consensus::ConsensusError;
 use reth_storage_errors::provider::ProviderError;
 
-/// Base consensus error.
+/// Unstable consensus error.
 #[derive(Debug, Clone, thiserror::Error)]
-pub enum BaseConsensusError {
+pub enum UnstableConsensusError {
     /// Block body has non-empty withdrawals list (l1 withdrawals).
     #[error("non-empty block body withdrawals list")]
     WithdrawalsNonEmpty,

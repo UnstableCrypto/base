@@ -12,12 +12,12 @@ use alloy_rpc_types_eth::Withdrawals;
 use base_access_lists::FBALBuilderDb;
 use base_bundles::{MeterBundleResponse, RejectedTransaction, RejectionReason};
 use base_common_chains::Upgrades;
-use base_common_consensus::{BaseReceipt, BaseTransactionSigned, DepositReceipt, OpTxType};
-use base_common_evm::{BaseReceiptBuilder, BaseSpecId, L1BlockInfo};
-use base_execution_chainspec::BaseChainSpec;
-use base_execution_evm::{BaseEvmConfig, BaseNextBlockEnvAttributes};
+use base_common_consensus::{UnstableReceipt, UnstableTransactionSigned, DepositReceipt, OpTxType};
+use base_common_evm::{UnstableReceiptBuilder, UnstableSpecId, L1BlockInfo};
+use base_execution_chainspec::UnstableChainSpec;
+use base_execution_evm::{UnstableEvmConfig, UnstableNextBlockEnvAttributes};
 use base_execution_payload_builder::{
-    BasePayloadBuilderAttributes, error::BasePayloadBuilderError,
+    UnstablePayloadBuilderAttributes, error::UnstablePayloadBuilderError,
 };
 use base_execution_txpool::{
     BundleTransaction, TimestampedTransaction, estimated_da_size::DataAvailabilitySized,
@@ -277,17 +277,17 @@ impl FlashblocksExtraCtx {
 
 /// Container type that holds all the necessities to build a new payload.
 #[derive(Debug)]
-pub struct BasePayloadBuilderCtx {
+pub struct UnstablePayloadBuilderCtx {
     /// The type that knows how to perform system calls and configure the evm.
-    pub evm_config: BaseEvmConfig,
+    pub evm_config: UnstableEvmConfig,
     /// The chainspec
-    pub chain_spec: Arc<BaseChainSpec>,
+    pub chain_spec: Arc<UnstableChainSpec>,
     /// How to build the payload.
-    pub config: PayloadConfig<BasePayloadBuilderAttributes<BaseTransactionSigned>>,
+    pub config: PayloadConfig<UnstablePayloadBuilderAttributes<UnstableTransactionSigned>>,
     /// Evm Settings
-    pub evm_env: EvmEnv<BaseSpecId>,
+    pub evm_env: EvmEnv<UnstableSpecId>,
     /// Block env attributes for the current block.
-    pub block_env_attributes: BaseNextBlockEnvAttributes,
+    pub block_env_attributes: UnstableNextBlockEnvAttributes,
     /// Marker to check whether the job has been cancelled.
     pub cancel: CancellationToken,
     /// Extra context for the payload builder
@@ -298,7 +298,7 @@ pub struct BasePayloadBuilderCtx {
     pub rejected_tx_sender: Option<mpsc::Sender<Vec<RejectedTransaction>>>,
 }
 
-impl BasePayloadBuilderCtx {
+impl UnstablePayloadBuilderCtx {
     pub(super) fn with_cancel(self, cancel: CancellationToken) -> Self {
         Self { cancel, ..self }
     }
@@ -331,7 +331,7 @@ impl BasePayloadBuilderCtx {
     }
 
     /// Returns the builder attributes.
-    pub(super) const fn attributes(&self) -> &BasePayloadBuilderAttributes<BaseTransactionSigned> {
+    pub(super) const fn attributes(&self) -> &UnstablePayloadBuilderAttributes<UnstableTransactionSigned> {
         &self.config.attributes
     }
 
@@ -501,13 +501,13 @@ impl BasePayloadBuilderCtx {
     }
 }
 
-impl BasePayloadBuilderCtx {
+impl UnstablePayloadBuilderCtx {
     /// Constructs a receipt for the given transaction.
     pub fn build_receipt<E: Evm>(
         &self,
         ctx: ReceiptBuilderCtx<'_, OpTxType, E>,
         deposit_nonce: Option<u64>,
-    ) -> BaseReceipt {
+    ) -> UnstableReceipt {
         let receipt_builder = self.evm_config.block_executor_factory().receipt_builder();
         match receipt_builder.build_receipt(ctx) {
             Ok(receipt) => receipt,
@@ -561,7 +561,7 @@ impl BasePayloadBuilderCtx {
             // A sequencer's block should never contain blob transactions.
             if sequencer_tx.value().is_eip4844() {
                 return Err(PayloadBuilderError::other(
-                    BasePayloadBuilderError::BlobTransactionRejected,
+                    UnstablePayloadBuilderError::BlobTransactionRejected,
                 ));
             }
 
@@ -570,7 +570,7 @@ impl BasePayloadBuilderCtx {
             // Deposit transactions do not have signatures, so if the tx is a deposit, this
             // will just pull in its `from` address.
             let sequencer_tx = sequencer_tx.value().try_clone_into_recovered().map_err(|_| {
-                PayloadBuilderError::other(BasePayloadBuilderError::TransactionEcRecoverFailed)
+                PayloadBuilderError::other(UnstablePayloadBuilderError::TransactionEcRecoverFailed)
             })?;
 
             // Cache the depositor account prior to the state transition for the deposit nonce.
@@ -587,7 +587,7 @@ impl BasePayloadBuilderCtx {
                 })
                 .transpose()
                 .map_err(|_| {
-                    PayloadBuilderError::other(BasePayloadBuilderError::AccountLoadFailed(
+                    PayloadBuilderError::other(UnstablePayloadBuilderError::AccountLoadFailed(
                         sequencer_tx.signer(),
                     ))
                 })?;
@@ -1136,16 +1136,16 @@ impl BasePayloadBuilderCtx {
 use alloy_primitives::B256;
 
 #[cfg(any(test, feature = "test-utils"))]
-impl BasePayloadBuilderCtx {
-    /// Creates a minimal [`BasePayloadBuilderCtx`] for unit tests.
+impl UnstablePayloadBuilderCtx {
+    /// Creates a minimal [`UnstablePayloadBuilderCtx`] for unit tests.
     ///
     /// Derives the EVM environment from the given chain spec and parent header,
     /// using default builder attributes and a no-op cancellation token.
-    pub fn for_test(chain_spec: Arc<BaseChainSpec>, parent: Arc<SealedHeader>) -> Self {
-        let evm_config = BaseEvmConfig::base(Arc::clone(&chain_spec));
+    pub fn for_test(chain_spec: Arc<UnstableChainSpec>, parent: Arc<SealedHeader>) -> Self {
+        let evm_config = UnstableEvmConfig::base(Arc::clone(&chain_spec));
         let timestamp = parent.timestamp + 2;
 
-        let attributes = BasePayloadBuilderAttributes {
+        let attributes = UnstablePayloadBuilderAttributes {
             payload_attributes: reth_payload_builder::EthPayloadBuilderAttributes {
                 id: PayloadId::new([0; 8]),
                 parent: parent.hash(),
@@ -1157,7 +1157,7 @@ impl BasePayloadBuilderCtx {
             ..Default::default()
         };
 
-        let block_env_attributes = BaseNextBlockEnvAttributes {
+        let block_env_attributes = UnstableNextBlockEnvAttributes {
             timestamp,
             suggested_fee_recipient: Default::default(),
             prev_randao: Default::default(),
@@ -1192,8 +1192,8 @@ mod tests {
     use alloy_eips::Encodable2718;
     use alloy_primitives::{TxKind, U256};
     use alloy_signer_local::PrivateKeySigner;
-    use base_common_consensus::BaseTypedTransaction;
-    use base_execution_chainspec::BaseChainSpec;
+    use base_common_consensus::UnstableTypedTransaction;
+    use base_execution_chainspec::UnstableChainSpec;
     use reth_chainspec::ChainSpec;
     use reth_primitives::SealedHeader;
     use reth_primitives_traits::WithEncoded;
@@ -1333,7 +1333,7 @@ mod tests {
     /// safe-head whose state cannot be reproduced by an honest proof client.
     #[test]
     fn execute_sequencer_transactions_propagates_invalid_tx_when_no_tx_pool() {
-        // Minimal Base chainspec: chain id 901 with all L1 forks through Cancun active at
+        // Minimal Unstable chainspec: chain id 901 with all L1 forks through Cancun active at
         // genesis. No inherited rollup forks, so block construction stays on the simplest
         // path. (Mirrors the helper used by the `build_block` tests in `payload.rs`.)
         let genesis: serde_json::Value = serde_json::json!({
@@ -1344,7 +1344,7 @@ mod tests {
         let genesis = serde_json::from_value(genesis).expect("valid genesis");
         let inner =
             ChainSpec::builder().chain(901.into()).genesis(genesis).cancun_activated().build();
-        let chain_spec = Arc::new(BaseChainSpec { inner });
+        let chain_spec = Arc::new(UnstableChainSpec { inner });
         let parent_header = Header { gas_limit: 30_000_000, timestamp: 0, ..Default::default() };
         let parent = Arc::new(SealedHeader::seal_slow(parent_header));
 
@@ -1363,13 +1363,13 @@ mod tests {
             ..Default::default()
         };
         let recovered =
-            sign_base_tx(&signer, BaseTypedTransaction::Eip1559(tx)).expect("sign sequencer tx");
+            sign_base_tx(&signer, UnstableTypedTransaction::Eip1559(tx)).expect("sign sequencer tx");
         let signed = recovered.into_inner();
         let encoded = signed.encoded_2718().into();
         let with_encoded = WithEncoded::new(encoded, signed);
 
         // Strict mode: derived attributes (`no_tx_pool=true`) — the invalid tx must be fatal.
-        let mut ctx = BasePayloadBuilderCtx::for_test(chain_spec, parent);
+        let mut ctx = UnstablePayloadBuilderCtx::for_test(chain_spec, parent);
         ctx.config.attributes.no_tx_pool = true;
         ctx.config.attributes.transactions = vec![with_encoded];
 

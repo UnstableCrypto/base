@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use alloy_eips::BlockHashOrNumber;
 use backon::Retryable;
-use base_execution_chainspec::BaseChainSpec;
+use base_execution_chainspec::UnstableChainSpec;
 use clap::{Parser, Subcommand};
 use reth_cli_commands::{
     common::CliNodeTypes,
@@ -28,7 +28,7 @@ impl Command {
     /// Execute the p2p command.
     pub async fn execute<N>(self) -> eyre::Result<()>
     where
-        N: CliNodeTypes<ChainSpec = BaseChainSpec>,
+        N: CliNodeTypes<ChainSpec = UnstableChainSpec>,
         NetworkHandle<N::NetworkPrimitives>: BlockDownloaderProvider,
     {
         match self.command {
@@ -109,7 +109,7 @@ impl Command {
     /// Header and Body delegate chain parsing internally to [`DownloadArgs`] whose `chain`
     /// field is private, so we return `None` for those. Only the log-directory path suffix
     /// uses this value, so the impact is cosmetic.
-    pub const fn chain_spec(&self) -> Option<&Arc<BaseChainSpec>> {
+    pub const fn chain_spec(&self) -> Option<&Arc<UnstableChainSpec>> {
         None
     }
 }
@@ -119,7 +119,7 @@ enum Subcommands {
     /// Download a block header by number or hash.
     Header {
         #[command(flatten)]
-        args: DownloadArgs<crate::chainspec::BaseChainSpecParser>,
+        args: DownloadArgs<crate::chainspec::UnstableChainSpecParser>,
         /// Block number or hash to fetch.
         #[arg(value_parser = hash_or_num_value_parser)]
         id: BlockHashOrNumber,
@@ -127,7 +127,7 @@ enum Subcommands {
     /// Download a block body by number or hash.
     Body {
         #[command(flatten)]
-        args: DownloadArgs<crate::chainspec::BaseChainSpecParser>,
+        args: DownloadArgs<crate::chainspec::UnstableChainSpecParser>,
         /// Block number or hash to fetch.
         #[arg(value_parser = hash_or_num_value_parser)]
         id: BlockHashOrNumber,

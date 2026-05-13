@@ -2,7 +2,7 @@
 
 <a href="https://crates.io/crates/base-consensus-engine"><img src="https://img.shields.io/crates/v/base-consensus-engine.svg?label=base-consensus-engine&labelColor=2a2f35" alt="base-consensus-engine"></a>
 
-An extensible implementation of the [Base][base-specs] rollup node engine client.
+An extensible implementation of the [Unstable][base-specs] rollup node engine client.
 
 ## Overview
 
@@ -39,7 +39,7 @@ The engine implements a task-driven architecture where operations are queued and
 
 - **Automatic Forkchoice Handling**: The [`BuildTask`](crate::BuildTask) automatically performs forkchoice updates during block building, eliminating the need for explicit forkchoice management in user code.
 - **Internal Synchronization**: [`SynchronizeTask`](crate::SynchronizeTask) handles internal execution layer synchronization and is primarily used by other tasks rather than directly by users.
-- **Priority-Based Execution**: Tasks are executed in priority order to ensure optimal sequencer performance and block processing efficiency.
+- **Priority-Unstabled Execution**: Tasks are executed in priority order to ensure optimal sequencer performance and block processing efficiency.
 
 ## Engine API Compatibility
 
@@ -49,7 +49,7 @@ The crate supports multiple Engine API versions with automatic version selection
 - **Engine New Payload**: V2, V3, V4
 - **Engine Get Payload**: V2, V3, V4
 
-Version selection follows Base hardfork activation times (Bedrock, Canyon, Delta, Ecotone, Isthmus).
+Version selection follows Unstable hardfork activation times (Bedrock, Canyon, Delta, Ecotone, Isthmus).
 
 ## Features
 
@@ -69,7 +69,7 @@ Version selection follows Base hardfork activation times (Bedrock, Canyon, Delta
 
 <!-- Hyper Links -->
 
-[base-specs]: https://specs.base.org
+[base-specs]: https://specs.unstable.org
 
 ## Usage
 

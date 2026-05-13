@@ -13,7 +13,7 @@ use alloy_provider::{Provider, RootProvider};
 use alloy_rpc_types::{BlockNumberOrTag, TransactionRequest};
 use alloy_signer_local::PrivateKeySigner;
 use alloy_sol_types::{SolCall, sol};
-use base_common_network::Base;
+use base_common_network::Unstable;
 use base_tx_manager::NonceManager;
 use futures::{StreamExt, stream};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -36,7 +36,7 @@ use super::{
     SubmitEvent, TxType,
 };
 use crate::{
-    BaselineError, Result,
+    UnstablelineError, Result,
     config::{OsakaTarget, WorkloadConfig},
     metrics::{ConfigSummary, MetricsCollector, MetricsSummary},
     rpc::{
@@ -183,7 +183,7 @@ impl LoadRunner {
 
         let total_weight: u32 = config.transactions.iter().map(|t| t.weight).sum();
         if total_weight == 0 {
-            return Err(BaselineError::Config("total transaction weight must be > 0".into()));
+            return Err(UnstablelineError::Config("total transaction weight must be > 0".into()));
         }
 
         for tx_config in &config.transactions {
@@ -329,7 +329,7 @@ impl LoadRunner {
                     let balance = client.get_balance(addr).await.rpc("get balance")?;
                     let nonce =
                         client.get_transaction_count(addr).await.rpc("get transaction count")?;
-                    Ok::<_, BaselineError>((addr, idx, balance, nonce))
+                    Ok::<_, UnstablelineError>((addr, idx, balance, nonce))
                 }
             })
             .collect();
@@ -387,7 +387,7 @@ impl LoadRunner {
 
         if funder_balance < total_needed {
             let shortfall = total_needed.saturating_sub(funder_balance);
-            return Err(BaselineError::Transaction(format!(
+            return Err(UnstablelineError::Transaction(format!(
                 "funder {} has insufficient balance: has {} ETH, needs {} ETH (deficit {} ETH + gas {} ETH), shortfall {} ETH",
                 funder_address,
                 format_ether(funder_balance),
@@ -482,7 +482,7 @@ impl LoadRunner {
 
             if !fatal_errors.is_empty() {
                 pb_fund.finish_and_clear();
-                return Err(BaselineError::Transaction(format!(
+                return Err(UnstablelineError::Transaction(format!(
                     "{} funding tx(s) failed: {}",
                     fatal_errors.len(),
                     fatal_errors.join("; "),
@@ -596,7 +596,7 @@ impl LoadRunner {
                     let balance = client.get_balance(addr).await.rpc("get balance")?;
                     let nonce =
                         client.get_transaction_count(addr).await.rpc("get transaction count")?;
-                    Ok::<_, BaselineError>((addr, balance, nonce))
+                    Ok::<_, UnstablelineError>((addr, balance, nonce))
                 }
             })
             .collect();
@@ -670,7 +670,7 @@ impl LoadRunner {
             .cloned()
             .map(|node| {
                 let client = TxpoolAdminClient::new(node.clone())?;
-                Ok::<_, BaselineError>((node, client))
+                Ok::<_, UnstablelineError>((node, client))
             })
             .collect::<Result<_>>()?;
         let addresses: Vec<_> =
@@ -688,11 +688,11 @@ impl LoadRunner {
         let clear_results: Vec<_> =
             stream::iter(requests.into_iter().map(|(node, client, address)| async move {
                 let removed = client.drop_sender_transactions(address).await.map_err(|e| {
-                    BaselineError::Rpc(format!(
+                    UnstablelineError::Rpc(format!(
                         "failed to clear txpool node {node} for sender {address}: {e}"
                     ))
                 })?;
-                Ok::<_, BaselineError>((node, removed.len() as u64))
+                Ok::<_, UnstablelineError>((node, removed.len() as u64))
             }))
             .buffer_unordered(TXPOOL_CLEAR_CONCURRENCY)
             .collect()
@@ -829,7 +829,7 @@ impl LoadRunner {
 
         if funder_balance < total_gas_cost {
             let shortfall = total_gas_cost.saturating_sub(funder_balance);
-            return Err(BaselineError::Transaction(format!(
+            return Err(UnstablelineError::Transaction(format!(
                 "funder {} has insufficient balance for token distribution: has {} ETH, needs {} ETH (gas for {} txs), shortfall {} ETH",
                 funder_address,
                 format_ether(funder_balance),
@@ -903,7 +903,7 @@ impl LoadRunner {
         pb.finish_and_clear();
 
         if failed_count > 0 {
-            return Err(BaselineError::Transaction(format!(
+            return Err(UnstablelineError::Transaction(format!(
                 "{failed_count}/{total_txs} token mints failed — senders with missing tokens will revert on swap"
             )));
         }
@@ -982,7 +982,7 @@ impl LoadRunner {
         info!(url = %self.config.query_rpc, "starting block watcher");
         let block_watcher_task = Some(
             BlockWatcher::new(
-                RootProvider::<Base>::new_http(self.config.query_rpc.clone()),
+                RootProvider::<Unstable>::new_http(self.config.query_rpc.clone()),
                 results_tracker.clone(),
                 self.cancel_token.clone(),
             )
@@ -1458,7 +1458,7 @@ impl LoadRunner {
         let max_fee =
             gas_price.saturating_mul(2).max(max_priority_fee).min(self.config.max_gas_price);
         let drain_gas_limit = 21_000u128;
-        // L1 data fee on Base can be significant (0.0001-0.001 ETH depending on L1 gas prices).
+        // L1 data fee on Unstable can be significant (0.0001-0.001 ETH depending on L1 gas prices).
         // Use 0.001 ETH (1e15 wei) buffer to be safe. We may leave dust in accounts.
         let l1_fee_buffer = 1_000_000_000_000_000u128;
         let drain_gas_cost = U256::from(drain_gas_limit * max_fee + l1_fee_buffer);
@@ -1487,7 +1487,7 @@ impl LoadRunner {
                             balance = %balance,
                             "skipping drain, balance too low to cover gas"
                         );
-                        return Ok::<_, BaselineError>(None);
+                        return Ok::<_, UnstablelineError>(None);
                     }
 
                     let send_amount = balance.saturating_sub(drain_gas_cost);
@@ -1615,7 +1615,7 @@ impl LoadRunner {
         }
 
         if !pending_accounts.is_empty() {
-            return Err(BaselineError::Transaction(format!(
+            return Err(UnstablelineError::Transaction(format!(
                 "accounts did not reach funding target within timeout: {pending_accounts:?}"
             )));
         }
@@ -1669,7 +1669,7 @@ impl LoadRunner {
         }
 
         if !pending_accounts.is_empty() {
-            return Err(BaselineError::Transaction(format!(
+            return Err(UnstablelineError::Transaction(format!(
                 "token balances did not reach target within timeout: {pending_accounts:?}"
             )));
         }
@@ -1713,7 +1713,7 @@ impl LoadRunner {
         }
 
         if !pending_accounts.is_empty() {
-            return Err(BaselineError::Transaction(format!(
+            return Err(UnstablelineError::Transaction(format!(
                 "accounts did not drain within timeout: {pending_accounts:?}"
             )));
         }

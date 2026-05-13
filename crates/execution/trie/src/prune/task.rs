@@ -6,31 +6,31 @@ use tokio::{
 };
 use tracing::info;
 
-use crate::{BaseProofsStorage, BaseProofsStore, prune::BaseProofStoragePruner};
+use crate::{UnstableProofsStorage, UnstableProofsStore, prune::UnstableProofStoragePruner};
 
 const PRUNE_BATCH_SIZE: u64 = 200;
 
 /// Periodic pruner task: constructs the pruner and runs it every interval.
 #[derive(Debug)]
-pub struct BaseProofStoragePrunerTask<P, H> {
-    pruner: BaseProofStoragePruner<P, H>,
+pub struct UnstableProofStoragePrunerTask<P, H> {
+    pruner: UnstableProofStoragePruner<P, H>,
     min_block_interval: u64,
     task_run_interval: Duration,
 }
 
-impl<P, H> BaseProofStoragePrunerTask<P, H>
+impl<P, H> UnstableProofStoragePrunerTask<P, H>
 where
-    P: BaseProofsStore,
+    P: UnstableProofsStore,
     H: BlockHashReader,
 {
-    /// Initialize a new [`BaseProofStoragePrunerTask`]
+    /// Initialize a new [`UnstableProofStoragePrunerTask`]
     pub const fn new(
-        provider: BaseProofsStorage<P>,
+        provider: UnstableProofsStorage<P>,
         hash_reader: H,
         min_block_interval: u64,
         task_run_interval: Duration,
     ) -> Self {
-        let pruner = BaseProofStoragePruner::new(
+        let pruner = UnstableProofStoragePruner::new(
             provider,
             hash_reader,
             min_block_interval,

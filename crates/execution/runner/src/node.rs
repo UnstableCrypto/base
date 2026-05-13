@@ -1,16 +1,16 @@
-//! Base Node types config.
+//! Unstable Node types config.
 
-use base_common_consensus::BasePrimitives;
-use base_engine_tree::BaseEngineValidatorBuilder;
-use base_execution_chainspec::BaseChainSpec;
-use base_execution_payload_builder::config::{BaseDAConfig, GasLimitConfig};
-use base_execution_rpc::eth::BaseEthApiBuilder;
+use base_common_consensus::UnstablePrimitives;
+use base_engine_tree::UnstableEngineValidatorBuilder;
+use base_execution_chainspec::UnstableChainSpec;
+use base_execution_payload_builder::config::{UnstableDAConfig, GasLimitConfig};
+use base_execution_rpc::eth::UnstableEthApiBuilder;
 use base_node_core::{
-    BaseConsensusBuilder, BaseEngineApiBuilder, BaseEngineTypes, BaseExecutorBuilder,
-    BaseNetworkBuilder, BaseNodeComponentBuilder, BaseNodeTypes, BasePayloadValidatorBuilder,
-    BaseStorage,
+    UnstableConsensusBuilder, UnstableEngineApiBuilder, UnstableEngineTypes, UnstableExecutorBuilder,
+    UnstableNetworkBuilder, UnstableNodeComponentBuilder, UnstableNodeTypes, UnstablePayloadValidatorBuilder,
+    UnstableStorage,
     args::RollupArgs,
-    node::{BasePayloadBuilder, BasePoolBuilder},
+    node::{UnstablePayloadBuilder, UnstablePoolBuilder},
 };
 use reth_node_builder::{
     Node, NodeAdapter, NodeComponentsBuilder,
@@ -20,13 +20,13 @@ use reth_node_builder::{
 use reth_provider::providers::ProviderFactoryBuilder;
 use reth_rpc_api::eth::RpcTypes;
 
-use crate::{BaseAddOns, BaseAddOnsBuilder};
+use crate::{UnstableAddOns, UnstableAddOnsBuilder};
 
-/// Type configuration for a regular Base node.
+/// Type configuration for a regular Unstable node.
 #[derive(Debug, Default, Clone)]
 #[non_exhaustive]
-pub struct BaseNode {
-    /// Additional Base args
+pub struct UnstableNode {
+    /// Additional Unstable args
     pub args: RollupArgs,
     /// Data availability configuration for the payload builder.
     ///
@@ -34,25 +34,25 @@ pub struct BaseNode {
     /// the `miner_` api).
     ///
     /// By default no throttling is applied.
-    pub da_config: BaseDAConfig,
+    pub da_config: UnstableDAConfig,
     /// Gas limit configuration for the payload builder.
     /// Used to control the gas limit of the blocks produced by the payload builder (configured by the
     /// batcher via the `miner_` api)
     pub gas_limit_config: GasLimitConfig,
 }
 
-impl BaseNode {
-    /// Creates a new instance of the Base node type.
+impl UnstableNode {
+    /// Creates a new instance of the Unstable node type.
     pub fn new(args: RollupArgs) -> Self {
         Self {
             args,
-            da_config: BaseDAConfig::default(),
+            da_config: UnstableDAConfig::default(),
             gas_limit_config: GasLimitConfig::default(),
         }
     }
 
     /// Configure the data availability configuration for the payload builder.
-    pub fn with_da_config(mut self, da_config: BaseDAConfig) -> Self {
+    pub fn with_da_config(mut self, da_config: UnstableDAConfig) -> Self {
         self.da_config = da_config;
         self
     }
@@ -64,9 +64,9 @@ impl BaseNode {
     }
 
     /// Returns the components for the given [`RollupArgs`].
-    pub fn components<Node>(&self) -> BaseNodeComponentBuilder<Node>
+    pub fn components<Node>(&self) -> UnstableNodeComponentBuilder<Node>
     where
-        Node: FullNodeTypes<Types: BaseNodeTypes>,
+        Node: FullNodeTypes<Types: UnstableNodeTypes>,
     {
         let RollupArgs {
             disable_txpool_gossip,
@@ -79,22 +79,22 @@ impl BaseNode {
         ComponentsBuilder::default()
             .node_types::<Node>()
             .pool(
-                BasePoolBuilder::default()
+                UnstablePoolBuilder::default()
                     .with_max_inflight_delegated_slots(max_inflight_delegated_slots),
             )
-            .executor(BaseExecutorBuilder::default())
+            .executor(UnstableExecutorBuilder::default())
             .payload(BasicPayloadServiceBuilder::new(
-                BasePayloadBuilder::new(compute_pending_block)
+                UnstablePayloadBuilder::new(compute_pending_block)
                     .with_da_config(self.da_config.clone())
                     .with_gas_limit_config(self.gas_limit_config.clone()),
             ))
-            .network(BaseNetworkBuilder::new(disable_txpool_gossip, !discovery_v4, base_protocol))
-            .consensus(BaseConsensusBuilder::default())
+            .network(UnstableNetworkBuilder::new(disable_txpool_gossip, !discovery_v4, base_protocol))
+            .consensus(UnstableConsensusBuilder::default())
     }
 
-    /// Returns [`BaseAddOnsBuilder`] with configured arguments.
-    pub fn add_ons_builder<NetworkT: RpcTypes>(&self) -> BaseAddOnsBuilder<NetworkT> {
-        BaseAddOnsBuilder::default()
+    /// Returns [`UnstableAddOnsBuilder`] with configured arguments.
+    pub fn add_ons_builder<NetworkT: RpcTypes>(&self) -> UnstableAddOnsBuilder<NetworkT> {
+        UnstableAddOnsBuilder::default()
             .with_sequencer(self.args.sequencer.clone())
             .with_sequencer_headers(self.args.sequencer_headers.clone())
             .with_da_config(self.da_config.clone())
@@ -102,7 +102,7 @@ impl BaseNode {
             .with_min_suggested_priority_fee(self.args.min_suggested_priority_fee)
     }
 
-    /// Instantiates the [`ProviderFactoryBuilder`] for a Base node.
+    /// Instantiates the [`ProviderFactoryBuilder`] for a Unstable node.
     ///
     /// # Open a `ProviderFactory` in read-only mode from a datadir
     ///
@@ -110,15 +110,15 @@ impl BaseNode {
     /// [`ReadOnlyConfig`](reth_provider::providers::ReadOnlyConfig).
     ///
     /// ```no_run
-    /// use base_execution_chainspec::BaseChainSpec;
-    /// use base_node_runner::BaseNode;
+    /// use base_execution_chainspec::UnstableChainSpec;
+    /// use base_node_runner::UnstableNode;
     /// use reth_provider::providers::ReadOnlyConfig;
     /// use std::sync::Arc;
     ///
     /// let runtime = reth_tasks::Runtime::test();
-    /// let factory = BaseNode::provider_factory_builder()
+    /// let factory = UnstableNode::provider_factory_builder()
     ///     .open_read_only(
-    ///         Arc::new(BaseChainSpec::mainnet()),
+    ///         Arc::new(UnstableChainSpec::mainnet()),
     ///         ReadOnlyConfig::from_datadir("datadir").no_watch(),
     ///         runtime,
     ///     )
@@ -128,15 +128,15 @@ impl BaseNode {
     /// # Open a `ProviderFactory` manually with all required components
     ///
     /// ```no_run
-    /// use base_execution_chainspec::BaseChainSpecBuilder;
-    /// use base_node_runner::BaseNode;
+    /// use base_execution_chainspec::UnstableChainSpecBuilder;
+    /// use base_node_runner::UnstableNode;
     /// use reth_db::mdbx::DatabaseArguments;
     /// use reth_provider::providers::ReadOnlyConfig;
     ///
     /// let runtime = reth_tasks::Runtime::test();
-    /// let factory = BaseNode::provider_factory_builder()
+    /// let factory = UnstableNode::provider_factory_builder()
     ///     .open_read_only(
-    ///         BaseChainSpecBuilder::base_mainnet().build().into(),
+    ///         UnstableChainSpecBuilder::base_mainnet().build().into(),
     ///         ReadOnlyConfig {
     ///             db_dir: "db".into(),
     ///             db_args: DatabaseArguments::default(),
@@ -153,25 +153,25 @@ impl BaseNode {
     }
 }
 
-impl<N> Node<N> for BaseNode
+impl<N> Node<N> for UnstableNode
 where
-    N: FullNodeTypes<Types: BaseNodeTypes>,
+    N: FullNodeTypes<Types: UnstableNodeTypes>,
 {
     type ComponentsBuilder = ComponentsBuilder<
         N,
-        BasePoolBuilder,
-        BasicPayloadServiceBuilder<BasePayloadBuilder>,
-        BaseNetworkBuilder,
-        BaseExecutorBuilder,
-        BaseConsensusBuilder,
+        UnstablePoolBuilder,
+        BasicPayloadServiceBuilder<UnstablePayloadBuilder>,
+        UnstableNetworkBuilder,
+        UnstableExecutorBuilder,
+        UnstableConsensusBuilder,
     >;
 
-    type AddOns = BaseAddOns<
+    type AddOns = UnstableAddOns<
         NodeAdapter<N, <Self::ComponentsBuilder as NodeComponentsBuilder<N>>::Components>,
-        BaseEthApiBuilder,
-        BasePayloadValidatorBuilder,
-        BaseEngineApiBuilder<BasePayloadValidatorBuilder>,
-        BaseEngineValidatorBuilder<BasePayloadValidatorBuilder>,
+        UnstableEthApiBuilder,
+        UnstablePayloadValidatorBuilder,
+        UnstableEngineApiBuilder<UnstablePayloadValidatorBuilder>,
+        UnstableEngineValidatorBuilder<UnstablePayloadValidatorBuilder>,
     >;
 
     fn components_builder(&self) -> Self::ComponentsBuilder {
@@ -183,9 +183,9 @@ where
     }
 }
 
-impl NodeTypes for BaseNode {
-    type Primitives = BasePrimitives;
-    type ChainSpec = BaseChainSpec;
-    type Storage = BaseStorage;
-    type Payload = BaseEngineTypes;
+impl NodeTypes for UnstableNode {
+    type Primitives = UnstablePrimitives;
+    type ChainSpec = UnstableChainSpec;
+    type Storage = UnstableStorage;
+    type Payload = UnstableEngineTypes;
 }

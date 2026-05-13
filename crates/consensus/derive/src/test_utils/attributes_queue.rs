@@ -5,7 +5,7 @@ use alloc::{boxed::Box, vec::Vec};
 use alloy_eips::BlockNumHash;
 use async_trait::async_trait;
 use base_common_genesis::SystemConfig;
-use base_common_rpc_types_engine::BasePayloadAttributes;
+use base_common_rpc_types_engine::UnstablePayloadAttributes;
 use base_protocol::{BlockInfo, L2BlockInfo, SingleBatch};
 
 use crate::{
@@ -18,17 +18,17 @@ use crate::{
 #[derive(Debug, Default)]
 pub struct TestAttributesBuilder {
     /// The attributes to return.
-    pub attributes: Vec<Result<BasePayloadAttributes, PipelineErrorKind>>,
+    pub attributes: Vec<Result<UnstablePayloadAttributes, PipelineErrorKind>>,
 }
 
 #[async_trait]
 impl AttributesBuilder for TestAttributesBuilder {
-    /// Prepares the [`BasePayloadAttributes`] for the next payload.
+    /// Prepares the [`UnstablePayloadAttributes`] for the next payload.
     async fn prepare_payload_attributes(
         &mut self,
         _l2_parent: L2BlockInfo,
         _epoch: BlockNumHash,
-    ) -> PipelineResult<BasePayloadAttributes> {
+    ) -> PipelineResult<UnstablePayloadAttributes> {
         match self.attributes.pop() {
             Some(Ok(attrs)) => Ok(attrs),
             Some(Err(err)) => Err(err),

@@ -1,4 +1,4 @@
-//! Helpers for Base-specific RPC implementations.
+//! Helpers for Unstable-specific RPC implementations.
 
 use std::{str::FromStr, sync::Arc, time::Instant};
 

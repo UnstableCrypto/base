@@ -1,10 +1,10 @@
-//! Base API types.
+//! Unstable API types.
 
 mod builder;
 pub use builder::Builder;
 
 mod default_ctx;
-pub use default_ctx::{BaseContext, DefaultBase};
+pub use default_ctx::{UnstableContext, DefaultUnstable};
 
 mod exec;
-pub use exec::{BaseContextTr, BaseError};
+pub use exec::{UnstableContextTr, UnstableError};

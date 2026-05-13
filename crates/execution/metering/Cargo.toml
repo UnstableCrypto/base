@@ -1,6 +1,6 @@
 [package]
 name = "base-metering"
-description = "Metering RPC for Base node"
+description = "Metering RPC for Unstable node"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

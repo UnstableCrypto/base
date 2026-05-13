@@ -9,17 +9,17 @@
 
 /// A configurable app on top of the CLI parser.
 pub mod app;
-/// Base chain specification parser.
+/// Unstable chain specification parser.
 pub mod chainspec;
-/// Base CLI commands.
+/// Unstable CLI commands.
 pub mod commands;
 
 use std::{ffi::OsString, fmt, marker::PhantomData};
 
 pub use app::CliApp;
-use base_execution_chainspec::BaseChainSpec;
+use base_execution_chainspec::UnstableChainSpec;
 use base_node_core::args::RollupArgs;
-use chainspec::BaseChainSpecParser;
+use chainspec::UnstableChainSpecParser;
 use clap::Parser;
 use commands::Commands;
 use futures::Future;
@@ -97,7 +97,7 @@ where
     /// [`NodeCommand`](reth_cli_commands::node::NodeCommand).
     pub fn run<L, Fut>(self, launcher: L) -> eyre::Result<()>
     where
-        L: FnOnce(WithLaunchContext<NodeBuilder<DatabaseEnv, BaseChainSpec>>, Ext) -> Fut,
+        L: FnOnce(WithLaunchContext<NodeBuilder<DatabaseEnv, UnstableChainSpec>>, Ext) -> Fut,
         Fut: Future<Output = eyre::Result<()>>,
     {
         self.with_runner(CliRunner::try_default_runtime()?, launcher)
@@ -106,12 +106,12 @@ where
     /// Execute the configured cli command with the provided [`CliRunner`].
     pub fn with_runner<L, Fut>(self, runner: CliRunner, launcher: L) -> eyre::Result<()>
     where
-        L: FnOnce(WithLaunchContext<NodeBuilder<DatabaseEnv, BaseChainSpec>>, Ext) -> Fut,
+        L: FnOnce(WithLaunchContext<NodeBuilder<DatabaseEnv, UnstableChainSpec>>, Ext) -> Fut,
         Fut: Future<Output = eyre::Result<()>>,
     {
         let mut this = self.configure();
         this.set_runner(runner);
-        this.run(FnLauncher::new::<BaseChainSpecParser, Ext>(async move |builder, chain_spec| {
+        this.run(FnLauncher::new::<UnstableChainSpecParser, Ext>(async move |builder, chain_spec| {
             launcher(builder, chain_spec).await
         }))
     }
@@ -119,17 +119,17 @@ where
 
 #[cfg(test)]
 mod tests {
-    use base_execution_chainspec::BaseChainSpec;
+    use base_execution_chainspec::UnstableChainSpec;
     use base_node_core::args::RollupArgs;
     use clap::Parser;
     use reth_cli_commands::{NodeCommand, node::NoArgs};
 
-    use crate::{Cli, chainspec::BaseChainSpecParser, commands::Commands};
+    use crate::{Cli, chainspec::UnstableChainSpecParser, commands::Commands};
 
     #[test]
     fn parse_dev() {
-        let cmd = NodeCommand::<BaseChainSpecParser, NoArgs>::parse_from(["base-reth", "--dev"]);
-        let chain = BaseChainSpec::devnet();
+        let cmd = NodeCommand::<UnstableChainSpecParser, NoArgs>::parse_from(["base-reth", "--dev"]);
+        let chain = UnstableChainSpec::devnet();
         assert_eq!(cmd.chain.chain, chain.chain);
         assert_eq!(cmd.chain.genesis_hash(), chain.genesis_hash());
         assert_eq!(
@@ -169,7 +169,7 @@ mod tests {
             "--http.api",
             "admin,debug,eth,net,trace,txpool,web3,rpc,reth,ots",
             "--rollup.sequencer-http",
-            "https://mainnet-sequencer.base.org",
+            "https://mainnet-sequencer.unstable.org",
             "--rpc-max-tracing-requests",
             "1000000",
             "--rpc.gascap",
@@ -189,7 +189,7 @@ mod tests {
 
         match cmd.command {
             Commands::Node(command) => {
-                assert_eq!(command.chain.as_ref(), &BaseChainSpec::mainnet());
+                assert_eq!(command.chain.as_ref(), &UnstableChainSpec::mainnet());
             }
             _ => panic!("unexpected command"),
         }

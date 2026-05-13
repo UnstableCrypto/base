@@ -9,7 +9,7 @@ use base_builder_core::test_utils::{
     ChainDriver, ChainDriverExt, ExternalTransactionPool, ONE_ETH, Protocol, TransactionBuilderExt,
     setup_test_instance,
 };
-use base_execution_txpool::{BasePooledTransaction, unix_time_millis};
+use base_execution_txpool::{UnstablePooledTransaction, unix_time_millis};
 
 async fn insert_bundle_transaction<P: Protocol>(
     pool: &Arc<dyn ExternalTransactionPool>,
@@ -47,7 +47,7 @@ async fn insert_bundle_transaction_with_nonce<P: Protocol>(
     let recovered = builder.build().await;
     let tx_hash = TxHash::from(*recovered.tx_hash());
     let encoded_len = recovered.encode_2718_len();
-    let pool_tx = BasePooledTransaction::new(recovered, encoded_len).with_bundle_metadata(
+    let pool_tx = UnstablePooledTransaction::new(recovered, encoded_len).with_bundle_metadata(
         target_block_number,
         min_timestamp,
         max_timestamp,

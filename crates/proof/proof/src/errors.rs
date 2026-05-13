@@ -9,7 +9,7 @@ use alloc::string::{String, ToString};
 use base_consensus_derive::{PipelineError, PipelineErrorKind};
 use base_proof_mpt::{OrderedListWalkerError, TrieNodeError};
 use base_proof_preimage::errors::PreimageOracleError;
-use base_protocol::{BaseBlockConversionError, FromBlockError};
+use base_protocol::{UnstableBlockConversionError, FromBlockError};
 use thiserror::Error;
 
 /// Error from an oracle-backed provider.
@@ -65,13 +65,13 @@ pub enum OracleProviderError {
     /// formats, or unsupported block versions.
     #[error("From block error: {0}")]
     BlockInfo(FromBlockError),
-    /// Base-specific block conversion error.
+    /// Unstable-specific block conversion error.
     ///
-    /// This error occurs when converting between different Base block
+    /// This error occurs when converting between different Unstable block
     /// formats fails due to incompatible data structures, missing rollup-specific
     /// fields, or version mismatches between block formats.
     #[error("Block conversion error: {0}")]
-    BaseBlockConversion(BaseBlockConversionError),
+    UnstableBlockConversion(UnstableBlockConversionError),
     /// RLP (Recursive Length Prefix) encoding or decoding error.
     ///
     /// This error occurs when parsing or encoding RLP data fails due to

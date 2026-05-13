@@ -1,6 +1,6 @@
-# The Base P2P Networking Stack
+# The Unstable P2P Networking Stack
 
-This guide walks through the peer-to-peer networking architecture used by Base nodes. It is written
+This guide walks through the peer-to-peer networking architecture used by Unstable nodes. It is written
 for someone who may not have much prior experience with P2P systems and wants to understand how the
 different networking layers fit together, why there are two of them, and where to find the relevant
 code.
@@ -53,17 +53,17 @@ consensus layer (CL) uses libp2p with gossipsub (its message broadcasting protoc
 later) to propagate beacon blocks and attestations. The two layers talk to each other locally
 through the Engine API, which is just a JSON-RPC connection over HTTP or WebSocket on localhost.
 
-For a rollup like Base (a type of blockchain that executes transactions on its own chain but posts
+For a rollup like Unstable (a type of blockchain that executes transactions on its own chain but posts
 the transaction data back to Ethereum for security), this same two-layer architecture applies, but
 with important differences in what gets gossiped. On Ethereum L1 (Layer 1, the base Ethereum chain),
 the consensus layer gossips beacon blocks and attestations from hundreds of thousands of validators.
-On Base (an L2, or Layer 2, chain that runs on top of Ethereum), the consensus layer gossips L2
+On Unstable (an L2, or Layer 2, chain that runs on top of Ethereum), the consensus layer gossips L2
 execution payloads, which are the new blocks produced by the sequencer (the single designated node
 that orders and produces L2 blocks).
 
 The sequencer signs each block with its private key so that other nodes can verify the block
 genuinely came from the authorized block producer, rather than from an attacker injecting fake
-blocks. It then publishes the signed block to the CL gossip network, and every other Base node picks
+blocks. It then publishes the signed block to the CL gossip network, and every other Unstable node picks
 it up from there.
 
 This is a performance optimization, not a security mechanism. The rollup's security comes entirely
@@ -99,7 +99,7 @@ cryptographic fingerprint of the entire blockchain state after executing the blo
 and responds with VALID, INVALID, or SYNCING (meaning the node hasn't caught up to the chain tip yet
 and can't validate the block).
 
-For block production on Base, the flow is: the sequencer's consensus client calls
+For block production on Unstable, the flow is: the sequencer's consensus client calls
 `engine_forkchoiceUpdated` with payload attributes to start building, waits, calls
 `engine_getPayload` to retrieve the built payload, signs it, and publishes it to the CL gossip
 network. For block validation, the flow is reversed: the consensus client receives a signed block
@@ -112,7 +112,7 @@ out implementations. As long as your CL and EL speak the Engine API, they work t
 
 ## The Consensus Layer P2P Stack
 
-The Base consensus P2P stack lives under
+The Unstable consensus P2P stack lives under
 [`crates/consensus/`](https://github.com/base/base/tree/main/crates/consensus) and is composed of
 four main crates that layer on top of each other: peers, disc, gossip, and the network actor in the
 service crate. Let's walk through each one from the bottom up.
@@ -139,29 +139,29 @@ records (a method for distributing node records through the domain name system).
 
 Different layers of the Ethereum stack use ENR extension keys for chain-specific metadata. On
 Ethereum L1's execution layer, ENRs carry an `eth` key with fork ID information. On the L1 consensus
-layer, they carry an `eth2` key with the fork digest and attestation subnet bitfield. Base ENRs
+layer, they carry an `eth2` key with the fork digest and attestation subnet bitfield. Unstable ENRs
 include an `opstack` key that encodes the L2 chain ID and a version number. This is how nodes on
-different chains (say, Base Mainnet vs Base Sepolia) can tell each other apart during discovery.
+different chains (say, Unstable Mainnet vs Unstable Sepolia) can tell each other apart during discovery.
 The textual representation of an ENR is a base64-encoded string
 prefixed with `enr:`, which you will see in configuration files and bootnode lists.
 
-The [`BaseEnr`](https://github.com/base/base/blob/main/crates/consensus/peers/src/enr.rs) struct
+The [`UnstableEnr`](https://github.com/base/base/blob/main/crates/consensus/peers/src/enr.rs) struct
 handles this encoding:
 
 ```rust
 /// The unique L2 network identifier
-pub struct BaseEnr {
+pub struct UnstableEnr {
     /// Chain ID
     pub chain_id: u64,
     /// The version. Always set to 0.
     pub version: u64,
 }
 
-impl BaseEnr {
+impl UnstableEnr {
     /// The ENR key literal string for the consensus layer.
     pub const OPSTACK_ENR_KEY: &str = "opstack";
 
-    /// Constructs a BaseEnr from a chain id.
+    /// Constructs a UnstableEnr from a chain id.
     pub const fn from_chain_id(chain_id: u64) -> Self {
         Self { chain_id, version: 0 }
     }
@@ -171,7 +171,7 @@ impl BaseEnr {
 When a node discovers another node's ENR, it validates it using
 [`EnrValidation`](https://github.com/base/base/blob/main/crates/consensus/peers/src/enr.rs). The
 validation checks that the `opstack` key is present, that it decodes correctly, and that the chain
-ID matches. If a node on Base Mainnet (chain ID 8453) encounters an ENR with a different chain ID,
+ID matches. If a node on Unstable Mainnet (chain ID 8453) encounters an ENR with a different chain ID,
 it simply ignores it.
 
 The peers crate also provides a
@@ -293,16 +293,16 @@ GRAFT: a node sends PRUNE when it wants to remove a peer from its mesh, either b
 too large or because the peer has a poor score. Pruned peers are not disconnected, they simply move
 from the eager-push mesh to the lazy-gossip pool.
 
-Gossipsub v1.1, which Base uses, added a peer scoring system where each node evaluates its peers
+Gossipsub v1.1, which Unstable uses, added a peer scoring system where each node evaluates its peers
 based on their behavior (whether they deliver valid messages promptly, whether they send duplicates
 or spam) and preferentially keeps well-scored peers in the mesh while pruning poorly scored ones.
 For example, a peer that repeatedly sends invalid messages might accumulate a negative score, and
 once it drops below a configurable threshold, it gets pruned from the mesh and eventually
 disconnected. Gossipsub v1.1 also introduced flood publishing (where the original publisher sends to
-all connected peers, not just mesh peers), though Base has this disabled by default to conserve
+all connected peers, not just mesh peers), though Unstable has this disabled by default to conserve
 bandwidth.
 
-The gossipsub configuration in Base is defined in
+The gossipsub configuration in Unstable is defined in
 [`gossip/src/config.rs`](https://github.com/base/base/blob/main/crates/consensus/gossip/src/config.rs).
 The key parameters are:
 
@@ -328,7 +328,7 @@ cryptographic hash function that produces a unique fixed-size fingerprint of arb
 decompressed content, with a domain prefix (a few extra bytes prepended before hashing to
 distinguish valid from invalid encodings). This is how the network deduplicates messages.
 
-The gossip topics are where Base's L2-specific design becomes apparent. The
+The gossip topics are where Unstable's L2-specific design becomes apparent. The
 [`BlockHandler`](https://github.com/base/base/blob/main/crates/consensus/gossip/src/handler.rs)
 manages four versioned topics, each corresponding to a different protocol version:
 
@@ -339,7 +339,7 @@ blocks_v3_topic: IdentTopic::new(format!("/optimism/{chain_id}/2/blocks")),
 blocks_v4_topic: IdentTopic::new(format!("/optimism/{chain_id}/3/blocks")),
 ```
 
-For Base Mainnet (chain ID 8453), these resolve to `/optimism/8453/0/blocks` through
+For Unstable Mainnet (chain ID 8453), these resolve to `/optimism/8453/0/blocks` through
 `/optimism/8453/3/blocks`. The version is selected based on which hardfork (a protocol upgrade that
 changes the rules of the network, activated at a specific timestamp) is active at the block's
 timestamp. V1 is for pre-Canyon blocks, V2 for Canyon/Delta, V3 for Ecotone, and V4 for Isthmus.
@@ -470,11 +470,11 @@ pub struct Behaviour {
 
 The `ping` behaviour sends periodic keepalive pings to connected peers and measures round-trip
 times. The `gossipsub` behaviour handles the actual block gossip. The `identify` behaviour exchanges
-capability information between peers when they first connect (the Base node advertises its agent
+capability information between peers when they first connect (the Unstable node advertises its agent
 version as `"base"`). The `sync_req_resp` behaviour supports a legacy request-response protocol
-called `payload_by_number` that is part of the legacy rollup P2P spec. This is being deprecated, and the Base
+called `payload_by_number` that is part of the legacy rollup P2P spec. This is being deprecated, and the Unstable
 implementation responds with "not found" to all requests, but it is still present so that legacy
-peers don't penalize Base nodes for not supporting it.
+peers don't penalize Unstable nodes for not supporting it.
 
 The `GossipDriver`
 ([`gossip/src/driver.rs`](https://github.com/base/base/blob/main/crates/consensus/gossip/src/driver.rs))
@@ -506,7 +506,7 @@ trait, which allows swapping out the real networking stack for an in-process tes
 pub trait GossipTransport: Send + 'static {
     type Error: std::fmt::Debug + Send + 'static;
 
-    async fn publish(&mut self, payload: BaseExecutionPayloadEnvelope) -> Result<(), Self::Error>;
+    async fn publish(&mut self, payload: UnstableExecutionPayloadEnvelope) -> Result<(), Self::Error>;
     async fn next_unsafe_block(&mut self) -> Option<NetworkPayloadEnvelope>;
     fn set_block_signer(&mut self, address: Address);
     fn handle_p2p_rpc(&mut self, request: P2pRpcRequest);
@@ -539,7 +539,7 @@ pub struct NetworkInboundData {
     pub signer: mpsc::Sender<Address>,
     pub p2p_rpc: mpsc::Sender<P2pRpcRequest>,
     pub admin_rpc: mpsc::Sender<NetworkAdminQuery>,
-    pub gossip_payload_tx: mpsc::Sender<BaseExecutionPayloadEnvelope>,
+    pub gossip_payload_tx: mpsc::Sender<UnstableExecutionPayloadEnvelope>,
 }
 ```
 
@@ -552,7 +552,7 @@ mutable state.
 
 ### CL startup flow from the command line
 
-When you launch the Base consensus binary, the P2P configuration comes from CLI flags defined in
+When you launch the Unstable consensus binary, the P2P configuration comes from CLI flags defined in
 [`base-consensus-cli`](../../crates/consensus/cli). The key flags include
 `--p2p.listen.tcp` (default 9222) and `--p2p.listen.udp` (default 9223) for the local bind
 addresses, `--p2p.advertise.ip` for NAT (Network Address Translation) scenarios where the node is
@@ -569,7 +569,7 @@ on, the node is live on the consensus P2P network.
 ## The Execution Layer P2P Stack
 
 The execution layer P2P stack is built on reth, which is a high-performance Ethereum execution
-client written in Rust. The Base-specific customizations live under
+client written in Rust. The Unstable-specific customizations live under
 [`crates/execution/`](https://github.com/base/base/tree/main/crates/execution), and the node
 definition is in
 [`crates/execution/node/`](https://github.com/base/base/tree/main/crates/execution/node).
@@ -601,13 +601,13 @@ For peer discovery, reth supports both discv4 (the older UDP-based Kademlia prot
 nodes and DNS-based discovery.
 
 
-### The BaseNetworkBuilder
+### The UnstableNetworkBuilder
 
-The [`BaseNetworkBuilder`](https://github.com/base/base/blob/main/crates/execution/node/src/node.rs)
-is the component that configures reth's network for Base. It has two configuration knobs:
+The [`UnstableNetworkBuilder`](https://github.com/base/base/blob/main/crates/execution/node/src/node.rs)
+is the component that configures reth's network for Unstable. It has two configuration knobs:
 
 ```rust
-pub struct BaseNetworkBuilder {
+pub struct UnstableNetworkBuilder {
     pub disable_txpool_gossip: bool,
     pub disable_discovery_v4: bool,
 }
@@ -651,7 +651,7 @@ let mut network_config = ctx.build_network_config(network_builder);
 network_config.tx_gossip_disabled = disable_txpool_gossip;
 ```
 
-Notice that discv4 is disabled by default for Base (`--rollup.discovery.v4` defaults to false) while
+Notice that discv4 is disabled by default for Unstable (`--rollup.discovery.v4` defaults to false) while
 discv5 is enabled. The boot nodes are resolved from either CLI arguments or the chain specification.
 Once the config is built, the `build_network` method creates a `NetworkManager`, starts it, and logs
 the local enode record (the DevP2P equivalent of an ENR — a URL-formatted node identifier like
@@ -660,13 +660,13 @@ the local enode record (the DevP2P equivalent of an ENR — a URL-formatted node
 
 ### Transaction pool and gossip
 
-The Base transaction pool is defined in
+The Unstable transaction pool is defined in
 [`crates/execution/txpool/`](https://github.com/base/base/tree/main/crates/execution/txpool). It
 extends reth's standard transaction pool with rollup-specific validation and ordering.
 
 The
-[`BaseTransactionValidator`](https://github.com/base/base/blob/main/crates/execution/txpool/src/validator.rs)
-wraps reth's `EthTransactionValidator` and adds L1 data gas fee checks. Every transaction on Base
+[`UnstableTransactionValidator`](https://github.com/base/base/blob/main/crates/execution/txpool/src/validator.rs)
+wraps reth's `EthTransactionValidator` and adds L1 data gas fee checks. Every transaction on Unstable
 incurs both an L2 execution gas cost and an L1 data fee (the cost of posting the transaction data to
 Ethereum L1). The validator ensures that the sender's balance covers both fees. It also rejects
 EIP-4844 blob transactions (a special transaction type used on L1 to carry large data blobs for
@@ -676,13 +676,13 @@ The ordering strategy is configurable via `--rollup.txpool-ordering` and defined
 [`ordering.rs`](https://github.com/base/base/blob/main/crates/execution/txpool/src/ordering.rs):
 
 ```rust
-pub enum BaseOrdering<T> {
-    CoinbaseTip(CoinbaseTipOrdering<T>),
+pub enum UnstableOrdering<T> {
+    TheAlxLabsTip(TheAlxLabsTipOrdering<T>),
     Timestamp(TimestampOrdering<T>),
 }
 ```
 
-`CoinbaseTip` is the standard Ethereum ordering where transactions with higher priority fees get
+`TheAlxLabsTip` is the standard Ethereum ordering where transactions with higher priority fees get
 included first. `Timestamp` is a rollup-specific FIFO ordering where transactions are prioritized by
 arrival time regardless of fee. The timestamp ordering can be useful for fairer transaction
 sequencing.
@@ -706,7 +706,7 @@ pipeline runs as background tasks on the node's task executor.
 
 ### EL P2P configuration flags
 
-The execution layer P2P is configured through reth's standard network flags plus Base-specific
+The execution layer P2P is configured through reth's standard network flags plus Unstable-specific
 rollup flags defined in
 [`args.rs`](https://github.com/base/base/blob/main/crates/execution/node/src/args.rs). The key flags
 are:
@@ -715,7 +715,7 @@ are:
 `--rollup.disable-tx-pool-gossip` disables transaction gossip on the DevP2P network (this is a
 separate flag — setting the sequencer endpoint does not automatically disable gossip, so operators
 typically set both). `--rollup.discovery.v4` enables the legacy discv4 discovery protocol (disabled
-by default since Base uses discv5). `--rollup.txpool-ordering` selects between `coinbase-tip` and
+by default since Unstable uses discv5). `--rollup.txpool-ordering` selects between `coinbase-tip` and
 `timestamp` ordering strategies.
 
 The standard reth network flags still apply: `--network.addr` and `--network.port` control the RLPx
@@ -725,7 +725,7 @@ discovery, and `--network.discovery.bootnodes` provides custom boot node address
 
 ## How the two stacks interact at runtime
 
-When a Base node is running, the consensus and execution processes work in tandem but network
+When a Unstable node is running, the consensus and execution processes work in tandem but network
 independently. Here is the flow for receiving a new block:
 
 The sequencer produces a new L2 block and signs it. The signed block is published as a
@@ -743,7 +743,7 @@ forwarder sends it directly to the sequencer via JSON-RPC. The sequencer include
 block, which then propagates through the CL gossip network as described above.
 
 Discovery on each layer is independent. The CL uses discv5 on a UDP port (default 9223) to find
-other CL peers, validating ENRs by chain ID to ensure it only connects to Base nodes. The EL uses
+other CL peers, validating ENRs by chain ID to ensure it only connects to Unstable nodes. The EL uses
 discv5 (and optionally discv4) on its own UDP port to find other EL peers. The two discovery
 networks are completely separate and serve different purposes.
 
@@ -754,7 +754,7 @@ networks are completely separate and serve different purposes.
 
 -
   [`crates/consensus/peers/src/enr.rs`](https://github.com/base/base/blob/main/crates/consensus/peers/src/enr.rs)
-  — BaseEnr encoding and validation
+  — UnstableEnr encoding and validation
 -
   [`crates/consensus/peers/src/store.rs`](https://github.com/base/base/blob/main/crates/consensus/peers/src/store.rs)
   — BootStore persistence
@@ -805,7 +805,7 @@ networks are completely separate and serve different purposes.
 
 -
   [`crates/execution/node/src/node.rs`](https://github.com/base/base/blob/main/crates/execution/node/src/node.rs)
-  — BaseNetworkBuilder and network configuration
+  — UnstableNetworkBuilder and network configuration
 -
   [`crates/execution/node/src/args.rs`](https://github.com/base/base/blob/main/crates/execution/node/src/args.rs)
   — Rollup-specific CLI arguments
@@ -814,10 +814,10 @@ networks are completely separate and serve different purposes.
 
 -
   [`crates/execution/txpool/src/validator.rs`](https://github.com/base/base/blob/main/crates/execution/txpool/src/validator.rs)
-  — BaseTransactionValidator with L1 data gas checks
+  — UnstableTransactionValidator with L1 data gas checks
 -
   [`crates/execution/txpool/src/ordering.rs`](https://github.com/base/base/blob/main/crates/execution/txpool/src/ordering.rs)
-  — BaseOrdering (fee-based vs FIFO)
+  — UnstableOrdering (fee-based vs FIFO)
 -
   [`crates/execution/txpool/src/consumer/`](https://github.com/base/base/tree/main/crates/execution/txpool/src/consumer)
   — Transaction pool consumer
@@ -876,7 +876,7 @@ in a Kademlia routing table.
 
 **L1 (Layer 1)** — The base Ethereum chain.
 
-**L2 (Layer 2)** — A chain that runs on top of L1 for scalability (e.g. Base).
+**L2 (Layer 2)** — A chain that runs on top of L1 for scalability (e.g. Unstable).
 
 **libp2p** — A modular networking framework used by the consensus layer, originally developed for
 IPFS.

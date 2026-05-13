@@ -4,24 +4,24 @@ use alloy_consensus::{Receipt, ReceiptWithBloom, TxReceipt};
 use alloy_rpc_types_eth::Log;
 use alloy_serde::OtherFields;
 use base_common_consensus::{
-    BaseReceipt, BaseReceiptEnvelope, DepositReceipt, DepositReceiptWithBloom,
+    UnstableReceipt, UnstableReceiptEnvelope, DepositReceipt, DepositReceiptWithBloom,
 };
 use serde::{Deserialize, Serialize};
 
-/// Base transaction receipt type
+/// Unstable transaction receipt type
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[doc(alias = "BaseTxReceipt")]
-pub struct BaseTransactionReceipt {
+#[doc(alias = "UnstableTxReceipt")]
+pub struct UnstableTransactionReceipt {
     /// Regular eth transaction receipt including deposit receipts
     #[serde(flatten)]
-    pub inner: alloy_rpc_types_eth::TransactionReceipt<ReceiptWithBloom<BaseReceipt<Log>>>,
+    pub inner: alloy_rpc_types_eth::TransactionReceipt<ReceiptWithBloom<UnstableReceipt<Log>>>,
     /// L1 block info of the transaction.
     #[serde(flatten)]
     pub l1_block_info: L1BlockInfo,
 }
 
-impl alloy_network_primitives::ReceiptResponse for BaseTransactionReceipt {
+impl alloy_network_primitives::ReceiptResponse for UnstableTransactionReceipt {
     fn contract_address(&self) -> Option<alloy_primitives::Address> {
         self.inner.contract_address
     }
@@ -79,7 +79,7 @@ impl alloy_network_primitives::ReceiptResponse for BaseTransactionReceipt {
     }
 }
 
-/// Additional fields for Base chain transaction receipts: <https://github.com/ethereum-optimism/op-geth/blob/f2e69450c6eec9c35d56af91389a1c47737206ca/core/types/receipt.go#L87-L87>
+/// Additional fields for Unstable chain transaction receipts: <https://github.com/ethereum-optimism/op-geth/blob/f2e69450c6eec9c35d56af91389a1c47737206ca/core/types/receipt.go#L87-L87>
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionReceiptFields {
@@ -202,8 +202,8 @@ pub struct L1BlockInfo {
 
 impl Eq for L1BlockInfo {}
 
-impl From<BaseTransactionReceipt> for BaseReceiptEnvelope {
-    fn from(value: BaseTransactionReceipt) -> Self {
+impl From<UnstableTransactionReceipt> for UnstableReceiptEnvelope {
+    fn from(value: UnstableTransactionReceipt) -> Self {
         let ReceiptWithBloom { logs_bloom, receipt } = value.inner.inner;
 
         /// Helper function to convert the inner logs within a [`ReceiptWithBloom`] from RPC to
@@ -225,19 +225,19 @@ impl From<BaseTransactionReceipt> for BaseReceiptEnvelope {
         }
 
         match receipt {
-            BaseReceipt::Legacy(receipt) => {
+            UnstableReceipt::Legacy(receipt) => {
                 Self::Legacy(convert_standard_receipt(receipt, logs_bloom))
             }
-            BaseReceipt::Eip2930(receipt) => {
+            UnstableReceipt::Eip2930(receipt) => {
                 Self::Eip2930(convert_standard_receipt(receipt, logs_bloom))
             }
-            BaseReceipt::Eip1559(receipt) => {
+            UnstableReceipt::Eip1559(receipt) => {
                 Self::Eip1559(convert_standard_receipt(receipt, logs_bloom))
             }
-            BaseReceipt::Eip7702(receipt) => {
+            UnstableReceipt::Eip7702(receipt) => {
                 Self::Eip7702(convert_standard_receipt(receipt, logs_bloom))
             }
-            BaseReceipt::Deposit(receipt) => {
+            UnstableReceipt::Deposit(receipt) => {
                 let consensus_logs = receipt.inner.logs.into_iter().map(|log| log.inner).collect();
                 let consensus_receipt = DepositReceiptWithBloom {
                     receipt: DepositReceipt {
@@ -287,15 +287,15 @@ mod tests {
         "l1GasPrice": "0x3ef12787",
         "l1GasUsed": "0x1177",
         "l1Fee": "0x5bf1ab43d",
-        "l1BaseFeeScalar": "0x1",
-        "l1BlobBaseFee": "0x600ab8f05e64",
-        "l1BlobBaseFeeScalar": "0x1",
+        "l1UnstableFeeScalar": "0x1",
+        "l1BlobUnstableFee": "0x600ab8f05e64",
+        "l1BlobUnstableFeeScalar": "0x1",
         "operatorFeeScalar": "0x1",
         "operatorFeeConstant": "0x1",
         "daFootprintGasScalar": "0x1"
     }"#;
 
-        let receipt: BaseTransactionReceipt = serde_json::from_str(s).unwrap();
+        let receipt: UnstableTransactionReceipt = serde_json::from_str(s).unwrap();
         let value = serde_json::to_value(&receipt).unwrap();
         let expected_value = serde_json::from_str::<serde_json::Value>(s).unwrap();
         assert_eq!(value, expected_value);

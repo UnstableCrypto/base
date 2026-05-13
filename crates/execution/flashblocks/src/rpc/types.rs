@@ -53,15 +53,15 @@ pub enum ExtendedSubscriptionKind {
     /// These are proxied to reth's underlying `EthPubSub` implementation.
     #[from]
     Standard(SubscriptionKind),
-    /// Base-specific subscription types for flashblocks.
+    /// Unstable-specific subscription types for flashblocks.
     #[from]
-    Base(BaseSubscriptionKind),
+    Unstable(UnstableSubscriptionKind),
 }
 
-/// Base-specific subscription types for flashblocks.
+/// Unstable-specific subscription types for flashblocks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum BaseSubscriptionKind {
+pub enum UnstableSubscriptionKind {
     /// New flashblocks subscription.
     ///
     /// Fires a notification each time a new flashblock is processed, providing the current
@@ -96,13 +96,13 @@ impl ExtendedSubscriptionKind {
     pub const fn as_standard(&self) -> Option<SubscriptionKind> {
         match self {
             Self::Standard(kind) => Some(*kind),
-            Self::Base(_) => None,
+            Self::Unstable(_) => None,
         }
     }
 
     /// Returns true if this is a flashblocks-specific subscription.
     pub const fn is_flashblocks(&self) -> bool {
-        matches!(self, Self::Base(_))
+        matches!(self, Self::Unstable(_))
     }
 }
 
@@ -113,7 +113,7 @@ mod tests {
         Address, B256, Bytes, Log as PrimitiveLog, LogData, Signature, TxKind, U256,
     };
     use alloy_rpc_types_eth::Log;
-    use base_common_consensus::BaseTxEnvelope;
+    use base_common_consensus::UnstableTxEnvelope;
     use base_common_rpc_types::Transaction;
 
     use super::*;
@@ -129,7 +129,7 @@ mod tests {
             input: Bytes::new(),
         };
         let hash = B256::with_last_byte(0xAA);
-        let envelope = BaseTxEnvelope::Legacy(Signed::new_unchecked(
+        let envelope = UnstableTxEnvelope::Legacy(Signed::new_unchecked(
             legacy,
             Signature::test_signature(),
             hash,

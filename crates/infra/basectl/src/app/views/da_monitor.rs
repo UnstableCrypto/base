@@ -372,7 +372,7 @@ fn render_stats_panel(f: &mut Frame<'_>, area: Rect, resources: &Resources, filt
                 Style::default().fg(target_usage.map_or(Color::DarkGray, target_usage_color)),
             ),
             Span::raw("  "),
-            Span::styled("Base: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Unstable: ", Style::default().fg(Color::DarkGray)),
             Span::styled(format_share(base_share), Style::default().fg(COLOR_BASE_BLUE)),
             Span::raw("  "),
             Span::styled("Last: ", Style::default().fg(Color::DarkGray)),

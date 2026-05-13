@@ -1,6 +1,6 @@
 [package]
 name = "base-jwt"
-description = "JWT secret handling and validation for Base node components"
+description = "JWT secret handling and validation for Unstable node components"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

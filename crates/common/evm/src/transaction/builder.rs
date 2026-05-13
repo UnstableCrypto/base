@@ -8,20 +8,20 @@ use revm::{
 };
 
 use super::{
-    core::BaseTransaction,
+    core::UnstableTransaction,
     deposit::{DEPOSIT_TRANSACTION_TYPE, DepositTransactionParts},
     error::BuildError,
 };
 
-/// Builder for constructing [`BaseTransaction`] instances
+/// Builder for constructing [`UnstableTransaction`] instances
 #[derive(Default, Debug)]
-pub struct BaseTransactionBuilder {
+pub struct UnstableTransactionBuilder {
     base: TxEnvBuilder,
     enveloped_tx: Option<Bytes>,
     deposit: DepositTransactionParts,
 }
 
-impl BaseTransactionBuilder {
+impl UnstableTransactionBuilder {
     /// Create a new builder with default values
     pub fn new() -> Self {
         Self {
@@ -73,16 +73,16 @@ impl BaseTransactionBuilder {
         self
     }
 
-    /// Build the [`BaseTransaction`] with default values for missing fields.
+    /// Build the [`UnstableTransaction`] with default values for missing fields.
     ///
     /// This is useful for testing and debugging where it is not necessary to
-    /// have full [`BaseTransaction`] instance.
+    /// have full [`UnstableTransaction`] instance.
     ///
     /// If the transaction is a deposit (either `tx_type == DEPOSIT_TRANSACTION_TYPE` or
     /// `source_hash != B256::ZERO`), set the transaction type accordingly and ensure the
     /// `enveloped_tx` is removed (`None`). For non-deposit transactions, ensure
     /// `enveloped_tx` is set.
-    pub fn build_fill(mut self) -> BaseTransaction<TxEnv> {
+    pub fn build_fill(mut self) -> UnstableTransaction<TxEnv> {
         let tx_type = self.base.get_tx_type();
         if tx_type.is_some() {
             if tx_type == Some(DEPOSIT_TRANSACTION_TYPE) {
@@ -108,12 +108,12 @@ impl BaseTransactionBuilder {
 
         let base = self.base.build_fill();
 
-        BaseTransaction { base, enveloped_tx: self.enveloped_tx, deposit: self.deposit }
+        UnstableTransaction { base, enveloped_tx: self.enveloped_tx, deposit: self.deposit }
     }
 
-    /// Build the [`BaseTransaction`] instance, return error if the transaction is not valid.
+    /// Build the [`UnstableTransaction`] instance, return error if the transaction is not valid.
     ///
-    pub fn build(mut self) -> Result<BaseTransaction<TxEnv>, BuildError> {
+    pub fn build(mut self) -> Result<UnstableTransaction<TxEnv>, BuildError> {
         let tx_type = self.base.get_tx_type();
         if tx_type.is_some() {
             if Some(DEPOSIT_TRANSACTION_TYPE) == tx_type {
@@ -135,6 +135,6 @@ impl BaseTransactionBuilder {
 
         let base = self.base.build()?;
 
-        Ok(BaseTransaction { base, enveloped_tx: self.enveloped_tx, deposit: self.deposit })
+        Ok(UnstableTransaction { base, enveloped_tx: self.enveloped_tx, deposit: self.deposit })
     }
 }

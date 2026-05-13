@@ -1,6 +1,6 @@
 # Action Tests
 
-Action tests are a framework for integration-testing the Base rollup protocol
+Action tests are a framework for integration-testing the Unstable rollup protocol
 by composing simulated actors and driving them through discrete, reproducible
 scenarios. The pattern draws on prior end-to-end harness designs, but is
 implemented in Rust and built directly on the same types the production node
@@ -143,10 +143,10 @@ calldata and blob DA sources even though the underlying L1 chain is still
 in-memory.
 
 
-## ActionL2Source and BaseBlock
+## ActionL2Source and UnstableBlock
 
 The batcher actor needs to read L2 blocks in order to know what to batch.
-`ActionL2Source` is a `VecDeque<BaseBlock>` that implements
+`ActionL2Source` is a `VecDeque<UnstableBlock>` that implements
 `L2BlockProvider`. Tests usually fill it with blocks produced by
 `L2Sequencer`, which uses the production L1 origin selector, attributes
 builder, and in-process engine client. Each block therefore contains a real
@@ -161,7 +161,7 @@ manually.
 
 ## Batcher actor
 
-`Batcher` drains `BaseBlock`s from an `L2BlockProvider` and forwards them to a
+`Batcher` drains `UnstableBlock`s from an `L2BlockProvider` and forwards them to a
 production `BatchDriver` running in a background tokio task. The driver owns a
 `BatchEncoder`, channel manager behavior, calldata/blob frame construction,
 and submission flow. The harness-owned boundary is `L1MinerTxManager`, which

@@ -6,8 +6,8 @@ use alloy_genesis::ChainConfig;
 use alloy_provider::RootProvider;
 use alloy_transport::TransportResult;
 use base_common_genesis::RollupConfig;
-use base_common_network::Base;
-use base_consensus_engine::BaseEngineClient;
+use base_common_network::Unstable;
+use base_consensus_engine::UnstableEngineClient;
 use base_consensus_providers::OnlineBeaconClient;
 use base_consensus_rpc::RpcBuilder;
 use url::Url;
@@ -183,7 +183,7 @@ impl RollupNodeBuilder {
         };
 
         let l2_provider_url = Self::derivation_l2_provider_url(self.engine_config.l2_url.clone());
-        let l2_provider = BaseEngineClient::<RootProvider, RootProvider<Base>>::rpc_client::<Base>(
+        let l2_provider = UnstableEngineClient::<RootProvider, RootProvider<Unstable>>::rpc_client::<Unstable>(
             l2_provider_url,
             self.engine_config.l2_jwt_secret,
         )

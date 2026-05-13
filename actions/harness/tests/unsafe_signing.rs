@@ -3,7 +3,7 @@
 use alloy_primitives::{B256, Signature, U256};
 use alloy_signer_local::PrivateKeySigner;
 use base_action_harness::{ActionTestHarness, SharedL1Chain, TestGossipTransport};
-use base_common_rpc_types_engine::{BaseExecutionPayload, NetworkPayloadEnvelope, PayloadHash};
+use base_common_rpc_types_engine::{UnstableExecutionPayload, NetworkPayloadEnvelope, PayloadHash};
 use base_consensus_node::GossipTransport as _;
 
 /// End-to-end: a sequencer with a real signing key produces blocks whose
@@ -100,7 +100,7 @@ async fn injected_forged_block_dropped_real_block_accepted() {
     // Build a block and get its execution payload.
     let block = seq.build_next_block_with_single_transaction().await;
     let block_hash = block.header.hash_slow();
-    let (execution_payload, _) = BaseExecutionPayload::from_block_unchecked(block_hash, &block);
+    let (execution_payload, _) = UnstableExecutionPayload::from_block_unchecked(block_hash, &block);
 
     // Inject a forged (zero-sig) envelope directly via the supervisor channel.
     p2p.send(NetworkPayloadEnvelope {

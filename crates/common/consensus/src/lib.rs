@@ -13,19 +13,19 @@ extern crate alloc;
 #[cfg(feature = "reth")]
 mod reth_compat;
 #[cfg(feature = "reth")]
-pub use reth_compat::{BaseBlockBody, BasePrimitives, CompactTxDeposit, DepositReceiptExt};
+pub use reth_compat::{UnstableBlockBody, UnstablePrimitives, CompactTxDeposit, DepositReceiptExt};
 
 mod receipts;
 pub use receipts::{
-    BaseReceipt, BaseReceiptEnvelope, BaseTxReceipt, DepositReceipt, DepositReceiptWithBloom,
+    UnstableReceipt, UnstableReceiptEnvelope, UnstableTxReceipt, DepositReceipt, DepositReceiptWithBloom,
 };
 
 mod transaction;
 #[cfg(feature = "serde")]
 pub use transaction::serde_deposit_tx_rpc;
 pub use transaction::{
-    BasePooledTransaction, BaseTransaction, BaseTransactionInfo, BaseTxEnvelope,
-    BaseTypedTransaction, DEPOSIT_TX_TYPE_ID, DepositInfo, DepositTransaction, OpTxType, TxDeposit,
+    UnstablePooledTransaction, UnstableTransaction, UnstableTransactionInfo, UnstableTxEnvelope,
+    UnstableTypedTransaction, DEPOSIT_TX_TYPE_ID, DepositInfo, DepositTransaction, OpTxType, TxDeposit,
 };
 
 mod extra;
@@ -41,10 +41,10 @@ mod predeploys;
 pub use predeploys::{Deployers, Predeploys, SystemAddresses};
 
 mod block;
-pub use block::BaseBlock;
+pub use block::UnstableBlock;
 
-/// Signed transaction type alias for [`BaseTxEnvelope`].
-pub type BaseTransactionSigned = BaseTxEnvelope;
+/// Signed transaction type alias for [`UnstableTxEnvelope`].
+pub type UnstableTransactionSigned = UnstableTxEnvelope;
 
 /// Bincode-compatible serde implementations for consensus types.
 ///
@@ -56,7 +56,7 @@ pub type BaseTransactionSigned = BaseTxEnvelope;
 #[cfg(all(feature = "serde", feature = "serde-bincode-compat"))]
 pub mod serde_bincode_compat {
     pub use super::{
-        receipts::serde_bincode_compat::{BaseReceipt, DepositReceipt},
+        receipts::serde_bincode_compat::{UnstableReceipt, DepositReceipt},
         transaction::serde_bincode_compat::TxDeposit,
     };
 

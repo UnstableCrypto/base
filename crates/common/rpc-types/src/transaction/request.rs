@@ -7,10 +7,10 @@ use alloy_eips::eip7702::SignedAuthorization;
 use alloy_network_primitives::TransactionBuilder7702;
 use alloy_primitives::{Address, Bytes, ChainId, Signature, TxKind, U256};
 use alloy_rpc_types_eth::{AccessList, TransactionInput, TransactionRequest};
-use base_common_consensus::{BaseTxEnvelope, BaseTypedTransaction, TxDeposit};
+use base_common_consensus::{UnstableTxEnvelope, UnstableTypedTransaction, TxDeposit};
 use serde::{Deserialize, Serialize};
 
-/// Builder for [`BaseTypedTransaction`].
+/// Builder for [`UnstableTypedTransaction`].
 #[derive(
     Clone,
     Debug,
@@ -25,9 +25,9 @@ use serde::{Deserialize, Serialize};
     Deserialize,
 )]
 #[serde(transparent)]
-pub struct BaseTransactionRequest(TransactionRequest);
+pub struct UnstableTransactionRequest(TransactionRequest);
 
-impl BaseTransactionRequest {
+impl UnstableTransactionRequest {
     /// Sets the `from` field in the call to the provided address
     #[inline]
     pub const fn from(mut self, from: Address) -> Self {
@@ -104,21 +104,21 @@ impl BaseTransactionRequest {
         self
     }
 
-    /// Builds [`BaseTypedTransaction`] from this builder. See [`TransactionRequest::build_typed_tx`]
+    /// Builds [`UnstableTypedTransaction`] from this builder. See [`TransactionRequest::build_typed_tx`]
     /// for more info.
     ///
-    /// Note that EIP-4844 transactions are not supported on Base chains and will be converted into
+    /// Note that EIP-4844 transactions are not supported on Unstable chains and will be converted into
     /// EIP-1559 transactions.
     #[allow(clippy::result_large_err)]
-    pub fn build_typed_tx(self) -> Result<BaseTypedTransaction, Self> {
+    pub fn build_typed_tx(self) -> Result<UnstableTypedTransaction, Self> {
         let tx = self.0.build_typed_tx().map_err(Self)?;
         match tx {
-            TypedTransaction::Legacy(tx) => Ok(BaseTypedTransaction::Legacy(tx)),
-            TypedTransaction::Eip1559(tx) => Ok(BaseTypedTransaction::Eip1559(tx)),
-            TypedTransaction::Eip2930(tx) => Ok(BaseTypedTransaction::Eip2930(tx)),
+            TypedTransaction::Legacy(tx) => Ok(UnstableTypedTransaction::Legacy(tx)),
+            TypedTransaction::Eip1559(tx) => Ok(UnstableTypedTransaction::Eip1559(tx)),
+            TypedTransaction::Eip2930(tx) => Ok(UnstableTypedTransaction::Eip2930(tx)),
             TypedTransaction::Eip4844(tx) => {
                 let tx: TxEip4844 = tx.into();
-                Ok(BaseTypedTransaction::Eip1559(TxEip1559 {
+                Ok(UnstableTypedTransaction::Eip1559(TxEip1559 {
                     chain_id: tx.chain_id,
                     nonce: tx.nonce,
                     gas_limit: tx.gas_limit,
@@ -130,18 +130,18 @@ impl BaseTransactionRequest {
                     input: tx.input,
                 }))
             }
-            TypedTransaction::Eip7702(tx) => Ok(BaseTypedTransaction::Eip7702(tx)),
+            TypedTransaction::Eip7702(tx) => Ok(UnstableTypedTransaction::Eip7702(tx)),
         }
     }
 }
 
-impl From<BaseTransactionRequest> for TransactionRequest {
-    fn from(value: BaseTransactionRequest) -> Self {
+impl From<UnstableTransactionRequest> for TransactionRequest {
+    fn from(value: UnstableTransactionRequest) -> Self {
         value.0
     }
 }
 
-impl From<TxDeposit> for BaseTransactionRequest {
+impl From<TxDeposit> for UnstableTransactionRequest {
     fn from(tx: TxDeposit) -> Self {
         let TxDeposit {
             source_hash: _,
@@ -165,13 +165,13 @@ impl From<TxDeposit> for BaseTransactionRequest {
     }
 }
 
-impl From<Sealed<TxDeposit>> for BaseTransactionRequest {
+impl From<Sealed<TxDeposit>> for UnstableTransactionRequest {
     fn from(value: Sealed<TxDeposit>) -> Self {
         value.into_inner().into()
     }
 }
 
-impl<T> From<Signed<T, Signature>> for BaseTransactionRequest
+impl<T> From<Signed<T, Signature>> for UnstableTransactionRequest
 where
     T: SignableTransaction<Signature> + Into<TransactionRequest>,
 {
@@ -188,31 +188,31 @@ where
     }
 }
 
-impl From<BaseTypedTransaction> for BaseTransactionRequest {
-    fn from(tx: BaseTypedTransaction) -> Self {
+impl From<UnstableTypedTransaction> for UnstableTransactionRequest {
+    fn from(tx: UnstableTypedTransaction) -> Self {
         match tx {
-            BaseTypedTransaction::Legacy(tx) => Self(tx.into()),
-            BaseTypedTransaction::Eip2930(tx) => Self(tx.into()),
-            BaseTypedTransaction::Eip1559(tx) => Self(tx.into()),
-            BaseTypedTransaction::Eip7702(tx) => Self(tx.into()),
-            BaseTypedTransaction::Deposit(tx) => tx.into(),
+            UnstableTypedTransaction::Legacy(tx) => Self(tx.into()),
+            UnstableTypedTransaction::Eip2930(tx) => Self(tx.into()),
+            UnstableTypedTransaction::Eip1559(tx) => Self(tx.into()),
+            UnstableTypedTransaction::Eip7702(tx) => Self(tx.into()),
+            UnstableTypedTransaction::Deposit(tx) => tx.into(),
         }
     }
 }
 
-impl From<BaseTxEnvelope> for BaseTransactionRequest {
-    fn from(value: BaseTxEnvelope) -> Self {
+impl From<UnstableTxEnvelope> for UnstableTransactionRequest {
+    fn from(value: UnstableTxEnvelope) -> Self {
         match value {
-            BaseTxEnvelope::Legacy(tx) => tx.into(),
-            BaseTxEnvelope::Eip2930(tx) => tx.into(),
-            BaseTxEnvelope::Eip1559(tx) => tx.into(),
-            BaseTxEnvelope::Eip7702(tx) => tx.into(),
-            BaseTxEnvelope::Deposit(tx) => tx.into(),
+            UnstableTxEnvelope::Legacy(tx) => tx.into(),
+            UnstableTxEnvelope::Eip2930(tx) => tx.into(),
+            UnstableTxEnvelope::Eip1559(tx) => tx.into(),
+            UnstableTxEnvelope::Eip7702(tx) => tx.into(),
+            UnstableTxEnvelope::Deposit(tx) => tx.into(),
         }
     }
 }
 
-impl TransactionBuilder7702 for BaseTransactionRequest {
+impl TransactionBuilder7702 for UnstableTransactionRequest {
     fn authorization_list(&self) -> Option<&Vec<SignedAuthorization>> {
         self.as_ref().authorization_list()
     }

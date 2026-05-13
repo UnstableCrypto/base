@@ -20,7 +20,7 @@ base_metrics::define_metrics! {
     #[describe("Number of transaction publish errors")]
     #[label(name)]
     tx_publish_error_count: counter,
-    #[describe("Base fee in gwei")]
+    #[describe("Unstable fee in gwei")]
     #[label(name)]
     basefee_gwei: gauge,
     #[describe("Tip cap in gwei")]
@@ -42,7 +42,7 @@ base_metrics::define_metrics! {
 
 /// Trait abstracting metrics collection for the transaction manager.
 ///
-/// Implement this trait to plug in your own metrics backend. A [`BaseTxMetrics`]
+/// Implement this trait to plug in your own metrics backend. A [`UnstableTxMetrics`]
 /// implementation backed by the [`metrics`] crate is provided for production use.
 pub trait TxMetrics: Send + Sync + Debug + 'static {
     /// Record the maximum possible transaction fee in gwei (`gas_limit` * `fee_cap`).
@@ -115,13 +115,13 @@ impl TxMetrics for NoopTxMetrics {
 /// allowing multiple tx-manager instances (e.g. challenger vs. proposer) to be
 /// disambiguated within a shared metrics backend.
 #[derive(Debug, Clone)]
-pub struct BaseTxMetrics {
+pub struct UnstableTxMetrics {
     /// Instance name label attached to all metric emissions.
     pub name: &'static str,
 }
 
-impl BaseTxMetrics {
-    /// Create a new [`BaseTxMetrics`] with the given instance name.
+impl UnstableTxMetrics {
+    /// Create a new [`UnstableTxMetrics`] with the given instance name.
     ///
     /// The `name` is emitted as a `"name"` label on every metric, allowing
     /// multiple tx-manager instances to be distinguished in dashboards.
@@ -143,7 +143,7 @@ impl BaseTxMetrics {
     }
 }
 
-impl TxMetrics for BaseTxMetrics {
+impl TxMetrics for UnstableTxMetrics {
     fn record_tx_max_fee(&self, fee_gwei: f64) {
         TxManagerMetrics::tx_max_fee_gwei(self.name).record(fee_gwei);
     }
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn base_tx_metrics_can_be_constructed_and_called() {
-        let m = BaseTxMetrics::new("test");
+        let m = UnstableTxMetrics::new("test");
         m.record_tx_max_fee(1.5);
         m.record_gas_bump();
         m.record_send_latency(120);

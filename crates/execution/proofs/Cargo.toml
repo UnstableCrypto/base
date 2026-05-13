@@ -1,6 +1,6 @@
 [package]
 name = "base-proofs-extension"
-description = "Proofs extension for Base node"
+description = "Proofs extension for Unstable node"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use base_common_genesis::RollupConfig;
-use base_common_rpc_types_engine::BasePayloadAttributes;
+use base_common_rpc_types_engine::UnstablePayloadAttributes;
 use base_protocol::BlockInfo;
 
 use crate::Metrics;
@@ -27,7 +27,7 @@ impl PoolActivation {
         &self,
         recovery_mode: bool,
         l1_origin: BlockInfo,
-        attributes: &BasePayloadAttributes,
+        attributes: &UnstablePayloadAttributes,
     ) -> bool {
         if recovery_mode {
             warn!(target: "sequencer", "Sequencer is in recovery mode, producing empty block");

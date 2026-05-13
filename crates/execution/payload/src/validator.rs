@@ -1,24 +1,24 @@
-//! Validates execution payload wrt Base consensus rules
+//! Validates execution payload wrt Unstable consensus rules
 
 use alloc::sync::Arc;
 
 use alloy_consensus::Block;
 use alloy_rpc_types_engine::PayloadError;
 use base_common_chains::Upgrades;
-use base_common_rpc_types_engine::{BasePayloadError, ExecutionData};
+use base_common_rpc_types_engine::{UnstablePayloadError, ExecutionData};
 use derive_more::{Constructor, Deref};
 use reth_payload_validator::{cancun, prague, shanghai};
 use reth_primitives_traits::{Block as _, SealedBlock, SignedTransaction};
 
 /// Execution payload validator.
 #[derive(Clone, Debug, Deref, Constructor)]
-pub struct BaseExecutionPayloadValidator<ChainSpec> {
+pub struct UnstableExecutionPayloadValidator<ChainSpec> {
     /// Chain spec to validate against.
     #[deref]
     inner: Arc<ChainSpec>,
 }
 
-impl<ChainSpec> BaseExecutionPayloadValidator<ChainSpec>
+impl<ChainSpec> UnstableExecutionPayloadValidator<ChainSpec>
 where
     ChainSpec: Upgrades,
 {
@@ -34,7 +34,7 @@ where
     pub fn ensure_well_formed_payload<T: SignedTransaction>(
         &self,
         payload: ExecutionData,
-    ) -> Result<SealedBlock<Block<T>>, BasePayloadError> {
+    ) -> Result<SealedBlock<Block<T>>, UnstablePayloadError> {
         ensure_well_formed_payload(self.chain_spec(), payload)
     }
 }
@@ -51,16 +51,16 @@ where
 /// The checks are done in the order that conforms with the engine-API specification.
 ///
 /// This is intended to be invoked after receiving the payload from the CLI.
-/// The additional fields, starting with [`MaybeCancunPayloadFields`](alloy_rpc_types_engine::MaybeCancunPayloadFields), are not part of the payload, but are additional fields starting in the `engine_newPayloadV3` RPC call, See also <https://specs.base.org/protocol/execution#engine_newpayloadv3>
+/// The additional fields, starting with [`MaybeCancunPayloadFields`](alloy_rpc_types_engine::MaybeCancunPayloadFields), are not part of the payload, but are additional fields starting in the `engine_newPayloadV3` RPC call, See also <https://specs.unstable.org/protocol/execution#engine_newpayloadv3>
 ///
 /// If the cancun fields are provided this also validates that the versioned hashes in the block
 /// are empty as well as those passed in the sidecar. If the payload fields are not provided.
 ///
-/// Validation according to specs <https://specs.base.org/protocol/execution#engine-api>.
+/// Validation according to specs <https://specs.unstable.org/protocol/execution#engine-api>.
 pub fn ensure_well_formed_payload<ChainSpec, T>(
     chain_spec: ChainSpec,
     payload: ExecutionData,
-) -> Result<SealedBlock<Block<T>>, BasePayloadError>
+) -> Result<SealedBlock<Block<T>>, UnstablePayloadError>
 where
     ChainSpec: Upgrades,
     T: SignedTransaction,

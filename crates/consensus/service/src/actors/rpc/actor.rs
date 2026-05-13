@@ -5,7 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use base_consensus_gossip::P2pRpcRequest;
 use base_consensus_rpc::{
-    AdminApiServer, AdminRpc, BaseP2PApiServer, DevEngineApiServer, DevEngineRpc, EngineRpcClient,
+    AdminApiServer, AdminRpc, UnstableP2PApiServer, DevEngineApiServer, DevEngineRpc, EngineRpcClient,
     HealthzApiServer, HealthzRpc, L1WatcherQueries, NetworkAdminQuery, P2pRpc, RollupNodeApiServer,
     RollupRpc, RpcBuilder, SequencerAdminAPIClient, WsRPC, WsServer,
 };

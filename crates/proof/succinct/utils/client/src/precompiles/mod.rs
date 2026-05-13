@@ -3,7 +3,7 @@
 use alloc::string::String;
 
 use alloy_primitives::{Address, Bytes};
-use base_common_evm::{BasePrecompiles, BaseSpecId};
+use base_common_evm::{UnstablePrecompiles, UnstableSpecId};
 use revm::{
     context::{Cfg, ContextTr},
     handler::{EthPrecompiles, PrecompileProvider},
@@ -18,7 +18,7 @@ mod custom;
 pub use custom::CustomCrypto;
 
 mod factory;
-pub use factory::ZkvmBaseEvmFactory;
+pub use factory::ZkvmUnstableEvmFactory;
 
 /// Tracker names for accelerated precompiles.
 /// These names are used in cycle-tracker-report events and must match
@@ -61,8 +61,8 @@ pub mod cycle_tracker {
     }
 }
 
-fn get_or_create_precompiles(spec: BaseSpecId) -> &'static Precompiles {
-    BasePrecompiles::new_with_spec(spec).precompiles()
+fn get_or_create_precompiles(spec: UnstableSpecId) -> &'static Precompiles {
+    UnstablePrecompiles::new_with_spec(spec).precompiles()
 }
 
 /// Get the cycle tracker name for a precompile by its ID.
@@ -83,25 +83,25 @@ const fn get_precompile_tracker_name(id: &PrecompileId) -> Option<&'static str> 
 
 /// The ZKVM-cycle-tracking precompiles.
 #[derive(Debug)]
-pub struct BaseZkvmPrecompiles {
+pub struct UnstableZkvmPrecompiles {
     /// The default [`EthPrecompiles`] provider.
     inner: EthPrecompiles,
-    /// The [`BaseSpecId`] of the precompiles.
-    spec: BaseSpecId,
+    /// The [`UnstableSpecId`] of the precompiles.
+    spec: UnstableSpecId,
 }
 
-impl BaseZkvmPrecompiles {
-    /// Create a new precompile provider with the given [`BaseSpecId`].
+impl UnstableZkvmPrecompiles {
+    /// Create a new precompile provider with the given [`UnstableSpecId`].
     #[inline]
-    pub fn new_with_spec(spec: BaseSpecId) -> Self {
+    pub fn new_with_spec(spec: UnstableSpecId) -> Self {
         let precompiles = get_or_create_precompiles(spec);
         Self { inner: EthPrecompiles { precompiles, spec: SpecId::default() }, spec }
     }
 }
 
-impl<CTX> PrecompileProvider<CTX> for BaseZkvmPrecompiles
+impl<CTX> PrecompileProvider<CTX> for UnstableZkvmPrecompiles
 where
-    CTX: ContextTr<Cfg: Cfg<Spec = BaseSpecId>>,
+    CTX: ContextTr<Cfg: Cfg<Spec = UnstableSpecId>>,
 {
     type Output = InterpreterResult;
 
@@ -201,7 +201,7 @@ mod tests {
     use alloc::vec::Vec;
 
     use alloy_primitives::U256;
-    use base_common_evm::{BaseContext, BaseUpgrade, DefaultBase as _};
+    use base_common_evm::{UnstableContext, UnstableUpgrade, DefaultUnstable as _};
     use revm::{
         Context,
         database::EmptyDB,
@@ -212,7 +212,7 @@ mod tests {
 
     use super::*;
 
-    type TestContext = BaseContext<EmptyDB>;
+    type TestContext = UnstableContext<EmptyDB>;
 
     /// Creates a [`CallInputs`] with `bytecode_address` set to the given address
     /// and `target_address` set to zero, simulating a DELEGATECALL scenario.
@@ -243,7 +243,7 @@ mod tests {
     fn test_precompile_lookup_uses_bytecode_address() {
         let mut ctx = create_test_context();
         let mut precompiles =
-            BaseZkvmPrecompiles::new_with_spec(BaseSpecId::new(BaseUpgrade::Bedrock));
+            UnstableZkvmPrecompiles::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Bedrock));
 
         // SHA256 precompile at address 0x02
         let sha256_addr = revm::precompile::u64_to_address(2);
@@ -268,7 +268,7 @@ mod tests {
     fn test_run_nonexistent_precompile() {
         let mut ctx = create_test_context();
         let mut precompiles =
-            BaseZkvmPrecompiles::new_with_spec(BaseSpecId::new(BaseUpgrade::Bedrock));
+            UnstableZkvmPrecompiles::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Bedrock));
 
         let fake_addr = Address::from_slice(&[0xFFu8; 20]);
         let call_inputs = create_call_inputs(fake_addr, Bytes::new(), u64::MAX);
@@ -282,7 +282,7 @@ mod tests {
     fn test_run_out_of_gas() {
         let mut ctx = create_test_context();
         let mut precompiles =
-            BaseZkvmPrecompiles::new_with_spec(BaseSpecId::new(BaseUpgrade::Bedrock));
+            UnstableZkvmPrecompiles::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Bedrock));
 
         let sha256_addr = revm::precompile::u64_to_address(2);
         let call_inputs = create_call_inputs(sha256_addr, Bytes::from_static(b"test"), 0);
@@ -299,7 +299,7 @@ mod tests {
     fn test_run_with_shared_buffer_empty() {
         let mut ctx = create_test_context();
         let mut precompiles =
-            BaseZkvmPrecompiles::new_with_spec(BaseSpecId::new(BaseUpgrade::Bedrock));
+            UnstableZkvmPrecompiles::new_with_spec(UnstableSpecId::new(UnstableUpgrade::Bedrock));
 
         let sha256_addr = revm::precompile::u64_to_address(2);
         let call_inputs = CallInputs {
@@ -380,17 +380,17 @@ mod tests {
 
     #[test]
     fn test_zkvm_precompiles_match_base_evm_precompiles() {
-        for spec in BaseUpgrade::VARIANTS.iter().copied().map(BaseSpecId::new) {
-            let base_precompiles = BasePrecompiles::new_with_spec(spec);
-            let zkvm_precompiles = BaseZkvmPrecompiles::new_with_spec(spec);
+        for spec in UnstableUpgrade::VARIANTS.iter().copied().map(UnstableSpecId::new) {
+            let base_precompiles = UnstablePrecompiles::new_with_spec(spec);
+            let zkvm_precompiles = UnstableZkvmPrecompiles::new_with_spec(spec);
 
             let base_addresses: Vec<_> =
-                <BasePrecompiles as PrecompileProvider<TestContext>>::warm_addresses(
+                <UnstablePrecompiles as PrecompileProvider<TestContext>>::warm_addresses(
                     &base_precompiles,
                 )
                 .collect();
             let zkvm_addresses: Vec<_> =
-                <BaseZkvmPrecompiles as PrecompileProvider<TestContext>>::warm_addresses(
+                <UnstableZkvmPrecompiles as PrecompileProvider<TestContext>>::warm_addresses(
                     &zkvm_precompiles,
                 )
                 .collect();
@@ -398,26 +398,26 @@ mod tests {
             assert_eq!(
                 zkvm_addresses.len(),
                 base_addresses.len(),
-                "ZKVM and Base EVM precompile counts must match for {spec:?}",
+                "ZKVM and Unstable EVM precompile counts must match for {spec:?}",
             );
 
             for address in &base_addresses {
                 assert!(
-                    <BaseZkvmPrecompiles as PrecompileProvider<TestContext>>::contains(
+                    <UnstableZkvmPrecompiles as PrecompileProvider<TestContext>>::contains(
                         &zkvm_precompiles,
                         address,
                     ),
-                    "ZKVM precompiles missing Base EVM precompile {address:?} for {spec:?}",
+                    "ZKVM precompiles missing Unstable EVM precompile {address:?} for {spec:?}",
                 );
             }
 
             for address in &zkvm_addresses {
                 assert!(
-                    <BasePrecompiles as PrecompileProvider<TestContext>>::contains(
+                    <UnstablePrecompiles as PrecompileProvider<TestContext>>::contains(
                         &base_precompiles,
                         address,
                     ),
-                    "ZKVM precompiles contain non-Base EVM precompile {address:?} for {spec:?}",
+                    "ZKVM precompiles contain non-Unstable EVM precompile {address:?} for {spec:?}",
                 );
             }
         }
@@ -453,8 +453,8 @@ mod tests {
     fn test_azul_uses_osaka_p256verify() {
         let p256_addr = *secp256r1::P256VERIFY.address();
 
-        let jovian_set = get_or_create_precompiles(BaseSpecId::new(BaseUpgrade::Jovian));
-        let azul_set = get_or_create_precompiles(BaseSpecId::new(BaseUpgrade::Azul));
+        let jovian_set = get_or_create_precompiles(UnstableSpecId::new(UnstableUpgrade::Jovian));
+        let azul_set = get_or_create_precompiles(UnstableSpecId::new(UnstableUpgrade::Azul));
 
         let jovian_p256 = jovian_set.get(&p256_addr).expect("JOVIAN must have P256VERIFY");
         let azul_p256 = azul_set.get(&p256_addr).expect("AZUL must have P256VERIFY");

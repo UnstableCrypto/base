@@ -1,6 +1,6 @@
 [package]
 name = "base-consensus"
-description = "Base Consensus Binary"
+description = "Unstable Consensus Binary"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

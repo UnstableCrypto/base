@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::ExecutionPayloadV1;
 use base_common_rpc_types_engine::{
-    BaseExecutionPayload, BaseExecutionPayloadEnvelope, BasePayloadAttributes,
+    UnstableExecutionPayload, UnstableExecutionPayloadEnvelope, UnstablePayloadAttributes,
 };
 use base_consensus_derive::{BuilderError, PipelineErrorKind, test_utils::TestAttributesBuilder};
 use base_consensus_engine::SealTaskError;
@@ -22,10 +22,10 @@ use crate::{
     },
 };
 
-fn dummy_envelope() -> BaseExecutionPayloadEnvelope {
-    BaseExecutionPayloadEnvelope {
+fn dummy_envelope() -> UnstableExecutionPayloadEnvelope {
+    UnstableExecutionPayloadEnvelope {
         parent_beacon_block_root: None,
-        execution_payload: BaseExecutionPayload::V1(ExecutionPayloadV1 {
+        execution_payload: UnstableExecutionPayload::V1(ExecutionPayloadV1 {
             parent_hash: B256::ZERO,
             fee_recipient: alloy_primitives::Address::ZERO,
             state_root: B256::ZERO,
@@ -49,7 +49,7 @@ fn conductor_rpc_error() -> ConductorError {
 }
 
 fn dummy_attributes_with_parent() -> AttributesWithParent {
-    AttributesWithParent::new(BasePayloadAttributes::default(), L2BlockInfo::default(), None, false)
+    AttributesWithParent::new(UnstablePayloadAttributes::default(), L2BlockInfo::default(), None, false)
 }
 
 fn handle_with_parent_number(number: u64) -> UnsealedPayloadHandle {
@@ -64,7 +64,7 @@ fn handle_with_parent(number: u64, hash: B256) -> UnsealedPayloadHandle {
     UnsealedPayloadHandle {
         payload_id: Default::default(),
         attributes_with_parent: AttributesWithParent::new(
-            BasePayloadAttributes::default(),
+            UnstablePayloadAttributes::default(),
             parent,
             None,
             false,

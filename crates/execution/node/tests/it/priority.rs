@@ -6,15 +6,15 @@ use alloy_consensus::{SignableTransaction, Transaction, TxEip1559, transaction::
 use alloy_genesis::Genesis;
 use alloy_network::TxSignerSync;
 use alloy_primitives::{Address, ChainId, TxKind};
-use base_execution_chainspec::BaseChainSpecBuilder;
-use base_execution_payload_builder::builder::BasePayloadTransactions;
-use base_execution_txpool::BasePooledTransaction;
+use base_execution_chainspec::UnstableChainSpecBuilder;
+use base_execution_payload_builder::builder::UnstablePayloadTransactions;
+use base_execution_txpool::UnstablePooledTransaction;
 use base_node_core::{
-    BaseNode,
+    UnstableNode,
     args::RollupArgs,
     node::{
-        BaseConsensusBuilder, BaseExecutorBuilder, BaseNetworkBuilder, BaseNodeComponentBuilder,
-        BaseNodeTypes, BasePayloadBuilder, BasePoolBuilder,
+        UnstableConsensusBuilder, UnstableExecutorBuilder, UnstableNetworkBuilder, UnstableNodeComponentBuilder,
+        UnstableNodeTypes, UnstablePayloadBuilder, UnstablePoolBuilder,
     },
     utils::payload_attributes,
 };
@@ -43,14 +43,14 @@ struct CustomTxPriority {
     chain_id: ChainId,
 }
 
-impl BasePayloadTransactions<BasePooledTransaction> for CustomTxPriority {
+impl UnstablePayloadTransactions<UnstablePooledTransaction> for CustomTxPriority {
     fn best_transactions<Pool>(
         &self,
         pool: Pool,
         attr: reth_transaction_pool::BestTransactionsAttributes,
-    ) -> impl PayloadTransactions<Transaction = BasePooledTransaction>
+    ) -> impl PayloadTransactions<Transaction = UnstablePooledTransaction>
     where
-        Pool: reth_transaction_pool::TransactionPool<Transaction = BasePooledTransaction>,
+        Pool: reth_transaction_pool::TransactionPool<Transaction = UnstablePooledTransaction>,
     {
         // Block composition:
         // 1. Best transactions from the pool (up to 250k gas)
@@ -68,8 +68,8 @@ impl BasePayloadTransactions<BasePooledTransaction> for CustomTxPriority {
             ..Default::default()
         };
         let signature = sender.sign_transaction_sync(&mut end_of_block_tx).unwrap();
-        let end_of_block_tx = BasePooledTransaction::from_pooled(Recovered::new_unchecked(
-            base_common_consensus::BasePooledTransaction::Eip1559(
+        let end_of_block_tx = UnstablePooledTransaction::from_pooled(Recovered::new_unchecked(
+            base_common_consensus::UnstablePooledTransaction::Eip1559(
                 end_of_block_tx.into_signed(signature),
             ),
             sender.address(),
@@ -89,9 +89,9 @@ impl BasePayloadTransactions<BasePooledTransaction> for CustomTxPriority {
 /// Builds the node with custom transaction priority service within default payload builder.
 fn build_components<Node>(
     chain_id: ChainId,
-) -> BaseNodeComponentBuilder<Node, BasePayloadBuilder<CustomTxPriority>>
+) -> UnstableNodeComponentBuilder<Node, UnstablePayloadBuilder<CustomTxPriority>>
 where
-    Node: FullNodeTypes<Types: BaseNodeTypes>,
+    Node: FullNodeTypes<Types: UnstableNodeTypes>,
 {
     let RollupArgs {
         disable_txpool_gossip,
@@ -102,14 +102,14 @@ where
     } = RollupArgs::default();
     ComponentsBuilder::default()
         .node_types::<Node>()
-        .pool(BasePoolBuilder::default())
-        .executor(BaseExecutorBuilder::default())
+        .pool(UnstablePoolBuilder::default())
+        .executor(UnstableExecutorBuilder::default())
         .payload(BasicPayloadServiceBuilder::new(
-            BasePayloadBuilder::new(compute_pending_block)
+            UnstablePayloadBuilder::new(compute_pending_block)
                 .with_transactions(CustomTxPriority { chain_id }),
         ))
-        .network(BaseNetworkBuilder::new(disable_txpool_gossip, !discovery_v4, base_protocol))
-        .consensus(BaseConsensusBuilder::default())
+        .network(UnstableNetworkBuilder::new(disable_txpool_gossip, !discovery_v4, base_protocol))
+        .consensus(UnstableConsensusBuilder::default())
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -118,7 +118,7 @@ async fn test_custom_block_priority_config() {
 
     let genesis: Genesis = serde_json::from_str(include_str!("../assets/genesis.json")).unwrap();
     let chain_spec =
-        Arc::new(BaseChainSpecBuilder::base_mainnet().genesis(genesis).ecotone_activated().build());
+        Arc::new(UnstableChainSpecBuilder::base_mainnet().genesis(genesis).ecotone_activated().build());
 
     // This wallet is going to send:
     // 1. L1 block info tx
@@ -143,9 +143,9 @@ async fn test_custom_block_priority_config() {
     let runtime = Runtime::test();
     let node_handle = NodeBuilder::new(config.clone())
         .with_database(db)
-        .with_types_and_provider::<BaseNode, BlockchainProvider<_>>()
+        .with_types_and_provider::<UnstableNode, BlockchainProvider<_>>()
         .with_components(build_components(config.chain.chain_id()))
-        .with_add_ons(BaseNode::new(Default::default()).add_ons())
+        .with_add_ons(UnstableNode::new(Default::default()).add_ons())
         .launch_with_fn(|builder| {
             let launcher = EngineNodeLauncher::new(
                 runtime.clone(),

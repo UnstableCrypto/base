@@ -5,10 +5,10 @@
 pub enum BlockInfoError {
     /// Failed to parse the L1 blob base fee scalar.
     #[error("Failed to parse the L1 blob base fee scalar")]
-    L1BlobBaseFeeScalar,
+    L1BlobUnstableFeeScalar,
     /// Failed to parse the base fee scalar.
     #[error("Failed to parse the base fee scalar")]
-    BaseFeeScalar,
+    UnstableFeeScalar,
     /// Failed to parse the EIP-1559 denominator.
     #[error("Failed to parse the EIP-1559 denominator")]
     Eip1559Denominator,

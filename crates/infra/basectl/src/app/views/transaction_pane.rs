@@ -238,7 +238,7 @@ impl TransactionPane {
                 .transactions
                 .first()
                 .and_then(|tx| tx.base_fee_per_gas)
-                .map(|fee| format!(" | Base: {} Mwei", fee as f64 / 1_000_000.0))
+                .map(|fee| format!(" | Unstable: {} Mwei", fee as f64 / 1_000_000.0))
                 .unwrap_or_default();
             format!(" {} - {} txns{} ", self.title_prefix, self.transactions.len(), base_fee_str,)
         };

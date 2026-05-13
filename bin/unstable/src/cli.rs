@@ -15,7 +15,7 @@ base_cli_utils::define_metrics_args!("BASE_NODE", 9090);
     about,
     long_about = None
 )]
-pub(crate) struct BaseCli {
+pub(crate) struct UnstableCli {
     /// Chain selection.
     #[arg(long, short = 'c', global = true, default_value = "mainnet", env = "BASE_CHAIN")]
     pub(crate) chain: ChainArg,
@@ -30,19 +30,19 @@ pub(crate) struct BaseCli {
 
     /// The command to run.
     #[command(subcommand)]
-    pub(crate) command: BaseCommand,
+    pub(crate) command: UnstableCommand,
 }
 
 /// Top-level commands for `base`.
 #[derive(Subcommand, Clone, Debug)]
 #[non_exhaustive]
-pub(crate) enum BaseCommand {
-    /// Start the integrated Base node.
+pub(crate) enum UnstableCommand {
+    /// Start the integrated Unstable node.
     #[command(name = "node")]
     Node(NodeArgs),
 }
 
-impl BaseCommand {
+impl UnstableCommand {
     /// Runs the selected top-level command.
     pub(crate) fn run(self, resolved_chain: ResolvedChainConfig) -> eyre::Result<()> {
         match self {
@@ -99,29 +99,29 @@ mod tests {
 
     #[test]
     fn parses_default_chain_for_node_rpc() {
-        let cli = BaseCli::parse_from(["base", "node", "rpc"]);
+        let cli = UnstableCli::parse_from(["base", "node", "rpc"]);
 
         assert!(matches!(cli.chain, ChainArg::BuiltIn(BuiltInChain::Mainnet)));
-        assert!(matches!(cli.command, BaseCommand::Node(_)));
+        assert!(matches!(cli.command, UnstableCommand::Node(_)));
     }
 
     #[test]
     fn parses_named_chain_selector() {
-        let cli = BaseCli::parse_from(["base", "-c", "sepolia", "node", "rpc"]);
+        let cli = UnstableCli::parse_from(["base", "-c", "sepolia", "node", "rpc"]);
 
         assert!(matches!(cli.chain, ChainArg::BuiltIn(BuiltInChain::Sepolia)));
     }
 
     #[test]
     fn parses_path_chain_selector() {
-        let cli = BaseCli::parse_from(["base", "--chain", "./chain.toml", "node", "rpc"]);
+        let cli = UnstableCli::parse_from(["base", "--chain", "./chain.toml", "node", "rpc"]);
 
         assert!(matches!(cli.chain, ChainArg::File(_)));
     }
 
     #[test]
     fn chain_arg_uses_base_chain_env_var() {
-        let command = BaseCli::command();
+        let command = UnstableCli::command();
         let chain_arg =
             command.get_arguments().find(|arg| arg.get_long() == Some("chain")).unwrap();
 
@@ -131,7 +131,7 @@ mod tests {
     #[test]
     fn rejects_multiple_chain_selectors() {
         let err =
-            BaseCli::try_parse_from(["base", "-c", "mainnet", "--chain", "sepolia", "node", "rpc"])
+            UnstableCli::try_parse_from(["base", "-c", "mainnet", "--chain", "sepolia", "node", "rpc"])
                 .unwrap_err();
 
         let rendered = err.to_string();

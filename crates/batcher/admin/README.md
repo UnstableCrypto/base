@@ -1,1 +1,1 @@
-Admin JSON-RPC API server for the Base Batcher.
+Admin JSON-RPC API server for the Unstable Batcher.

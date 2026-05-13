@@ -7,7 +7,7 @@
 //!
 //! ```rust
 //! use alloy_rpc_types_eth::BlockId;
-//! use base_common_network::Base;
+//! use base_common_network::Unstable;
 //! use reth_db::test_utils::create_test_rw_db_with_path;
 //! use reth_node_builder::{
 //!     ConsensusEngineHandle, LaunchContext, NodeConfig, RethFullAdapter,
@@ -15,11 +15,11 @@
 //!     hooks::OnComponentInitializedHook,
 //!     rpc::{EthApiBuilder, EthApiCtx},
 //! };
-//! use base_execution_chainspec::BaseChainSpec;
-//! use base_execution_evm::BaseEvmConfig;
-//! use base_node_core::{BaseNetworkPrimitives, BaseExecutorBuilder, BaseNode};
-//! use base_execution_rpc::BaseEthApiBuilder;
-//! use base_execution_txpool::BasePooledTransaction;
+//! use base_execution_chainspec::UnstableChainSpec;
+//! use base_execution_evm::UnstableEvmConfig;
+//! use base_node_core::{UnstableNetworkPrimitives, UnstableExecutorBuilder, UnstableNode};
+//! use base_execution_rpc::UnstableEthApiBuilder;
+//! use base_execution_txpool::UnstablePooledTransaction;
 //! use reth_provider::providers::BlockchainProvider;
 //! use reth_rpc::TraceApi;
 //! use reth_rpc_eth_types::{EthConfig, EthStateCache};
@@ -30,7 +30,7 @@
 //! #[tokio::main]
 //! async fn main() {
 //!     // build core node with all components disabled except EVM and state
-//!     let sepolia = NodeConfig::new(Arc::new(BaseChainSpec::sepolia()));
+//!     let sepolia = NodeConfig::new(Arc::new(UnstableChainSpec::sepolia()));
 //!     let db = create_test_rw_db_with_path(sepolia.datadir());
 //!     let runtime = Runtime::with_existing_handle(tokio::runtime::Handle::current()).unwrap();
 //!     let launch_ctx = LaunchContext::new(runtime, sepolia.datadir());
@@ -38,23 +38,23 @@
 //!         .with_loaded_toml_config(sepolia)
 //!         .unwrap()
 //!         .attach(Arc::new(db))
-//!         .with_provider_factory::<_, BaseEvmConfig>(ChangesetCache::new())
+//!         .with_provider_factory::<_, UnstableEvmConfig>(ChangesetCache::new())
 //!         .await
 //!         .unwrap()
 //!         .with_genesis()
 //!         .unwrap()
 //!         .with_metrics_task() // todo: shouldn't be req to set up blockchain db
-//!         .with_blockchain_db::<RethFullAdapter<_, BaseNode>, _>(move |provider_factory| {
+//!         .with_blockchain_db::<RethFullAdapter<_, UnstableNode>, _>(move |provider_factory| {
 //!             Ok(BlockchainProvider::new(provider_factory).unwrap())
 //!         })
 //!         .unwrap()
 //!         .with_components(
 //!             ComponentsBuilder::default()
-//!                 .node_types::<RethFullAdapter<_, BaseNode>>()
-//!                 .noop_pool::<BasePooledTransaction>()
-//!                 .executor(BaseExecutorBuilder::default())
+//!                 .node_types::<RethFullAdapter<_, UnstableNode>>()
+//!                 .noop_pool::<UnstablePooledTransaction>()
+//!                 .executor(UnstableExecutorBuilder::default())
 //!                 .noop_consensus()
-//!                 .noop_network::<BaseNetworkPrimitives>()
+//!                 .noop_network::<UnstableNetworkPrimitives>()
 //!                 .noop_payload(),
 //!             Box::new(()) as Box<dyn OnComponentInitializedHook<_>>,
 //!         )
@@ -76,7 +76,7 @@
 //!         cache,
 //!         engine_handle: ConsensusEngineHandle::new(tx),
 //!     };
-//!     let eth_api = BaseEthApiBuilder::<Base>::default().build_eth_api(ctx).await.unwrap();
+//!     let eth_api = UnstableEthApiBuilder::<Unstable>::default().build_eth_api(ctx).await.unwrap();
 //!
 //!     // build `trace` namespace API
 //!     let trace_api = TraceApi::new(eth_api, BlockingTaskGuard::new(10), EthConfig::default());
@@ -90,7 +90,7 @@ use std::sync::Arc;
 
 use alloy_rpc_types_engine::ClientVersionV1;
 use base_common_rpc_types_engine::ExecutionData;
-use base_execution_rpc::{BaseEngineApi, engine::ENGINE_CAPABILITIES};
+use base_execution_rpc::{UnstableEngineApi, engine::ENGINE_CAPABILITIES};
 use reth_chainspec::EthereumHardforks;
 use reth_node_api::{
     AddOnsContext, EngineApiValidator, EngineTypes, FullNodeComponents, NodeTypes,
@@ -102,13 +102,13 @@ use reth_rpc_engine_api::{EngineApi, EngineCapabilities};
 
 use crate::CLIENT_NAME;
 
-/// Builder for basic [`BaseEngineApi`] implementation.
+/// Builder for basic [`UnstableEngineApi`] implementation.
 #[derive(Debug, Default, Clone)]
-pub struct BaseEngineApiBuilder<EV> {
+pub struct UnstableEngineApiBuilder<EV> {
     engine_validator_builder: EV,
 }
 
-impl<N, EV> EngineApiBuilder<N> for BaseEngineApiBuilder<EV>
+impl<N, EV> EngineApiBuilder<N> for UnstableEngineApiBuilder<EV>
 where
     N: FullNodeComponents<
         Types: NodeTypes<
@@ -119,7 +119,7 @@ where
     EV: PayloadValidatorBuilder<N>,
     EV::Validator: EngineApiValidator<<N::Types as NodeTypes>::Payload>,
 {
-    type EngineApi = BaseEngineApi<
+    type EngineApi = UnstableEngineApi<
         N::Provider,
         <N::Types as NodeTypes>::Payload,
         N::Pool,
@@ -151,6 +151,6 @@ where
             ctx.node.network().clone(),
         );
 
-        Ok(BaseEngineApi::new(inner))
+        Ok(UnstableEngineApi::new(inner))
     }
 }

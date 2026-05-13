@@ -4,13 +4,13 @@ use alloy_consensus::BlockHeader;
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::{ExecutionPayloadEnvelopeV2, ExecutionPayloadV1};
 use base_common_chains::Upgrades;
-use base_common_consensus::{BaseBlock, Predeploys};
+use base_common_consensus::{UnstableBlock, Predeploys};
 use base_common_rpc_types_engine::{
-    BaseExecutionPayloadEnvelopeV3, BaseExecutionPayloadEnvelopeV4, BaseExecutionPayloadEnvelopeV5,
-    BasePayloadAttributes, ExecutionData,
+    UnstableExecutionPayloadEnvelopeV3, UnstableExecutionPayloadEnvelopeV4, UnstableExecutionPayloadEnvelopeV5,
+    UnstablePayloadAttributes, ExecutionData,
 };
 use base_execution_consensus::isthmus;
-use base_execution_payload_builder::{BaseExecutionPayloadValidator, BasePayloadTypes};
+use base_execution_payload_builder::{UnstableExecutionPayloadValidator, UnstablePayloadTypes};
 use reth_consensus::ConsensusError;
 use reth_node_api::{
     BuiltPayload, EngineApiValidator, EngineTypes, NodePrimitives, PayloadValidator,
@@ -25,14 +25,14 @@ use reth_primitives_traits::{Block, RecoveredBlock, SealedBlock, SignedTransacti
 use reth_provider::{StateProvider, StateProviderFactory};
 use reth_trie_common::{HashedPostState, KeyHasher};
 
-/// The types used in the Base beacon consensus engine.
+/// The types used in the Unstable beacon consensus engine.
 #[derive(Debug, Default, Clone, serde::Deserialize, serde::Serialize)]
 #[non_exhaustive]
-pub struct BaseEngineTypes<T: PayloadTypes = BasePayloadTypes> {
+pub struct UnstableEngineTypes<T: PayloadTypes = UnstablePayloadTypes> {
     _marker: PhantomData<T>,
 }
 
-impl<T: PayloadTypes<ExecutionData = ExecutionData>> PayloadTypes for BaseEngineTypes<T> {
+impl<T: PayloadTypes<ExecutionData = ExecutionData>> PayloadTypes for UnstableEngineTypes<T> {
     type ExecutionData = T::ExecutionData;
     type BuiltPayload = T::BuiltPayload;
     type PayloadAttributes = T::PayloadAttributes;
@@ -47,38 +47,38 @@ impl<T: PayloadTypes<ExecutionData = ExecutionData>> PayloadTypes for BaseEngine
     }
 }
 
-impl<T: PayloadTypes<ExecutionData = ExecutionData>> EngineTypes for BaseEngineTypes<T>
+impl<T: PayloadTypes<ExecutionData = ExecutionData>> EngineTypes for UnstableEngineTypes<T>
 where
-    T::BuiltPayload: BuiltPayload<Primitives: NodePrimitives<Block = BaseBlock>>
+    T::BuiltPayload: BuiltPayload<Primitives: NodePrimitives<Block = UnstableBlock>>
         + TryInto<ExecutionPayloadV1>
         + TryInto<ExecutionPayloadEnvelopeV2>
-        + TryInto<BaseExecutionPayloadEnvelopeV3>
-        + TryInto<BaseExecutionPayloadEnvelopeV4>
-        + TryInto<BaseExecutionPayloadEnvelopeV5>,
+        + TryInto<UnstableExecutionPayloadEnvelopeV3>
+        + TryInto<UnstableExecutionPayloadEnvelopeV4>
+        + TryInto<UnstableExecutionPayloadEnvelopeV5>,
 {
     type ExecutionPayloadEnvelopeV1 = ExecutionPayloadV1;
     type ExecutionPayloadEnvelopeV2 = ExecutionPayloadEnvelopeV2;
-    type ExecutionPayloadEnvelopeV3 = BaseExecutionPayloadEnvelopeV3;
-    type ExecutionPayloadEnvelopeV4 = BaseExecutionPayloadEnvelopeV4;
-    type ExecutionPayloadEnvelopeV5 = BaseExecutionPayloadEnvelopeV5;
-    type ExecutionPayloadEnvelopeV6 = BaseExecutionPayloadEnvelopeV5;
+    type ExecutionPayloadEnvelopeV3 = UnstableExecutionPayloadEnvelopeV3;
+    type ExecutionPayloadEnvelopeV4 = UnstableExecutionPayloadEnvelopeV4;
+    type ExecutionPayloadEnvelopeV5 = UnstableExecutionPayloadEnvelopeV5;
+    type ExecutionPayloadEnvelopeV6 = UnstableExecutionPayloadEnvelopeV5;
 }
 
-/// Validator for Base engine API.
+/// Validator for Unstable engine API.
 #[derive(Debug)]
-pub struct BaseEngineValidator<P, Tx, ChainSpec> {
-    inner: BaseExecutionPayloadValidator<ChainSpec>,
+pub struct UnstableEngineValidator<P, Tx, ChainSpec> {
+    inner: UnstableExecutionPayloadValidator<ChainSpec>,
     provider: P,
     hashed_addr_l2tol1_msg_passer: B256,
     phantom: PhantomData<Tx>,
 }
 
-impl<P, Tx, ChainSpec> BaseEngineValidator<P, Tx, ChainSpec> {
+impl<P, Tx, ChainSpec> UnstableEngineValidator<P, Tx, ChainSpec> {
     /// Instantiates a new validator.
     pub fn new<KH: KeyHasher>(chain_spec: Arc<ChainSpec>, provider: P) -> Self {
         let hashed_addr_l2tol1_msg_passer = KH::hash_key(Predeploys::L2_TO_L1_MESSAGE_PASSER);
         Self {
-            inner: BaseExecutionPayloadValidator::new(chain_spec),
+            inner: UnstableExecutionPayloadValidator::new(chain_spec),
             provider,
             hashed_addr_l2tol1_msg_passer,
             phantom: PhantomData,
@@ -86,14 +86,14 @@ impl<P, Tx, ChainSpec> BaseEngineValidator<P, Tx, ChainSpec> {
     }
 }
 
-impl<P, Tx, ChainSpec> Clone for BaseEngineValidator<P, Tx, ChainSpec>
+impl<P, Tx, ChainSpec> Clone for UnstableEngineValidator<P, Tx, ChainSpec>
 where
     P: Clone,
     ChainSpec: Upgrades,
 {
     fn clone(&self) -> Self {
         Self {
-            inner: BaseExecutionPayloadValidator::new(self.inner.clone()),
+            inner: UnstableExecutionPayloadValidator::new(self.inner.clone()),
             provider: self.provider.clone(),
             hashed_addr_l2tol1_msg_passer: self.hashed_addr_l2tol1_msg_passer,
             phantom: Default::default(),
@@ -101,7 +101,7 @@ where
     }
 }
 
-impl<P, Tx, ChainSpec> BaseEngineValidator<P, Tx, ChainSpec>
+impl<P, Tx, ChainSpec> UnstableEngineValidator<P, Tx, ChainSpec>
 where
     ChainSpec: Upgrades,
 {
@@ -113,7 +113,7 @@ where
 
     /// Verifies hardfork-gated post-execution rules against the supplied parent state.
     ///
-    /// Authoritative implementation of all Base-specific post-execution checks that require
+    /// Authoritative implementation of all Unstable-specific post-execution checks that require
     /// access to parent state (currently: Isthmus' L2-to-L1 message-passer storage root).
     /// Callers supply `parent_state` explicitly so engine pipelines can pass in-memory-aware
     /// overlay providers when the parent block isn't canonical yet.
@@ -146,35 +146,35 @@ where
     }
 }
 
-/// Extension trait that exposes [`BaseEngineValidator::validate_block_post_execution_with_state`]
+/// Extension trait that exposes [`UnstableEngineValidator::validate_block_post_execution_with_state`]
 /// through generic engine pipelines (e.g. `base-engine-tree`'s `V` validator parameter).
 ///
-/// The inherent method on [`BaseEngineValidator`] is the source of truth; this trait is just a
+/// The inherent method on [`UnstableEngineValidator`] is the source of truth; this trait is just a
 /// dispatch surface so callers that don't know the concrete validator type can still invoke it.
-pub trait BasePostExecutionValidator<Types: PayloadTypes>:
-    PayloadValidator<Types, Block = BaseBlock>
+pub trait UnstablePostExecutionValidator<Types: PayloadTypes>:
+    PayloadValidator<Types, Block = UnstableBlock>
 {
-    /// See [`BaseEngineValidator::validate_block_post_execution_with_state`].
+    /// See [`UnstableEngineValidator::validate_block_post_execution_with_state`].
     fn validate_block_post_execution_with_parent_state<DB: StateProvider>(
         &self,
         state_updates: &HashedPostState,
         parent_state: DB,
-        block: &RecoveredBlock<BaseBlock>,
+        block: &RecoveredBlock<UnstableBlock>,
     ) -> Result<(), ConsensusError>;
 }
 
-impl<Types, P, Tx, ChainSpec> BasePostExecutionValidator<Types>
-    for BaseEngineValidator<P, Tx, ChainSpec>
+impl<Types, P, Tx, ChainSpec> UnstablePostExecutionValidator<Types>
+    for UnstableEngineValidator<P, Tx, ChainSpec>
 where
     Types: PayloadTypes,
-    Self: PayloadValidator<Types, Block = BaseBlock>,
+    Self: PayloadValidator<Types, Block = UnstableBlock>,
     ChainSpec: Upgrades,
 {
     fn validate_block_post_execution_with_parent_state<DB: StateProvider>(
         &self,
         state_updates: &HashedPostState,
         parent_state: DB,
-        block: &RecoveredBlock<BaseBlock>,
+        block: &RecoveredBlock<UnstableBlock>,
     ) -> Result<(), ConsensusError> {
         Self::validate_block_post_execution_with_state(
             self,
@@ -185,7 +185,7 @@ where
     }
 }
 
-impl<P, Tx, ChainSpec, Types> PayloadValidator<Types> for BaseEngineValidator<P, Tx, ChainSpec>
+impl<P, Tx, ChainSpec, Types> PayloadValidator<Types> for UnstableEngineValidator<P, Tx, ChainSpec>
 where
     P: StateProviderFactory + Unpin + 'static,
     Tx: SignedTransaction + Unpin + 'static,
@@ -221,10 +221,10 @@ where
     }
 }
 
-impl<Types, P, Tx, ChainSpec> EngineApiValidator<Types> for BaseEngineValidator<P, Tx, ChainSpec>
+impl<Types, P, Tx, ChainSpec> EngineApiValidator<Types> for UnstableEngineValidator<P, Tx, ChainSpec>
 where
     Types: PayloadTypes<
-            PayloadAttributes = BasePayloadAttributes,
+            PayloadAttributes = UnstablePayloadAttributes,
             ExecutionData = ExecutionData,
             BuiltPayload: BuiltPayload<Primitives: NodePrimitives<SignedTx = Tx>>,
         >,
@@ -265,7 +265,7 @@ where
         validate_version_specific_fields(
             self.chain_spec(),
             version,
-            PayloadOrAttributes::<ExecutionData, BasePayloadAttributes>::PayloadAttributes(
+            PayloadOrAttributes::<ExecutionData, UnstablePayloadAttributes>::PayloadAttributes(
                 attributes,
             ),
         )?;
@@ -302,12 +302,12 @@ where
         {
             if attributes.min_base_fee.is_none() {
                 return Err(EngineObjectValidationError::InvalidParams(
-                    "MissingMinBaseFeeInPayloadAttributes".to_string().into(),
+                    "MissingMinUnstableFeeInPayloadAttributes".to_string().into(),
                 ));
             }
         } else if attributes.min_base_fee.is_some() {
             return Err(EngineObjectValidationError::InvalidParams(
-                "MinBaseFeeNotAllowedBeforeJovian".to_string().into(),
+                "MinUnstableFeeNotAllowedBeforeJovian".to_string().into(),
             ));
         }
 
@@ -365,17 +365,17 @@ mod tests {
     use alloy_primitives::{Address, B64, B256, b64};
     use alloy_rpc_types_engine::PayloadAttributes;
     use base_common_chains::ChainConfig;
-    use base_common_consensus::BaseTxEnvelope;
-    use base_execution_chainspec::BaseChainSpec;
+    use base_common_consensus::UnstableTxEnvelope;
+    use base_execution_chainspec::UnstableChainSpec;
     use reth_provider::noop::NoopProvider;
     use reth_trie_common::KeccakKeyHasher;
 
     use super::*;
     use crate::engine;
 
-    fn validator() -> BaseEngineValidator<NoopProvider, BaseTxEnvelope, BaseChainSpec> {
-        BaseEngineValidator::<NoopProvider, BaseTxEnvelope, BaseChainSpec>::new::<KeccakKeyHasher>(
-            Arc::new(BaseChainSpec::sepolia()),
+    fn validator() -> UnstableEngineValidator<NoopProvider, UnstableTxEnvelope, UnstableChainSpec> {
+        UnstableEngineValidator::<NoopProvider, UnstableTxEnvelope, UnstableChainSpec>::new::<KeccakKeyHasher>(
+            Arc::new(UnstableChainSpec::sepolia()),
             NoopProvider::default(),
         )
     }
@@ -396,8 +396,8 @@ mod tests {
         eip_1559_params: Option<B64>,
         min_base_fee: Option<u64>,
         timestamp: u64,
-    ) -> BasePayloadAttributes {
-        BasePayloadAttributes {
+    ) -> UnstablePayloadAttributes {
+        UnstablePayloadAttributes {
             gas_limit: Some(1000),
             eip_1559_params,
             min_base_fee,
@@ -418,8 +418,8 @@ mod tests {
         let validator = validator();
         let attributes = get_attributes(None, None, 1732633199);
 
-        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
-            BaseEngineTypes,
+        let result = <engine::UnstableEngineValidator<_, _, _> as EngineApiValidator<
+            UnstableEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes
         );
@@ -431,8 +431,8 @@ mod tests {
         let validator = validator();
         let attributes = get_attributes(None, None, 1732633200);
 
-        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
-            BaseEngineTypes,
+        let result = <engine::UnstableEngineValidator<_, _, _> as EngineApiValidator<
+            UnstableEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes
         );
@@ -444,8 +444,8 @@ mod tests {
         let validator = validator();
         let attributes = get_attributes(Some(b64!("0000000000000008")), None, 1732633200);
 
-        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
-            BaseEngineTypes,
+        let result = <engine::UnstableEngineValidator<_, _, _> as EngineApiValidator<
+            UnstableEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes
         );
@@ -457,8 +457,8 @@ mod tests {
         let validator = validator();
         let attributes = get_attributes(Some(b64!("0000000800000000")), None, 1732633200);
 
-        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
-            BaseEngineTypes,
+        let result = <engine::UnstableEngineValidator<_, _, _> as EngineApiValidator<
+            UnstableEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes
         );
@@ -470,8 +470,8 @@ mod tests {
         let validator = validator();
         let attributes = get_attributes(Some(b64!("0000000800000008")), None, 1732633200);
 
-        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
-            BaseEngineTypes,
+        let result = <engine::UnstableEngineValidator<_, _, _> as EngineApiValidator<
+            UnstableEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes
         );
@@ -483,8 +483,8 @@ mod tests {
         let validator = validator();
         let attributes = get_attributes(Some(b64!("0000000000000000")), None, 1732633200);
 
-        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
-            BaseEngineTypes,
+        let result = <engine::UnstableEngineValidator<_, _, _> as EngineApiValidator<
+            UnstableEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes
         );
@@ -500,8 +500,8 @@ mod tests {
             ChainConfig::sepolia().jovian_timestamp,
         );
 
-        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
-            BaseEngineTypes,
+        let result = <engine::UnstableEngineValidator<_, _, _> as EngineApiValidator<
+            UnstableEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes
         );
@@ -514,8 +514,8 @@ mod tests {
         let validator = validator();
         let attributes = get_attributes(None, Some(1), ChainConfig::sepolia().jovian_timestamp);
 
-        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
-            BaseEngineTypes,
+        let result = <engine::UnstableEngineValidator<_, _, _> as EngineApiValidator<
+            UnstableEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes
         );
@@ -528,12 +528,12 @@ mod tests {
         let validator = validator();
         let attributes = get_attributes(Some(b64!("0000000000000000")), Some(1), 1732633200);
 
-        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
-            BaseEngineTypes,
+        let result = <engine::UnstableEngineValidator<_, _, _> as EngineApiValidator<
+            UnstableEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes
         );
-        assert_invalid_params_error!(result, "MinBaseFeeNotAllowedBeforeJovian");
+        assert_invalid_params_error!(result, "MinUnstableFeeNotAllowedBeforeJovian");
     }
 
     /// After Jovian, min base fee must be Some
@@ -546,11 +546,11 @@ mod tests {
             ChainConfig::sepolia().jovian_timestamp,
         );
 
-        let result = <engine::BaseEngineValidator<_, _, _> as EngineApiValidator<
-            BaseEngineTypes,
+        let result = <engine::UnstableEngineValidator<_, _, _> as EngineApiValidator<
+            UnstableEngineTypes,
         >>::ensure_well_formed_attributes(
             &validator, EngineApiMessageVersion::V3, &attributes
         );
-        assert_invalid_params_error!(result, "MissingMinBaseFeeInPayloadAttributes");
+        assert_invalid_params_error!(result, "MissingMinUnstableFeeInPayloadAttributes");
     }
 }

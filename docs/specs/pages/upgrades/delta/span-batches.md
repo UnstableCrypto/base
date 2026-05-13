@@ -59,7 +59,7 @@ Notation:
 - `++`: concatenation of byte-strings
 - `span_start`: first L2 block in the span
 - `span_end`: last L2 block in the span
-- `uvarint`: unsigned Base128 varint, as defined in [protobuf spec]
+- `uvarint`: unsigned Unstable128 varint, as defined in [protobuf spec]
 - `rlp_encode`: a function that encodes a batch according to the RLP format,
   and `[x, y, z]` denotes a list containing items `x`, `y` and `z`
 

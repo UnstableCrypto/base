@@ -3,7 +3,7 @@
 Library crate for the prover registrar service.
 
 Implements automated discovery and on-chain registration of TEE prover signer
-keys for the Base multi-proof system. The registrar polls AWS ALB target groups
+keys for the Unstable multi-proof system. The registrar polls AWS ALB target groups
 to detect new Nitro enclave instances, fetches their attestation documents via
 `enclave_signerAttestation`, generates ZK proofs via the Boundless Network
 (RISC Zero / Automata SDK), and submits registration transactions to

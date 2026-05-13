@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository.workspace = true
-description = "Execution extensions for Base"
+description = "Execution extensions for Unstable"
 
 [lints]
 workspace = true

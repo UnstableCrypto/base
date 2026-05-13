@@ -5,7 +5,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use alloy_network::ReceiptResponse;
 use alloy_provider::{Provider, RootProvider};
 use alloy_rpc_types::{BlockId, BlockNumberOrTag};
-use base_common_network::Base;
+use base_common_network::Unstable;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, trace, warn};
 
@@ -22,7 +22,7 @@ const INITIAL_BLOCK_LOOKBACK: u64 = 8;
 /// Tracks canonical blocks and their receipts.
 #[derive(Debug)]
 pub struct BlockWatcher {
-    provider: RootProvider<Base>,
+    provider: RootProvider<Unstable>,
     results_tracker: ResultsTracker,
     cancel_token: CancellationToken,
 }
@@ -30,7 +30,7 @@ pub struct BlockWatcher {
 impl BlockWatcher {
     /// Creates a new [`BlockWatcher`].
     pub const fn new(
-        provider: RootProvider<Base>,
+        provider: RootProvider<Unstable>,
         results_tracker: ResultsTracker,
         cancel_token: CancellationToken,
     ) -> Self {

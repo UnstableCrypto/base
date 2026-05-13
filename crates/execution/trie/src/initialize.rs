@@ -19,8 +19,8 @@ use reth_trie_common::{
 use tracing::{debug, info};
 
 use crate::{
-    BaseProofsStorageError, BaseProofsStore,
-    api::{BaseProofsInitialStateStore, InitialStateAnchor, InitialStateStatus},
+    UnstableProofsStorageError, UnstableProofsStore,
+    api::{UnstableProofsInitialStateStore, InitialStateAnchor, InitialStateStatus},
     db::{HashedStorageKey, StorageTrieKey},
 };
 
@@ -32,7 +32,7 @@ const INITIALIZE_LOG_THRESHOLD: usize = 100000;
 
 /// Initialization job for external storage.
 #[derive(Debug, Constructor)]
-pub struct InitializationJob<Tx: DbTx, S: BaseProofsStore + Send> {
+pub struct InitializationJob<Tx: DbTx, S: UnstableProofsStore + Send> {
     storage: S,
     tx: Tx,
 }
@@ -133,7 +133,7 @@ impl CompletionEstimatable for StoredNibbles {
     }
 }
 
-impl<Tx: DbTx + Sync, S: BaseProofsStore + BaseProofsInitialStateStore + Send>
+impl<Tx: DbTx + Sync, S: UnstableProofsStore + UnstableProofsInitialStateStore + Send>
     InitializationJob<Tx, S>
 {
     /// Initialize a table from a source iterator to a storage function. Handles batching and
@@ -148,7 +148,7 @@ impl<Tx: DbTx + Sync, S: BaseProofsStore + BaseProofsInitialStateStore + Send>
         source: I,
         storage_threshold: usize,
         log_threshold: usize,
-    ) -> Result<u64, BaseProofsStorageError> {
+    ) -> Result<u64, UnstableProofsStorageError> {
         info!(name = %name, "Starting initialization");
         let start_time = Instant::now();
 
@@ -218,14 +218,14 @@ impl<Tx: DbTx + Sync, S: BaseProofsStore + BaseProofsInitialStateStore + Send>
     fn initialize_hashed_accounts(
         &self,
         start_key: Option<B256>,
-    ) -> Result<(), BaseProofsStorageError> {
+    ) -> Result<(), UnstableProofsStorageError> {
         let mut start_cursor = self.tx.cursor_read::<tables::HashedAccounts>()?;
 
         if let Some(latest) = start_key {
             start_cursor
                 .seek(latest)?
                 .filter(|(k, _)| *k == latest)
-                .ok_or(BaseProofsStorageError::InitializeStorageInconsistentState)?;
+                .ok_or(UnstableProofsStorageError::InitializeStorageInconsistentState)?;
         }
 
         let source = HashedAccountsInit::new(start_cursor);
@@ -243,14 +243,14 @@ impl<Tx: DbTx + Sync, S: BaseProofsStore + BaseProofsInitialStateStore + Send>
     fn initialize_hashed_storages(
         &self,
         start_key: Option<HashedStorageKey>,
-    ) -> Result<(), BaseProofsStorageError> {
+    ) -> Result<(), UnstableProofsStorageError> {
         let mut start_cursor = self.tx.cursor_dup_read::<tables::HashedStorages>()?;
 
         if let Some(latest) = start_key {
             start_cursor
                 .seek_by_key_subkey(latest.hashed_address, latest.hashed_storage_key)?
                 .filter(|v| v.key == latest.hashed_storage_key)
-                .ok_or(BaseProofsStorageError::InitializeStorageInconsistentState)?;
+                .ok_or(UnstableProofsStorageError::InitializeStorageInconsistentState)?;
         }
 
         let source = HashedStoragesInit::new(start_cursor);
@@ -268,14 +268,14 @@ impl<Tx: DbTx + Sync, S: BaseProofsStore + BaseProofsInitialStateStore + Send>
     fn initialize_accounts_trie(
         &self,
         start_key: Option<StoredNibbles>,
-    ) -> Result<(), BaseProofsStorageError> {
+    ) -> Result<(), UnstableProofsStorageError> {
         let mut start_cursor = self.tx.cursor_read::<tables::AccountsTrie>()?;
 
         if let Some(latest_key) = start_key {
             start_cursor
                 .seek(latest_key.clone())?
                 .filter(|(k, _)| *k == latest_key)
-                .ok_or(BaseProofsStorageError::InitializeStorageInconsistentState)?;
+                .ok_or(UnstableProofsStorageError::InitializeStorageInconsistentState)?;
         }
 
         let source = AccountsTrieInit::new(start_cursor);
@@ -293,7 +293,7 @@ impl<Tx: DbTx + Sync, S: BaseProofsStore + BaseProofsInitialStateStore + Send>
     fn initialize_storages_trie(
         &self,
         start_key: Option<StorageTrieKey>,
-    ) -> Result<(), BaseProofsStorageError> {
+    ) -> Result<(), UnstableProofsStorageError> {
         let mut start_cursor = self.tx.cursor_dup_read::<tables::StoragesTrie>()?;
 
         if let Some(latest_key) = start_key {
@@ -303,7 +303,7 @@ impl<Tx: DbTx + Sync, S: BaseProofsStore + BaseProofsInitialStateStore + Send>
                     StoredNibblesSubKey::from(latest_key.path.0),
                 )?
                 .filter(|v| v.nibbles.0 == latest_key.path.0)
-                .ok_or(BaseProofsStorageError::InitializeStorageInconsistentState)?;
+                .ok_or(UnstableProofsStorageError::InitializeStorageInconsistentState)?;
         }
 
         let source = StoragesTrieInit::new(start_cursor);
@@ -318,7 +318,7 @@ impl<Tx: DbTx + Sync, S: BaseProofsStore + BaseProofsInitialStateStore + Send>
     }
 
     /// Run complete initialization of all preimage data
-    fn initialize_trie(&self, anchor: InitialStateAnchor) -> Result<(), BaseProofsStorageError> {
+    fn initialize_trie(&self, anchor: InitialStateAnchor) -> Result<(), UnstableProofsStorageError> {
         self.initialize_hashed_accounts(anchor.latest_hashed_account_key)?;
         self.initialize_hashed_storages(anchor.latest_hashed_storage_key)?;
         self.initialize_storages_trie(anchor.latest_storage_trie_key)?;
@@ -331,19 +331,19 @@ impl<Tx: DbTx + Sync, S: BaseProofsStore + BaseProofsInitialStateStore + Send>
         anchor: &InitialStateAnchor,
         best_number: u64,
         best_hash: B256,
-    ) -> Result<(), BaseProofsStorageError> {
+    ) -> Result<(), UnstableProofsStorageError> {
         let block =
-            anchor.block.ok_or(BaseProofsStorageError::InitializeStorageInconsistentState)?;
+            anchor.block.ok_or(UnstableProofsStorageError::InitializeStorageInconsistentState)?;
 
         if block.number != best_number || block.hash != best_hash {
-            return Err(BaseProofsStorageError::InitializeStorageInconsistentState);
+            return Err(UnstableProofsStorageError::InitializeStorageInconsistentState);
         }
 
         Ok(())
     }
 
     /// Run the initialization job.
-    pub fn run(&self, best_number: u64, best_hash: B256) -> Result<(), BaseProofsStorageError> {
+    pub fn run(&self, best_number: u64, best_hash: B256) -> Result<(), UnstableProofsStorageError> {
         let anchor = self.storage.initial_state_anchor()?;
 
         match anchor.status {
@@ -372,9 +372,9 @@ trait InitTable {
 
     /// Writes given entries to given storage.
     fn store_entries(
-        store: &impl BaseProofsInitialStateStore,
+        store: &impl UnstableProofsInitialStateStore,
         entries: impl IntoIterator<Item = (Self::Key, Self::Value)>,
-    ) -> Result<(), BaseProofsStorageError>;
+    ) -> Result<(), UnstableProofsStorageError>;
 }
 
 impl<C> InitTable for HashedAccountsInit<C> {
@@ -383,9 +383,9 @@ impl<C> InitTable for HashedAccountsInit<C> {
 
     /// Save mapping of hashed addresses to accounts to storage.
     fn store_entries(
-        store: &impl BaseProofsInitialStateStore,
+        store: &impl UnstableProofsInitialStateStore,
         entries: impl IntoIterator<Item = (Self::Key, Self::Value)>,
-    ) -> Result<(), BaseProofsStorageError> {
+    ) -> Result<(), UnstableProofsStorageError> {
         store.store_hashed_accounts(
             entries.into_iter().map(|(address, account)| (address, Some(account))).collect(),
         )?;
@@ -399,9 +399,9 @@ impl<C> InitTable for HashedStoragesInit<C> {
 
     /// Save mapping of hashed addresses to storage entries to storage.
     fn store_entries(
-        store: &impl BaseProofsInitialStateStore,
+        store: &impl UnstableProofsInitialStateStore,
         entries: impl IntoIterator<Item = (Self::Key, Self::Value)>,
-    ) -> Result<(), BaseProofsStorageError> {
+    ) -> Result<(), UnstableProofsStorageError> {
         let entries_iter = entries.into_iter();
         let mut by_address: HashMap<B256, Vec<(B256, U256)>> =
             HashMap::with_capacity(entries_iter.size_hint().0);
@@ -425,9 +425,9 @@ impl<C> InitTable for AccountsTrieInit<C> {
 
     /// Save mapping of account trie paths to branch nodes to storage.
     fn store_entries(
-        store: &impl BaseProofsInitialStateStore,
+        store: &impl UnstableProofsInitialStateStore,
         entries: impl IntoIterator<Item = (Self::Key, Self::Value)>,
-    ) -> Result<(), BaseProofsStorageError> {
+    ) -> Result<(), UnstableProofsStorageError> {
         store.store_account_branches(
             entries.into_iter().map(|(path, branch)| (path.0, Some(branch))).collect(),
         )?;
@@ -442,9 +442,9 @@ impl<C> InitTable for StoragesTrieInit<C> {
 
     /// Save mapping of hashed addresses to storage trie entries to storage.
     fn store_entries(
-        store: &impl BaseProofsInitialStateStore,
+        store: &impl UnstableProofsInitialStateStore,
         entries: impl IntoIterator<Item = (Self::Key, Self::Value)>,
-    ) -> Result<(), BaseProofsStorageError> {
+    ) -> Result<(), UnstableProofsStorageError> {
         let entries_iter = entries.into_iter();
         let mut by_address: HashMap<B256, Vec<(Nibbles, Option<BranchNodeCompact>)>> =
             HashMap::with_capacity(entries_iter.size_hint().0);

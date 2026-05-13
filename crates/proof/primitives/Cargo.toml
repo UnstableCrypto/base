@@ -1,6 +1,6 @@
 [package]
 name = "base-proof-primitives"
-description = "Shared primitive types and traits for the Base proof system"
+description = "Shared primitive types and traits for the Unstable proof system"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

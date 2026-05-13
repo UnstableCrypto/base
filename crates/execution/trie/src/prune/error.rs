@@ -8,10 +8,10 @@ use reth_provider::ProviderError;
 use strum::Display;
 use thiserror::Error;
 
-use crate::{BaseProofsStorageError, api::WriteCounts};
+use crate::{UnstableProofsStorageError, api::WriteCounts};
 
-/// Result of [`BaseProofStoragePruner::run`](crate::BaseProofStoragePruner::run) execution.
-pub type BaseProofStoragePrunerResult = Result<PrunerOutput, PrunerError>;
+/// Result of [`UnstableProofStoragePruner::run`](crate::UnstableProofStoragePruner::run) execution.
+pub type UnstableProofStoragePrunerResult = Result<PrunerOutput, PrunerError>;
 
 /// Successful prune summary.
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
@@ -64,8 +64,8 @@ impl PrunerOutput {
 /// Error returned by the pruner.
 #[derive(Debug, Error, Display)]
 pub enum PrunerError {
-    /// Wrapped error from the underlying `BaseProofStorage` layer.
-    Storage(#[from] BaseProofsStorageError),
+    /// Wrapped error from the underlying `UnstableProofStorage` layer.
+    Storage(#[from] UnstableProofsStorageError),
 
     /// Wrapped error from the reth db provider.
     Provider(#[from] ProviderError),

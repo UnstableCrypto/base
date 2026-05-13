@@ -4,7 +4,7 @@ use alloy_primitives::B256;
 use alloy_provider::{Identity, Provider, ProviderBuilder};
 use alloy_rpc_types::{BlockId, BlockNumberOrTag};
 use anyhow::Result;
-use base_common_network::Base;
+use base_common_network::Unstable;
 use base_proof_rpc::OptimismRollupProviderExt;
 use tracing::debug;
 
@@ -31,7 +31,7 @@ impl L1HeadCalculator {
         );
 
         let l1_provider = ProviderBuilder::new().connect_http(l1_node_url.parse()?);
-        let base_provider = ProviderBuilder::<Identity, Identity, Base>::default()
+        let base_provider = ProviderBuilder::<Identity, Identity, Unstable>::default()
             .connect_http(base_consensus_url.parse()?);
 
         let l1_origin = Self::get_l1_origin_num(&base_provider, l2_block_number).await?;
@@ -70,7 +70,7 @@ impl L1HeadCalculator {
     /// Get L1 origin block number from `optimism_outputAtBlock`.
     pub async fn get_l1_origin_num<OP>(base_provider: &OP, l2_block_number: u64) -> Result<u64>
     where
-        OP: Provider<Base>,
+        OP: Provider<Unstable>,
     {
         let response = base_provider
             .optimism_output_at_block(BlockNumberOrTag::Number(l2_block_number))
