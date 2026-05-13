@@ -147,6 +147,8 @@ impl ChainConfig {
     pub const ZERONET_NAME: &'static str = "base-zeronet";
     /// CLI chain name for the local Unstable devnet.
     pub const DEVNET_NAME: &'static str = "dev";
+    /// CLI chain name for Unstable.
+    pub const UNSTABLE_NAME: &'static str = "unstable";
     /// All chain names accepted by Unstable chain parsers.
     pub const SUPPORTED_NAMES: &'static [&'static str] = &[
         Self::MAINNET_NAME,
@@ -154,6 +156,7 @@ impl ChainConfig {
         Self::SEPOLIA_NAME,
         Self::ZERONET_NAME,
         Self::DEVNET_NAME,
+        Self::UNSTABLE_NAME,
     ];
 
     /// Unstable Mainnet chain configuration.
@@ -176,9 +179,14 @@ impl ChainConfig {
         &ZERONET
     }
 
-    /// Returns all known chain configurations, including devnet.
-    pub const fn all() -> [&'static Self; 4] {
-        [&MAINNET, &SEPOLIA, &DEVNET, &ZERONET]
+    /// Unstable chain configuration.
+    pub const fn unstable() -> &'static Self {
+        &UNSTABLE
+    }
+
+    /// Returns all known chain configurations, including devnet and unstable.
+    pub const fn all() -> [&'static Self; 5] {
+        [&MAINNET, &SEPOLIA, &DEVNET, &ZERONET, &UNSTABLE]
     }
 
     /// Looks up a chain config by CLI chain name.
@@ -188,6 +196,7 @@ impl ChainConfig {
             Self::SEPOLIA_NAME | Self::SEPOLIA_ALIAS => Some(Self::sepolia()),
             Self::ZERONET_NAME => Some(Self::zeronet()),
             Self::DEVNET_NAME => Some(Self::devnet()),
+            Self::UNSTABLE_NAME => Some(Self::unstable()),
             _ => None,
         }
     }
@@ -198,6 +207,7 @@ impl ChainConfig {
             8453 => Some(&MAINNET),
             84532 => Some(&SEPOLIA),
             763360 => Some(&ZERONET),
+            424242 => Some(&UNSTABLE),
             _ => None,
         }
     }
@@ -545,6 +555,58 @@ const ZERONET: ChainConfig = ChainConfig {
     },
 
     genesis_json: include_str!("../res/genesis/zeronet_base.json"),
+};
+
+const UNSTABLE: ChainConfig = ChainConfig {
+    chain_id: 424242,
+    l1_chain_id: 1,
+
+    block_time: 2,
+    seq_window_size: 3600,
+    max_sequencer_drift: 600,
+    channel_timeout: 300,
+
+    bedrock_block: 0,
+    regolith_timestamp: 0,
+    canyon_timestamp: 0,
+    delta_timestamp: 0,
+    ecotone_timestamp: 0,
+    fjord_timestamp: 0,
+    granite_timestamp: 0,
+    holocene_timestamp: 0,
+    pectra_blob_schedule_timestamp: None,
+    isthmus_timestamp: 0,
+    jovian_timestamp: 0,
+    azul_timestamp: None,
+    beryl_timestamp: None,
+
+    genesis_l1_hash: b256!("5c13d307623a926cd31415036c8b7fa14572f9dac64528e857a470511fc30771"),
+    genesis_l1_number: 17_481_768,
+    genesis_l2_hash: b256!("f712aa9241cc24369b143cf6dce85f0902a9731e70d66818a3a5845b296c73dd"),
+    genesis_l2_number: 0,
+    genesis_l2_time: 1_686_789_347,
+    genesis_batcher_address: address!("5050f69a9786f081509234f1a7f4684b5e5b76c9"),
+    genesis_overhead: uint!(0xbc_U256),
+    genesis_scalar: uint!(0xa6fe0_U256),
+    genesis_gas_limit: 30_000_000,
+
+    eip1559_elasticity: 6,
+    eip1559_denominator: 50,
+    eip1559_denominator_canyon: 250,
+
+    batch_inbox_address: address!("ff00000000000000000000000000000000424242"),
+    deposit_contract_address: address!("49048044d57e1c92a77f79988d21fa8faf74e97e"),
+    system_config_address: address!("73a79fab69143498ed3712e519a88a918e1f4072"),
+    protocol_versions_address: address!("8062abc286f5e7d9428a0ccb9abd71e50d93b935"),
+
+    unsafe_block_signer: Some(address!("Af6E19BE0F9cE7f8afd49a1824851023A8249e8a")),
+
+    max_gas_limit: 105_000_000,
+    prune_delete_limit: 20_000,
+
+    bootnodes: Bootnodes::EMPTY,
+
+    genesis_json: include_str!("../res/genesis/base.json"),
 };
 
 #[cfg(test)]
